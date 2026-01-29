@@ -239,6 +239,22 @@ Now that Quark has achieved production-readiness with all 6 phases complete and 
 
 **Status:** Core health checks and diagnostic endpoints complete. DLQ and advanced cluster health monitoring planned for future release.
 
+#### 7.3 Performance Profiling & Analysis
+* [ ] **Actor Profiler:** Runtime performance analysis
+  - Per-actor CPU and memory usage
+  - Method-level latency tracking
+  - Hot path identification
+  - Allocation profiling for zero-allocation goals
+* [ ] **Cluster Dashboard:** Real-time cluster visualization
+  - Actor distribution heat maps
+  - Silo resource utilization
+  - Network traffic patterns
+  - Placement policy effectiveness
+* [ ] **Load Testing Tools:** Built-in load generation and analysis
+  - Actor workload generators
+  - Distributed load testing orchestration
+  - Latency percentile reporting (p50, p95, p99)
+
 #### 7.4 Advanced Cluster Health Monitoring 🚧 PLANNED
 * [ ] **Advanced Heartbeat Monitoring:** Enhanced silo health tracking
   - Health scores per silo (CPU, memory, latency)
@@ -257,22 +273,6 @@ Now that Quark has achieved production-readiness with all 6 phases complete and 
   - Graceful degradation strategies
 
 **Status:** Deferred from Phase 3. Planned for future release after core observability features.
-
-#### 7.5 Performance Profiling & Analysis
-* [ ] **Actor Profiler:** Runtime performance analysis
-  - Per-actor CPU and memory usage
-  - Method-level latency tracking
-  - Hot path identification
-  - Allocation profiling for zero-allocation goals
-* [ ] **Cluster Dashboard:** Real-time cluster visualization
-  - Actor distribution heat maps
-  - Silo resource utilization
-  - Network traffic patterns
-  - Placement policy effectiveness
-* [ ] **Load Testing Tools:** Built-in load generation and analysis
-  - Actor workload generators
-  - Distributed load testing orchestration
-  - Latency percentile reporting (p50, p95, p99)
 
 **Target:** Q2 2026 - Enterprise-grade observability and operational tooling.
 
