@@ -54,7 +54,7 @@ public class StreamBrokerTests
     }
 
     [Fact]
-    public async Task StreamBroker_NotifyImplicitSubscribers_WithMatchingSubscription_ActivatesActor()
+    public async Task StreamBroker_NotifyImplicitSubscribers_WithMatchingSubscription_DoesNotThrow()
     {
         // Arrange
         var factory = new ActorFactory();
@@ -66,16 +66,14 @@ public class StreamBrokerTests
         var streamId = new StreamId("orders/processed", "test-actor-1");
         var stream = provider.GetStream<string>(streamId);
 
-        // Act
+        // Act & Assert - verify no exceptions are thrown
         await stream.PublishAsync("test-message");
 
         // Wait a bit for async processing
         await Task.Delay(100);
 
-        // Assert
-        // Note: In a real test, we would verify the actor was activated and received the message
-        // For now, we just verify no exceptions were thrown
-        Assert.True(true);
+        // Note: In a production test, we would verify the actor was actually activated
+        // and received the message. For this basic test, we just ensure no exceptions occur.
     }
 
     [Fact]
@@ -99,20 +97,20 @@ public class StreamBrokerTests
     }
 
     [Fact]
-    public void StreamRegistry_RegisterImplicitSubscription_WithoutBroker_DoesNotThrow()
+    public void StreamRegistry_RegisterImplicitSubscription_WithBroker_Succeeds()
     {
         // Arrange
+        var broker = new StreamBroker();
+        
         // Save the current broker state
         var originalBroker = StreamRegistry.GetBroker();
         
         try
         {
-            StreamRegistry.SetBroker(new StreamBroker());
-            // Now set a fake null by directly accessing private field would require reflection
-            // Instead, we'll test a different scenario - just verify registration doesn't throw
-            // when broker is available
+            // Act
+            StreamRegistry.SetBroker(broker);
             
-            // Act & Assert (should not throw)
+            // Assert - should not throw
             StreamRegistry.RegisterImplicitSubscription("test", typeof(TestStreamActor), typeof(string));
         }
         finally

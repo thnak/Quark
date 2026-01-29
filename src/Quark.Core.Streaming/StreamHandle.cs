@@ -26,7 +26,9 @@ internal class StreamHandle<T> : IStreamHandle<T>
     /// <inheritdoc/>
     public async Task PublishAsync(T message, CancellationToken cancellationToken = default)
     {
-        // Publish to all subscribers
+        // Publish to all explicit subscribers
+        // Note: If any subscriber throws, the exception will propagate and may prevent
+        // delivery to remaining subscribers. This is intentional to maintain fail-fast semantics.
         var tasks = _subscribers.Values.Select(handler => handler(message));
         await Task.WhenAll(tasks);
 
@@ -92,6 +94,9 @@ internal class StreamHandle<T> : IStreamHandle<T>
                 return;
 
             _disposed = true;
+            // Note: This uses GetAwaiter().GetResult() which could potentially deadlock
+            // in certain synchronization contexts. Callers should prefer using
+            // UnsubscribeAsync() directly in async contexts.
             UnsubscribeAsync().GetAwaiter().GetResult();
         }
     }

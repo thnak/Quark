@@ -42,10 +42,13 @@ public class StreamBroker
         _implicitSubscriptions.AddOrUpdate(
             @namespace,
             _ => new List<StreamSubscription> { subscription },
-            (_, list) =>
+            (_, existingList) =>
             {
-                list.Add(subscription);
-                return list;
+                lock (existingList)
+                {
+                    existingList.Add(subscription);
+                }
+                return existingList;
             });
     }
 
@@ -122,9 +125,13 @@ public class StreamBroker
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Log error in production - for now, swallow
+            // TODO: Add logging infrastructure and log errors
+            // For now, we swallow exceptions to prevent one failing actor
+            // from breaking the entire stream delivery mechanism
+            // In production, this should be logged with: actor type, stream ID, message type, and exception details
+            _ = ex; // Acknowledge the variable to avoid unused warnings
         }
     }
 

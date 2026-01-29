@@ -188,7 +188,7 @@ Potential future improvements:
 - **Persistent Streams**: Durable message storage
 - **Stream Processors**: Built-in transformations and filters
 - **Distributed Streams**: Cross-silo stream coordination
-- **Analyzers**: Compile-time validation of stream attributes
+- **Enhanced Analyzers**: Additional compile-time validation rules for complex scenarios
 
 ## Related Documentation
 
