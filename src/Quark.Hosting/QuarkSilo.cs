@@ -240,14 +240,14 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     {
         try
         {
-            // Call OnDeactivateAsync if the actor supports it
+            // Call OnDeactivateAsync to allow actor to save state and perform cleanup
+            await actor.OnDeactivateAsync(cancellationToken);
+
+            // Dispose if the actor implements IDisposable
             if (actor is IDisposable disposable)
             {
                 disposable.Dispose();
             }
-
-            // TODO: If actor has state, save it via IStateStorage
-            // This would require accessing the actor's state storage through dependency injection
 
             _logger.LogDebug("Actor {ActorId} deactivated", actorId);
         }
