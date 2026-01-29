@@ -23,14 +23,14 @@ public interface IStreamConsumerDispatcher
     /// </summary>
     /// <param name="actorFactory">The actor factory to use for actor creation.</param>
     /// <param name="actorId">The actor ID.</param>
-    /// <param name="message">The message to deliver.</param>
+    /// <param name="message">The message to deliver. Can be null for nullable message types.</param>
     /// <param name="streamId">The stream identifier.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task ActivateAndNotifyAsync(
         IActorFactory actorFactory,
         string actorId,
-        object message,
+        object? message,
         StreamId streamId,
         CancellationToken cancellationToken);
 }

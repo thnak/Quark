@@ -41,10 +41,13 @@ public static class StreamConsumerDispatcherRegistry
     }
 
     /// <summary>
-    /// Clears all registered dispatchers. Used for testing.
+    /// Clears all registered dispatchers. 
+    /// WARNING: For testing purposes only. Do not call this in production code.
     /// </summary>
+#if DEBUG
     internal static void Clear()
     {
         _dispatchers.Clear();
     }
+#endif
 }

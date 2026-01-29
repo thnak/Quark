@@ -94,13 +94,18 @@ public class StreamBroker
             var dispatcher = StreamConsumerDispatcherRegistry.GetDispatcher(actorType);
             
             if (dispatcher == null)
+            {
+                // TODO: Add logging infrastructure and log warning
+                // Dispatcher not found - likely the actor doesn't have [QuarkStream] attribute
+                // or the source generator hasn't run yet
                 return;
+            }
 
             // Create or get the actor instance using the stream key as the actor ID
             var actorId = streamId.Key;
             
             // Use the dispatcher to activate and notify the actor - NO REFLECTION
-            await dispatcher.ActivateAndNotifyAsync(_actorFactory, actorId, message!, streamId, cancellationToken);
+            await dispatcher.ActivateAndNotifyAsync(_actorFactory, actorId, message, streamId, cancellationToken);
         }
         catch (Exception ex)
         {
