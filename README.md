@@ -238,13 +238,24 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
   - [x] Persistent reminders that survive reboots
   - [x] Distributed scheduler with consistent hashing
   - [x] Lightweight in-memory timers
+  - [x] State storage abstractions (IStateStorage with optimistic concurrency)
+  - [x] Reminder storage abstractions (IReminderTable with consistent hashing)
+  - [x] InMemoryStateStorage implementation for development/testing
+  - [x] InMemoryReminderTable implementation for development/testing
+  - [ ] State Providers: Redis and Postgres storage with optimistic concurrency (deferred)
+  - [ ] Reminder Storage: Redis and Postgres reminder tables (deferred)
+  - [ ] Event Sourcing: Native journaling support for audit-logs and state replay (deferred)
 - [x] **Phase 5: Reactive Streaming** - Decoupled messaging patterns
   - [x] Implicit subscriptions with `[QuarkStream]` attribute
   - [x] Explicit pub/sub with `IQuarkStreamProvider`
   - [x] Stream-to-actor mappings via source generator
   - [x] Analyzer for compile-time validation
   - [x] Multiple subscribers support
+- [ ] **Phase 6: Silo Host & Client Gateway** - Production-ready hosting (planning)
+  - [ ] IQuarkSilo host with lifecycle orchestration
+  - [ ] IClusterClient lightweight gateway
+  - [ ] IServiceCollection extensions for DI registration
+  - [ ] Actor method signature analyzers
+  - [ ] Protobuf proxy generation
 - [ ] Performance benchmarks and optimization
-- [ ] Additional storage providers (Redis, Postgres)
-- [ ] Event sourcing support
 
