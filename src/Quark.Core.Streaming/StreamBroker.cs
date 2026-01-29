@@ -90,40 +90,17 @@ public class StreamBroker
 
         try
         {
-            // Create or get the actor instance
-            // For implicit subscriptions, we use the stream key as the actor ID
+            // Use AOT-safe dispatcher instead of reflection
+            var dispatcher = StreamConsumerDispatcherRegistry.GetDispatcher(actorType);
+            
+            if (dispatcher == null)
+                return;
+
+            // Create or get the actor instance using the stream key as the actor ID
             var actorId = streamId.Key;
             
-            // Use reflection to call GetOrCreateActor<TActorType>
-            var method = _actorFactory.GetType()
-                .GetMethod(nameof(IActorFactory.GetOrCreateActor))
-                ?.MakeGenericMethod(actorType);
-            
-            if (method == null)
-                return;
-
-            var actor = method.Invoke(_actorFactory, new object[] { actorId });
-            
-            if (actor == null)
-                return;
-
-            // Check if actor implements IStreamConsumer<T>
-            var consumerInterface = actor.GetType()
-                .GetInterfaces()
-                .FirstOrDefault(i => i.IsGenericType && 
-                                     i.GetGenericTypeDefinition() == typeof(IStreamConsumer<>) &&
-                                     i.GetGenericArguments()[0].IsAssignableFrom(typeof(T)));
-            
-            if (consumerInterface != null)
-            {
-                var onStreamMessageMethod = consumerInterface.GetMethod(nameof(IStreamConsumer<T>.OnStreamMessageAsync));
-                if (onStreamMessageMethod != null)
-                {
-                    var task = onStreamMessageMethod.Invoke(actor, new object?[] { message, streamId, cancellationToken }) as Task;
-                    if (task != null)
-                        await task;
-                }
-            }
+            // Use the dispatcher to activate and notify the actor - NO REFLECTION
+            await dispatcher.ActivateAndNotifyAsync(_actorFactory, actorId, message!, streamId, cancellationToken);
         }
         catch (Exception ex)
         {

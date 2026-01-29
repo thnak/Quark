@@ -66,14 +66,16 @@ public class StreamBrokerTests
         var streamId = new StreamId("orders/processed", "test-actor-1");
         var stream = provider.GetStream<string>(streamId);
 
-        // Act & Assert - verify no exceptions are thrown
+        // Act - publish a message to the stream
         await stream.PublishAsync("test-message");
 
         // Wait a bit for async processing
         await Task.Delay(100);
 
-        // Note: In a production test, we would verify the actor was actually activated
-        // and received the message. For this basic test, we just ensure no exceptions occur.
+        // Assert - verify the actor was activated and received the message
+        var actor = factory.GetOrCreateActor<TestStreamActor>("test-actor-1");
+        Assert.NotEmpty(actor.ReceivedMessages);
+        Assert.Equal("test-message", actor.ReceivedMessages[0]);
     }
 
     [Fact]
@@ -128,6 +130,7 @@ public class StreamBrokerTests
 /// Test actor for stream testing.
 /// </summary>
 [Actor(Name = "TestStream")]
+[QuarkStream("orders/processed")]
 public class TestStreamActor : ActorBase, IStreamConsumer<string>
 {
     public List<string> ReceivedMessages { get; } = new();
