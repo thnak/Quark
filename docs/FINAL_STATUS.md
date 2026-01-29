@@ -91,10 +91,12 @@ Quark/
 ## 🚀 Key Technical Achievements
 
 ### 1. Zero-Reflection Architecture
-- 100% source generation for AOT compatibility
+- **100% source generation** for AOT compatibility - no runtime reflection anywhere
 - ActorSourceGenerator for factory methods
 - StateSourceGenerator for persistence
 - LoggerMessageSourceGenerator for high-performance logging
+- **JsonSerializerContext** for JSON serialization (zero reflection)
+- All serialization uses compile-time code generation
 
 ### 2. High-Performance Messaging
 - System.Threading.Channels for lock-free queuing

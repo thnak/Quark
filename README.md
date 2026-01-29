@@ -2,12 +2,19 @@
 
 Quark is a high-performance, ultra-lightweight distributed actor framework for .NET, built specifically for the Native AOT era. Unlike traditional frameworks that rely on heavy runtime reflection and IL emission, Quark moves the "magic" to compile-time using Roslyn Incremental Source Generators.
 
+**Key Highlight:** Quark is **100% reflection-free** - all code generation happens at compile-time, making it fully Native AOT compatible.
+
 ## Features
 
 - ✨ **Native AOT Ready**: Full support for .NET Native AOT compilation
-- 🚀 **High Performance**: Minimal overhead actor framework
+- 🚫 **Zero Reflection**: 100% reflection-free - all code generated at compile-time
+- 🚀 **High Performance**: Lock-free messaging, persistent gRPC streams
 - 🔧 **Source Generation**: Compile-time code generation for AOT compatibility
+  - Actor factories
+  - JSON serialization (JsonSerializerContext)
+  - High-performance logging (LoggerMessage)
 - 🏗️ **Orleans-inspired**: Familiar actor model with modern AOT support
+- 🌐 **Distributed**: Redis clustering with consistent hashing
 - ⚡ **Parallel Build**: Multi-project structure optimized for parallel compilation
 - 🎯 **.NET 10 Target**: Built for the latest .NET platform
 

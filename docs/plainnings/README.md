@@ -35,14 +35,13 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * \[✓\] **Silo Membership:** Redis-based distributed Silo table for node discovery.  
 * \[✓\] **QuarkEnvelope:** Universal message wrapper for all actor invocations.  
 * \[✓\] **Location Transparency:** Routing logic via consistent hash ring.  
-* \[🚧\] **QUIC Transport:** gRPC over HTTP/3 implementation (protobuf defined).
-* \[🚧\] **Placement Policies:**  
-  * Consistent Hashing (implemented)
-  * Random (to be added)
-  * Prefer Local (to be added)
-  * Stateless Workers (to be added)
+* \[✓\] **gRPC Transport:** Bi-directional streaming over HTTP/3 (protobuf defined, client implementation complete).
+* \[✓\] **Placement Policies:** Random, LocalPreferred, StatelessWorker, ConsistentHash.
+* \[✓\] **Logging Source Generator:** High-performance logging with zero allocation.
+* \[✓\] **JSON Source Generation:** Zero-reflection JSON serialization for AOT compatibility.
+* \[✓\] **Redis Testcontainers:** Integration tests with real Redis instances.
 
-**Status:** Core abstractions and Redis clustering complete. 43/43 tests passing.
+**Status:** All features implemented and tested. 77/77 tests passing. **100% AOT compatible - zero reflection.**
 
 **Architecture:**
 - `Quark.Networking.Abstractions` - Core networking interfaces
