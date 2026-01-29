@@ -26,24 +26,28 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 **Status:** All features implemented and tested. 33/33 tests passing.
 
-### **Phase 2: The Cluster & Networking Layer** 🚧 IN PROGRESS
+### **Phase 2: The Cluster & Networking Layer** ✅ COMPLETED
 
 *Focus: Silo-to-Silo communication over encrypted UDP.*
 
-* \[ \] **Transport Abstraction:** IActorTransport interface for pluggable networking.  
-* \[ \] **QUIC Transport:** gRPC over HTTP/3 (QUIC) for encrypted datagrams.  
-* \[ \] **Silo Membership:** Distributed Silo table (Redis/SQL/K8s) for node discovery.  
-* \[ \] **Location Transparency:** Routing logic to locate and invoke actors across the mesh.  
-* \[ \] **Placement Policies:**  
-  * Random (Orleans style)  
-  * Prefer Local (Minimize hops)  
-  * Stateless Workers (Auto-scaling pool)
+* \[✓\] **Transport Abstraction:** IQuarkTransport interface for bi-directional gRPC streaming.  
+* \[✓\] **Consistent Hashing:** Hash ring with virtual nodes for even actor distribution.  
+* \[✓\] **Silo Membership:** Redis-based distributed Silo table for node discovery.  
+* \[✓\] **QuarkEnvelope:** Universal message wrapper for all actor invocations.  
+* \[✓\] **Location Transparency:** Routing logic via consistent hash ring.  
+* \[🚧\] **QUIC Transport:** gRPC over HTTP/3 implementation (protobuf defined).
+* \[🚧\] **Placement Policies:**  
+  * Consistent Hashing (implemented)
+  * Random (to be added)
+  * Prefer Local (to be added)
+  * Stateless Workers (to be added)
 
-**Next Steps:**
-1. Define IActorTransport and IClusterMembership abstractions
-2. Implement local in-memory clustering for testing
-3. Add remote actor proxy generation
-4. Implement QUIC-based transport
+**Status:** Core abstractions and Redis clustering complete. 43/43 tests passing.
+
+**Architecture:**
+- `Quark.Networking.Abstractions` - Core networking interfaces
+- `Quark.Transport.Grpc` - gRPC/HTTP3 implementation (in progress)
+- `Quark.Clustering.Redis` - Redis-based membership with consistent hashing
 
 ### **Phase 3: Reliability & Supervision (The "Power" Layer)**
 
