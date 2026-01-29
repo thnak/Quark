@@ -53,7 +53,7 @@ public sealed class ActorFactory : IActorFactory
 /// </summary>
 public static class ActorFactoryRegistry
 {
-    private static readonly Dictionary<Type, Func<string, IActorFactory?, IServiceScope?, IActor>> _factories = new();
+    private static readonly Dictionary<Type, Func<string, IActorFactory?, IServiceScope?, IActor>> Factories = new();
 
     /// <summary>
     ///     Registers an actor factory method.
@@ -61,7 +61,7 @@ public static class ActorFactoryRegistry
     public static void RegisterFactory<TActor>(Func<string, IActorFactory?, IServiceScope?, TActor> factory)
         where TActor : IActor
     {
-        _factories[typeof(TActor)] = (id, f, s) => factory(id, f, s);
+        Factories[typeof(TActor)] = (id, f, s) => factory(id, f, s);
     }
 
     /// <summary>
@@ -72,7 +72,7 @@ public static class ActorFactoryRegistry
     {
         var actorType = typeof(TActor);
 
-        if (_factories.TryGetValue(actorType, out var factory))
+        if (Factories.TryGetValue(actorType, out var factory))
             return (TActor)factory(actorId, actorFactory, serviceScope);
 
         throw new InvalidOperationException(
