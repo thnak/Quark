@@ -1,38 +1,37 @@
 using System.Collections.Concurrent;
-using global::Grpc.Core;
+using Google.Protobuf;
+using Grpc.Core;
 using Quark.Abstractions.Clustering;
 using Quark.Networking.Abstractions;
-using GrpcChannel = global::Grpc.Net.Client.GrpcChannel;
+using GrpcChannel = Grpc.Net.Client.GrpcChannel;
 
 namespace Quark.Transport.Grpc;
 
 /// <summary>
-/// gRPC-based implementation of IQuarkTransport using bi-directional streaming.
-/// Maintains one persistent stream per silo connection.
+///     gRPC-based implementation of IQuarkTransport using bi-directional streaming.
+///     Maintains one persistent stream per silo connection.
 /// </summary>
 public sealed class GrpcQuarkTransport : IQuarkTransport
 {
-    private readonly string _localSiloId;
-    private readonly string _localEndpoint;
     private readonly ConcurrentDictionary<string, SiloConnection> _connections = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<QuarkEnvelope>> _pendingRequests = new();
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="GrpcQuarkTransport"/> class.
+    ///     Initializes a new instance of the <see cref="GrpcQuarkTransport" /> class.
     /// </summary>
     /// <param name="localSiloId">The local silo ID.</param>
     /// <param name="localEndpoint">The local endpoint (host:port).</param>
     public GrpcQuarkTransport(string localSiloId, string localEndpoint)
     {
-        _localSiloId = localSiloId ?? throw new ArgumentNullException(nameof(localSiloId));
-        _localEndpoint = localEndpoint ?? throw new ArgumentNullException(nameof(localEndpoint));
+        LocalSiloId = localSiloId ?? throw new ArgumentNullException(nameof(localSiloId));
+        LocalEndpoint = localEndpoint ?? throw new ArgumentNullException(nameof(localEndpoint));
     }
 
     /// <inheritdoc />
-    public string LocalSiloId => _localSiloId;
+    public string LocalSiloId { get; }
 
     /// <inheritdoc />
-    public string LocalEndpoint => _localEndpoint;
+    public string LocalEndpoint { get; }
 
     /// <inheritdoc />
     public event EventHandler<QuarkEnvelope>? EnvelopeReceived;
@@ -44,9 +43,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         CancellationToken cancellationToken = default)
     {
         if (!_connections.TryGetValue(targetSiloId, out var connection))
-        {
             throw new InvalidOperationException($"No connection to silo {targetSiloId}. Call ConnectAsync first.");
-        }
 
         // Create TCS for response
         var tcs = new TaskCompletionSource<QuarkEnvelope>();
@@ -118,6 +115,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             await connection.Call.RequestStream.CompleteAsync();
             connection.Channel.Dispose();
         }
+
         _connections.Clear();
     }
 
@@ -137,14 +135,10 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
                 // Check if this is a response to our request
                 if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
-                {
                     tcs.SetResult(envelope);
-                }
                 else
-                {
                     // This is a new request from remote
                     EnvelopeReceived?.Invoke(this, envelope);
-                }
             }
         }
         catch (Exception ex)
@@ -161,12 +155,12 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             ActorId = envelope.ActorId,
             ActorType = envelope.ActorType,
             MethodName = envelope.MethodName,
-            Payload = Google.Protobuf.ByteString.CopyFrom(envelope.Payload),
+            Payload = ByteString.CopyFrom(envelope.Payload),
             CorrelationId = envelope.CorrelationId,
             Timestamp = envelope.Timestamp.ToUnixTimeMilliseconds(),
-            ResponsePayload = envelope.ResponsePayload != null 
-                ? Google.Protobuf.ByteString.CopyFrom(envelope.ResponsePayload) 
-                : Google.Protobuf.ByteString.Empty,
+            ResponsePayload = envelope.ResponsePayload != null
+                ? ByteString.CopyFrom(envelope.ResponsePayload)
+                : ByteString.Empty,
             IsError = envelope.IsError,
             ErrorMessage = envelope.ErrorMessage ?? string.Empty
         };
@@ -190,7 +184,8 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
     private sealed class SiloConnection
     {
-        public SiloConnection(string siloId, GrpcChannel channel, AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> call)
+        public SiloConnection(string siloId, GrpcChannel channel,
+            AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> call)
         {
             SiloId = siloId;
             Channel = channel;

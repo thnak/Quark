@@ -1,12 +1,12 @@
 namespace Quark.Abstractions;
 
 /// <summary>
-/// Context information about a child actor failure.
+///     Context information about a child actor failure.
 /// </summary>
 public sealed class ChildFailureContext
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ChildFailureContext"/> class.
+    ///     Initializes a new instance of the <see cref="ChildFailureContext" /> class.
     /// </summary>
     public ChildFailureContext(IActor child, Exception exception)
     {
@@ -15,12 +15,12 @@ public sealed class ChildFailureContext
     }
 
     /// <summary>
-    /// Gets the child actor that failed.
+    ///     Gets the child actor that failed.
     /// </summary>
     public IActor Child { get; }
 
     /// <summary>
-    /// Gets the exception that caused the failure.
+    ///     Gets the exception that caused the failure.
     /// </summary>
     public Exception Exception { get; }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Quark.Abstractions.Clustering;
 using Quark.Networking.Abstractions;
 using StackExchange.Redis;
@@ -6,24 +7,22 @@ using StackExchange.Redis;
 namespace Quark.Clustering.Redis;
 
 /// <summary>
-/// Redis-based cluster membership implementation using consistent hashing.
-/// Stores silo information in Redis and uses Pub/Sub for membership changes.
+///     Redis-based cluster membership implementation using consistent hashing.
+///     Stores silo information in Redis and uses Pub/Sub for membership changes.
 /// </summary>
 public sealed class RedisClusterMembership : IQuarkClusterMembership
 {
-    private readonly IConnectionMultiplexer _redis;
-    private readonly IConsistentHashRing _hashRing;
-    private readonly string _currentSiloId;
-    private readonly ConcurrentDictionary<string, SiloInfo> _silos;
-    private readonly Timer? _heartbeatTimer;
-    private ISubscriber? _subscriber;
     private const string SiloKeyPrefix = "quark:silo:";
     private const string MembershipChannel = "quark:membership";
     private const int HeartbeatIntervalSeconds = 10;
     private const int SiloTimeoutSeconds = 30;
+    private readonly Timer? _heartbeatTimer;
+    private readonly IConnectionMultiplexer _redis;
+    private readonly ConcurrentDictionary<string, SiloInfo> _silos;
+    private ISubscriber? _subscriber;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RedisClusterMembership"/> class.
+    ///     Initializes a new instance of the <see cref="RedisClusterMembership" /> class.
     /// </summary>
     /// <param name="redis">The Redis connection.</param>
     /// <param name="currentSiloId">The current silo ID.</param>
@@ -34,17 +33,17 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         IConsistentHashRing? hashRing = null)
     {
         _redis = redis ?? throw new ArgumentNullException(nameof(redis));
-        _currentSiloId = currentSiloId ?? throw new ArgumentNullException(nameof(currentSiloId));
-        _hashRing = hashRing ?? new ConsistentHashRing();
+        CurrentSiloId = currentSiloId ?? throw new ArgumentNullException(nameof(currentSiloId));
+        HashRing = hashRing ?? new ConsistentHashRing();
         _silos = new ConcurrentDictionary<string, SiloInfo>();
         _heartbeatTimer = new Timer(HeartbeatCallback, null, Timeout.Infinite, Timeout.Infinite);
     }
 
     /// <inheritdoc />
-    public string CurrentSiloId => _currentSiloId;
+    public string CurrentSiloId { get; }
 
     /// <inheritdoc />
-    public IConsistentHashRing HashRing => _hashRing;
+    public IConsistentHashRing HashRing { get; }
 
     /// <inheritdoc />
     public event EventHandler<SiloInfo>? SiloJoined;
@@ -57,30 +56,32 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
     {
         var db = _redis.GetDatabase();
         var key = SiloKeyPrefix + siloInfo.SiloId;
-        
+
         // Store silo info in Redis using source-generated serialization (zero reflection)
-        var data = System.Text.Json.JsonSerializer.Serialize(siloInfo, QuarkJsonSerializerContext.Default.SiloInfo);
+        var data = JsonSerializer.Serialize(siloInfo, QuarkJsonSerializerContext.Default.SiloInfo);
         await db.StringSetAsync(key, data, TimeSpan.FromSeconds(SiloTimeoutSeconds));
 
         // Add to local cache and hash ring
         _silos[siloInfo.SiloId] = siloInfo;
-        _hashRing.AddNode(new HashRingNode(siloInfo.SiloId));
+        HashRing.AddNode(new HashRingNode(siloInfo.SiloId));
 
         // Publish membership change
-        await _redis.GetSubscriber().PublishAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),$"join:{siloInfo.SiloId}");
+        await _redis.GetSubscriber().PublishAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),
+            $"join:{siloInfo.SiloId}");
     }
 
     /// <inheritdoc />
     public async Task UnregisterSiloAsync(CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var key = SiloKeyPrefix + _currentSiloId;
-        
-        await db.KeyDeleteAsync(key);
-        await _redis.GetSubscriber().PublishAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),$"leave:{_currentSiloId}");
+        var key = SiloKeyPrefix + CurrentSiloId;
 
-        _hashRing.RemoveNode(_currentSiloId);
-        _silos.TryRemove(_currentSiloId, out _);
+        await db.KeyDeleteAsync(key);
+        await _redis.GetSubscriber().PublishAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),
+            $"leave:{CurrentSiloId}");
+
+        HashRing.RemoveNode(CurrentSiloId);
+        _silos.TryRemove(CurrentSiloId, out _);
     }
 
     /// <inheritdoc />
@@ -97,11 +98,8 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
             if (!data.IsNullOrEmpty)
             {
                 // Use source-generated deserialization (zero reflection)
-                var silo = System.Text.Json.JsonSerializer.Deserialize(data.ToString(), QuarkJsonSerializerContext.Default.SiloInfo);
-                if (silo != null)
-                {
-                    silos.Add(silo);
-                }
+                var silo = JsonSerializer.Deserialize(data.ToString(), QuarkJsonSerializerContext.Default.SiloInfo);
+                if (silo != null) silos.Add(silo);
             }
         }
 
@@ -122,23 +120,23 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
             return null;
 
         // Use source-generated deserialization (zero reflection)
-        return System.Text.Json.JsonSerializer.Deserialize(data.ToString(), QuarkJsonSerializerContext.Default.SiloInfo);
+        return JsonSerializer.Deserialize(data.ToString(), QuarkJsonSerializerContext.Default.SiloInfo);
     }
 
     /// <inheritdoc />
     public async Task UpdateHeartbeatAsync(CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var key = SiloKeyPrefix + _currentSiloId;
-        
-        if (_silos.TryGetValue(_currentSiloId, out var silo))
+        var key = SiloKeyPrefix + CurrentSiloId;
+
+        if (_silos.TryGetValue(CurrentSiloId, out var silo))
         {
             // Create new instance with updated heartbeat
             var updated = new SiloInfo(silo.SiloId, silo.Address, silo.Port, silo.Status);
-            _silos[_currentSiloId] = updated;
-            
+            _silos[CurrentSiloId] = updated;
+
             // Use source-generated serialization (zero reflection)
-            var data = System.Text.Json.JsonSerializer.Serialize(updated, QuarkJsonSerializerContext.Default.SiloInfo);
+            var data = JsonSerializer.Serialize(updated, QuarkJsonSerializerContext.Default.SiloInfo);
             await db.StringSetAsync(key, data, TimeSpan.FromSeconds(SiloTimeoutSeconds));
         }
     }
@@ -148,14 +146,15 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
     {
         // Subscribe to membership changes
         _subscriber = _redis.GetSubscriber();
-        await _subscriber.SubscribeAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto), OnMembershipMessage);
+        await _subscriber.SubscribeAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),
+            OnMembershipMessage);
 
         // Load existing silos
         var silos = await GetActiveSilosAsync(cancellationToken);
         foreach (var silo in silos)
         {
             _silos[silo.SiloId] = silo;
-            _hashRing.AddNode(new HashRingNode(silo.SiloId));
+            HashRing.AddNode(new HashRingNode(silo.SiloId));
         }
 
         // Start heartbeat timer
@@ -170,9 +169,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         _heartbeatTimer?.Change(Timeout.Infinite, Timeout.Infinite);
 
         if (_subscriber != null)
-        {
             await _subscriber.UnsubscribeAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto));
-        }
 
         await UnregisterSiloAsync(cancellationToken);
     }
@@ -181,14 +178,14 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
     public string? GetActorSilo(string actorId, string actorType)
     {
         var key = $"{actorType}:{actorId}";
-        return _hashRing.GetNode(key);
+        return HashRing.GetNode(key);
     }
 
     private void OnMembershipMessage(RedisChannel channel, RedisValue message)
     {
         var msg = message.ToString();
         var parts = msg.Split(':');
-        
+
         if (parts.Length != 2)
             return;
 
@@ -196,26 +193,22 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         var siloId = parts[1];
 
         if (action == "join")
-        {
             Task.Run(async () =>
             {
                 var silo = await GetSiloAsync(siloId);
                 if (silo != null)
                 {
                     _silos[siloId] = silo;
-                    _hashRing.AddNode(new HashRingNode(siloId));
+                    HashRing.AddNode(new HashRingNode(siloId));
                     SiloJoined?.Invoke(this, silo);
                 }
             });
-        }
         else if (action == "leave")
-        {
             if (_silos.TryRemove(siloId, out var silo))
             {
-                _hashRing.RemoveNode(siloId);
+                HashRing.RemoveNode(siloId);
                 SiloLeft?.Invoke(this, silo);
             }
-        }
     }
 
     private void HeartbeatCallback(object? state)
@@ -231,7 +224,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
     }
 
     /// <summary>
-    /// Disposes resources.
+    ///     Disposes resources.
     /// </summary>
     public void Dispose()
     {

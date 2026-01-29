@@ -1,21 +1,20 @@
 using System.Collections.Concurrent;
-using Quark.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Quark.Abstractions;
 
 namespace Quark.Core.Actors;
 
 /// <summary>
-/// Base class for actor implementations with supervision and DI support.
+///     Base class for actor implementations with supervision and DI support.
 /// </summary>
 public abstract class ActorBase : ISupervisor, IDisposable
 {
-    private readonly ConcurrentDictionary<string, IActor> _children = new();
     private readonly IActorFactory? _actorFactory;
-    private readonly IServiceScope? _serviceScope;
+    private readonly ConcurrentDictionary<string, IActor> _children = new();
     private bool _disposed;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorBase"/> class.
+    ///     Initializes a new instance of the <see cref="ActorBase" /> class.
     /// </summary>
     /// <param name="actorId">The unique identifier for this actor.</param>
     protected ActorBase(string actorId) : this(actorId, null, null)
@@ -23,7 +22,7 @@ public abstract class ActorBase : ISupervisor, IDisposable
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorBase"/> class with an actor factory.
+    ///     Initializes a new instance of the <see cref="ActorBase" /> class with an actor factory.
     /// </summary>
     /// <param name="actorId">The unique identifier for this actor.</param>
     /// <param name="actorFactory">The actor factory for spawning child actors.</param>
@@ -32,7 +31,7 @@ public abstract class ActorBase : ISupervisor, IDisposable
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorBase"/> class with DI scope.
+    ///     Initializes a new instance of the <see cref="ActorBase" /> class with DI scope.
     /// </summary>
     /// <param name="actorId">The unique identifier for this actor.</param>
     /// <param name="actorFactory">The actor factory for spawning child actors.</param>
@@ -41,43 +40,25 @@ public abstract class ActorBase : ISupervisor, IDisposable
     {
         ActorId = actorId ?? throw new ArgumentNullException(nameof(actorId));
         _actorFactory = actorFactory;
-        _serviceScope = serviceScope;
+        ServiceScope = serviceScope;
+    }
+
+    /// <summary>
+    ///     Gets the service scope for this actor instance.
+    /// </summary>
+    protected IServiceScope? ServiceScope { get; }
+
+    /// <summary>
+    ///     Disposes the actor and its service scope.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc />
     public string ActorId { get; }
-
-    /// <summary>
-    /// Gets the service scope for this actor instance.
-    /// </summary>
-    protected IServiceScope? ServiceScope => _serviceScope;
-
-    /// <summary>
-    /// Gets a service from the DI container.
-    /// </summary>
-    /// <typeparam name="TService">The type of service to retrieve.</typeparam>
-    /// <returns>The service instance, or null if not available.</returns>
-    protected TService? GetService<TService>() where TService : class
-    {
-        return _serviceScope?.ServiceProvider.GetService<TService>();
-    }
-
-    /// <summary>
-    /// Gets a required service from the DI container.
-    /// </summary>
-    /// <typeparam name="TService">The type of service to retrieve.</typeparam>
-    /// <returns>The service instance.</returns>
-    /// <exception cref="InvalidOperationException">Thrown if the service is not available.</exception>
-    protected TService GetRequiredService<TService>() where TService : class
-    {
-        if (_serviceScope == null)
-        {
-            throw new InvalidOperationException(
-                "Cannot get services without a service scope. " +
-                "Ensure the actor is created with dependency injection support.");
-        }
-        return _serviceScope.ServiceProvider.GetRequiredService<TService>();
-    }
 
     /// <inheritdoc />
     public virtual Task OnActivateAsync(CancellationToken cancellationToken = default)
@@ -106,25 +87,19 @@ public abstract class ActorBase : ISupervisor, IDisposable
         CancellationToken cancellationToken = default) where TChild : IActor
     {
         if (_actorFactory == null)
-        {
             throw new InvalidOperationException(
                 "Cannot spawn child actors without an IActorFactory. " +
                 "Ensure the actor is created with an IActorFactory instance.");
-        }
 
         // Validate actorId
         if (string.IsNullOrWhiteSpace(actorId))
-        {
             throw new ArgumentException("Actor ID cannot be null or whitespace.", nameof(actorId));
-        }
 
         // Check if a child with this ID already exists
         if (_children.ContainsKey(actorId))
-        {
             throw new InvalidOperationException(
                 $"A child actor with ID '{actorId}' already exists. " +
                 "Each child actor must have a unique ID within its supervisor.");
-        }
 
         var child = _actorFactory.CreateActor<TChild>(actorId);
         _children[actorId] = child;
@@ -139,26 +114,39 @@ public abstract class ActorBase : ISupervisor, IDisposable
     }
 
     /// <summary>
-    /// Disposes the actor and its service scope.
+    ///     Gets a service from the DI container.
     /// </summary>
-    public void Dispose()
+    /// <typeparam name="TService">The type of service to retrieve.</typeparam>
+    /// <returns>The service instance, or null if not available.</returns>
+    protected TService? GetService<TService>() where TService : class
     {
-        Dispose(true);
-        GC.SuppressFinalize(this);
+        return ServiceScope?.ServiceProvider.GetService<TService>();
     }
 
     /// <summary>
-    /// Disposes the actor and its service scope.
+    ///     Gets a required service from the DI container.
+    /// </summary>
+    /// <typeparam name="TService">The type of service to retrieve.</typeparam>
+    /// <returns>The service instance.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the service is not available.</exception>
+    protected TService GetRequiredService<TService>() where TService : class
+    {
+        if (ServiceScope == null)
+            throw new InvalidOperationException(
+                "Cannot get services without a service scope. " +
+                "Ensure the actor is created with dependency injection support.");
+        return ServiceScope.ServiceProvider.GetRequiredService<TService>();
+    }
+
+    /// <summary>
+    ///     Disposes the actor and its service scope.
     /// </summary>
     protected virtual void Dispose(bool disposing)
     {
         if (_disposed)
             return;
 
-        if (disposing)
-        {
-            _serviceScope?.Dispose();
-        }
+        if (disposing) ServiceScope?.Dispose();
 
         _disposed = true;
     }

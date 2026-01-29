@@ -5,14 +5,14 @@ using System.Text;
 namespace Quark.Networking.Abstractions;
 
 /// <summary>
-/// Implements a consistent hash ring using virtual nodes.
-/// Thread-safe implementation using sorted dictionary for O(log n) lookups.
+///     Implements a consistent hash ring using virtual nodes.
+///     Thread-safe implementation using sorted dictionary for O(log n) lookups.
 /// </summary>
 public sealed class ConsistentHashRing : IConsistentHashRing
 {
-    private readonly SortedDictionary<uint, string> _ring = new();
-    private readonly ConcurrentDictionary<string, HashRingNode> _nodes = new();
     private readonly object _lock = new();
+    private readonly ConcurrentDictionary<string, HashRingNode> _nodes = new();
+    private readonly SortedDictionary<uint, string> _ring = new();
 
     /// <inheritdoc />
     public int NodeCount => _nodes.Count;
@@ -31,7 +31,7 @@ public sealed class ConsistentHashRing : IConsistentHashRing
             _nodes[node.SiloId] = node;
 
             // Add virtual nodes to the ring
-            for (int i = 0; i < node.VirtualNodeCount; i++)
+            for (var i = 0; i < node.VirtualNodeCount; i++)
             {
                 var virtualNodeKey = $"{node.SiloId}:{i}";
                 var hash = ComputeHash(virtualNodeKey);
@@ -52,7 +52,7 @@ public sealed class ConsistentHashRing : IConsistentHashRing
                 return false;
 
             // Remove all virtual nodes from the ring
-            for (int i = 0; i < node.VirtualNodeCount; i++)
+            for (var i = 0; i < node.VirtualNodeCount; i++)
             {
                 var virtualNodeKey = $"{node.SiloId}:{i}";
                 var hash = ComputeHash(virtualNodeKey);
@@ -78,10 +78,8 @@ public sealed class ConsistentHashRing : IConsistentHashRing
 
             // Find the first node clockwise from the hash
             foreach (var kvp in _ring)
-            {
                 if (kvp.Key >= hash)
                     return kvp.Value;
-            }
 
             // Wrap around to the first node
             return _ring.First().Value;
@@ -95,14 +93,14 @@ public sealed class ConsistentHashRing : IConsistentHashRing
     }
 
     /// <summary>
-    /// Computes a 32-bit hash for a given key using MD5.
-    /// MD5 is fast and provides good distribution for consistent hashing.
+    ///     Computes a 32-bit hash for a given key using MD5.
+    ///     MD5 is fast and provides good distribution for consistent hashing.
     /// </summary>
     private static uint ComputeHash(string key)
     {
         var bytes = Encoding.UTF8.GetBytes(key);
         var hash = MD5.HashData(bytes);
-        
+
         // Use first 4 bytes as uint
         return BitConverter.ToUInt32(hash, 0);
     }

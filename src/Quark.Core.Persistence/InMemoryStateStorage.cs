@@ -4,7 +4,7 @@ using Quark.Abstractions.Persistence;
 namespace Quark.Core.Persistence;
 
 /// <summary>
-/// In-memory implementation of state storage for testing and development.
+///     In-memory implementation of state storage for testing and development.
 /// </summary>
 public class InMemoryStateStorage<TState> : IStateStorage<TState> where TState : class
 {
@@ -34,5 +34,8 @@ public class InMemoryStateStorage<TState> : IStateStorage<TState> where TState :
         return Task.CompletedTask;
     }
 
-    private static string GetKey(string actorId, string stateName) => $"{actorId}:{stateName}";
+    private static string GetKey(string actorId, string stateName)
+    {
+        return $"{actorId}:{stateName}";
+    }
 }

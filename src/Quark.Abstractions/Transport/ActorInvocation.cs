@@ -1,12 +1,12 @@
 namespace Quark.Abstractions.Transport;
 
 /// <summary>
-/// Represents a request to invoke a method on a remote actor.
+///     Represents a request to invoke a method on a remote actor.
 /// </summary>
 public sealed class ActorInvocationRequest
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorInvocationRequest"/> class.
+    ///     Initializes a new instance of the <see cref="ActorInvocationRequest" /> class.
     /// </summary>
     public ActorInvocationRequest(
         string actorId,
@@ -24,43 +24,43 @@ public sealed class ActorInvocationRequest
     }
 
     /// <summary>
-    /// Gets the actor ID.
+    ///     Gets the actor ID.
     /// </summary>
     public string ActorId { get; }
 
     /// <summary>
-    /// Gets the actor type name.
+    ///     Gets the actor type name.
     /// </summary>
     public string ActorType { get; }
 
     /// <summary>
-    /// Gets the method name to invoke.
+    ///     Gets the method name to invoke.
     /// </summary>
     public string MethodName { get; }
 
     /// <summary>
-    /// Gets the method arguments.
+    ///     Gets the method arguments.
     /// </summary>
     public object?[] Arguments { get; }
 
     /// <summary>
-    /// Gets the correlation ID for distributed tracing.
+    ///     Gets the correlation ID for distributed tracing.
     /// </summary>
     public string CorrelationId { get; }
 
     /// <summary>
-    /// Gets the request ID.
+    ///     Gets the request ID.
     /// </summary>
     public string RequestId { get; }
 }
 
 /// <summary>
-/// Represents the response from a remote actor invocation.
+///     Represents the response from a remote actor invocation.
 /// </summary>
 public sealed class ActorInvocationResponse
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorInvocationResponse"/> class for a successful invocation.
+    ///     Initializes a new instance of the <see cref="ActorInvocationResponse" /> class for a successful invocation.
     /// </summary>
     public ActorInvocationResponse(string requestId, object? result)
     {
@@ -70,7 +70,7 @@ public sealed class ActorInvocationResponse
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorInvocationResponse"/> class for a failed invocation.
+    ///     Initializes a new instance of the <see cref="ActorInvocationResponse" /> class for a failed invocation.
     /// </summary>
     public ActorInvocationResponse(string requestId, Exception exception)
     {
@@ -80,22 +80,22 @@ public sealed class ActorInvocationResponse
     }
 
     /// <summary>
-    /// Gets the request ID this response corresponds to.
+    ///     Gets the request ID this response corresponds to.
     /// </summary>
     public string RequestId { get; }
 
     /// <summary>
-    /// Gets whether the invocation was successful.
+    ///     Gets whether the invocation was successful.
     /// </summary>
     public bool IsSuccess { get; }
 
     /// <summary>
-    /// Gets the result of the invocation (null if failed).
+    ///     Gets the result of the invocation (null if failed).
     /// </summary>
     public object? Result { get; }
 
     /// <summary>
-    /// Gets the exception if the invocation failed (null if successful).
+    ///     Gets the exception if the invocation failed (null if successful).
     /// </summary>
     public Exception? Exception { get; }
 }

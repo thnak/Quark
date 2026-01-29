@@ -3,17 +3,17 @@ using Quark.Abstractions.Clustering;
 namespace Quark.Networking.Abstractions;
 
 /// <summary>
-/// Provides cluster membership management using a consistent hash ring.
+///     Provides cluster membership management using a consistent hash ring.
 /// </summary>
 public interface IQuarkClusterMembership : IClusterMembership
 {
     /// <summary>
-    /// Gets the consistent hash ring for actor placement.
+    ///     Gets the consistent hash ring for actor placement.
     /// </summary>
     IConsistentHashRing HashRing { get; }
 
     /// <summary>
-    /// Gets the silo responsible for an actor based on consistent hashing.
+    ///     Gets the silo responsible for an actor based on consistent hashing.
     /// </summary>
     /// <param name="actorId">The actor ID.</param>
     /// <param name="actorType">The actor type name.</param>

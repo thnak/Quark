@@ -1,12 +1,12 @@
 namespace Quark.Networking.Abstractions;
 
 /// <summary>
-/// Strategy for placing actors on silos in the cluster.
+///     Strategy for placing actors on silos in the cluster.
 /// </summary>
 public interface IPlacementPolicy
 {
     /// <summary>
-    /// Selects a silo for placing an actor.
+    ///     Selects a silo for placing an actor.
     /// </summary>
     /// <param name="actorId">The actor ID.</param>
     /// <param name="actorType">The actor type.</param>
@@ -16,8 +16,8 @@ public interface IPlacementPolicy
 }
 
 /// <summary>
-/// Places actors randomly across available silos.
-/// Provides good load distribution but no locality.
+///     Places actors randomly across available silos.
+///     Provides good load distribution but no locality.
 /// </summary>
 public sealed class RandomPlacementPolicy : IPlacementPolicy
 {
@@ -35,16 +35,16 @@ public sealed class RandomPlacementPolicy : IPlacementPolicy
 }
 
 /// <summary>
-/// Prefers the local silo if available, otherwise falls back to consistent hashing.
-/// Minimizes network hops for local actor access.
+///     Prefers the local silo if available, otherwise falls back to consistent hashing.
+///     Minimizes network hops for local actor access.
 /// </summary>
 public sealed class LocalPreferredPlacementPolicy : IPlacementPolicy
 {
-    private readonly string _localSiloId;
     private readonly IConsistentHashRing _hashRing;
+    private readonly string _localSiloId;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="LocalPreferredPlacementPolicy"/> class.
+    ///     Initializes a new instance of the <see cref="LocalPreferredPlacementPolicy" /> class.
     /// </summary>
     /// <param name="localSiloId">The local silo ID.</param>
     /// <param name="hashRing">The consistent hash ring for fallback.</param>
@@ -71,8 +71,8 @@ public sealed class LocalPreferredPlacementPolicy : IPlacementPolicy
 }
 
 /// <summary>
-/// Placement policy for stateless workers that can run anywhere.
-/// Uses round-robin to distribute load evenly.
+///     Placement policy for stateless workers that can run anywhere.
+///     Uses round-robin to distribute load evenly.
 /// </summary>
 public sealed class StatelessWorkerPlacementPolicy : IPlacementPolicy
 {
@@ -91,15 +91,15 @@ public sealed class StatelessWorkerPlacementPolicy : IPlacementPolicy
 }
 
 /// <summary>
-/// Uses consistent hashing for deterministic placement.
-/// Ensures the same actor always maps to the same silo.
+///     Uses consistent hashing for deterministic placement.
+///     Ensures the same actor always maps to the same silo.
 /// </summary>
 public sealed class ConsistentHashPlacementPolicy : IPlacementPolicy
 {
     private readonly IConsistentHashRing _hashRing;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ConsistentHashPlacementPolicy"/> class.
+    ///     Initializes a new instance of the <see cref="ConsistentHashPlacementPolicy" /> class.
     /// </summary>
     /// <param name="hashRing">The consistent hash ring.</param>
     public ConsistentHashPlacementPolicy(IConsistentHashRing hashRing)

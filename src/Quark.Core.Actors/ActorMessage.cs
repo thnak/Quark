@@ -1,12 +1,14 @@
+using Quark.Abstractions;
+
 namespace Quark.Core.Actors;
 
 /// <summary>
-/// Base implementation of an actor message.
+///     Base implementation of an actor message.
 /// </summary>
-public abstract class ActorMessageBase : Quark.Abstractions.IActorMessage
+public abstract class ActorMessageBase : IActorMessage
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorMessageBase"/> class.
+    ///     Initializes a new instance of the <see cref="ActorMessageBase" /> class.
     /// </summary>
     protected ActorMessageBase()
     {
@@ -25,13 +27,13 @@ public abstract class ActorMessageBase : Quark.Abstractions.IActorMessage
 }
 
 /// <summary>
-/// Represents a message that invokes a method on an actor.
+///     Represents a message that invokes a method on an actor.
 /// </summary>
 /// <typeparam name="TResult">The result type of the method invocation.</typeparam>
-public sealed class ActorMethodMessage<TResult> : ActorMessageBase, Quark.Abstractions.IActorMethodMessage<TResult>
+public sealed class ActorMethodMessage<TResult> : ActorMessageBase, IActorMethodMessage<TResult>
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ActorMethodMessage{TResult}"/> class.
+    ///     Initializes a new instance of the <see cref="ActorMethodMessage{TResult}" /> class.
     /// </summary>
     /// <param name="methodName">The name of the method to invoke.</param>
     /// <param name="arguments">The arguments for the method invocation.</param>

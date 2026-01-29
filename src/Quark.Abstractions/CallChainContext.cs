@@ -1,16 +1,16 @@
 namespace Quark.Abstractions;
 
 /// <summary>
-/// Context for tracking actor call chains to prevent reentrancy deadlocks.
-/// Propagates through the call stack to detect circular dependencies.
+///     Context for tracking actor call chains to prevent reentrancy deadlocks.
+///     Propagates through the call stack to detect circular dependencies.
 /// </summary>
 public sealed class CallChainContext
 {
-    private readonly HashSet<string> _callChain;
     private static readonly AsyncLocal<CallChainContext?> _current = new();
+    private readonly HashSet<string> _callChain;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CallChainContext"/> class.
+    ///     Initializes a new instance of the <see cref="CallChainContext" /> class.
     /// </summary>
     /// <param name="chainId">The unique chain identifier.</param>
     private CallChainContext(string chainId)
@@ -20,7 +20,7 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Initializes a new instance with existing call chain.
+    ///     Initializes a new instance with existing call chain.
     /// </summary>
     private CallChainContext(string chainId, HashSet<string> callChain)
     {
@@ -29,17 +29,17 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Gets the unique identifier for this call chain.
+    ///     Gets the unique identifier for this call chain.
     /// </summary>
     public string ChainId { get; }
 
     /// <summary>
-    /// Gets the current call chain context for the executing async flow.
+    ///     Gets the current call chain context for the executing async flow.
     /// </summary>
     public static CallChainContext? Current => _current.Value;
 
     /// <summary>
-    /// Creates a new call chain context.
+    ///     Creates a new call chain context.
     /// </summary>
     /// <returns>A new call chain context.</returns>
     public static CallChainContext Create()
@@ -48,8 +48,8 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Enters an actor in the call chain.
-    /// Throws if the actor is already in the chain (circular dependency detected).
+    ///     Enters an actor in the call chain.
+    ///     Throws if the actor is already in the chain (circular dependency detected).
     /// </summary>
     /// <param name="actorId">The actor ID.</param>
     /// <param name="actorType">The actor type.</param>
@@ -58,7 +58,7 @@ public sealed class CallChainContext
     public IDisposable EnterActor(string actorId, string actorType)
     {
         var key = $"{actorType}:{actorId}";
-        
+
         if (_callChain.Contains(key))
         {
             var chain = string.Join(" → ", _callChain);
@@ -72,7 +72,7 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Checks if an actor is in the current call chain.
+    ///     Checks if an actor is in the current call chain.
     /// </summary>
     /// <param name="actorId">The actor ID.</param>
     /// <param name="actorType">The actor type.</param>
@@ -84,7 +84,7 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Gets the current call chain as a string.
+    ///     Gets the current call chain as a string.
     /// </summary>
     public string GetCallChainString()
     {
@@ -92,7 +92,7 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Creates a scope that sets this context as current.
+    ///     Creates a scope that sets this context as current.
     /// </summary>
     /// <returns>A disposable scope.</returns>
     public IDisposable CreateScope()
@@ -103,8 +103,8 @@ public sealed class CallChainContext
     }
 
     /// <summary>
-    /// Creates a child context with the same chain ID but separate call chain.
-    /// Used for parallel calls from the same actor.
+    ///     Creates a child context with the same chain ID but separate call chain.
+    ///     Used for parallel calls from the same actor.
     /// </summary>
     /// <returns>A child context.</returns>
     public CallChainContext CreateChild()
@@ -146,12 +146,12 @@ public sealed class CallChainContext
 }
 
 /// <summary>
-/// Exception thrown when a circular dependency (reentrancy) is detected in the call chain.
+///     Exception thrown when a circular dependency (reentrancy) is detected in the call chain.
 /// </summary>
 public sealed class ReentrancyException : Exception
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ReentrancyException"/> class.
+    ///     Initializes a new instance of the <see cref="ReentrancyException" /> class.
     /// </summary>
     /// <param name="message">The exception message.</param>
     public ReentrancyException(string message) : base(message)
@@ -159,11 +159,11 @@ public sealed class ReentrancyException : Exception
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ReentrancyException"/> class.
+    ///     Initializes a new instance of the <see cref="ReentrancyException" /> class.
     /// </summary>
     /// <param name="message">The exception message.</param>
     /// <param name="innerException">The inner exception.</param>
-    public ReentrancyException(string message, Exception innerException) 
+    public ReentrancyException(string message, Exception innerException)
         : base(message, innerException)
     {
     }
