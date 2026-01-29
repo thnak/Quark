@@ -61,7 +61,7 @@ public abstract class ActorBase : ISupervisor
     /// Override this method to customize failure handling behavior.
     /// </summary>
     /// <param name="context">Context information about the child failure.</param>
-    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <param name="cancellationToken">A cancellation token. Not used in the default implementation.</param>
     /// <returns>A supervision directive indicating how to handle the failure.</returns>
     public virtual Task<SupervisionDirective> OnChildFailureAsync(
         ChildFailureContext context,
@@ -76,8 +76,10 @@ public abstract class ActorBase : ISupervisor
     /// </summary>
     /// <typeparam name="TChild">The type of child actor to spawn.</typeparam>
     /// <param name="actorId">The unique identifier for the child actor.</param>
-    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <param name="cancellationToken">A cancellation token. Not used in the current implementation.</param>
     /// <returns>The spawned child actor instance.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the actor was not created with an IActorFactory.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when a child with the same actorId already exists.</exception>
     public virtual Task<TChild> SpawnChildAsync<TChild>(
         string actorId,
         CancellationToken cancellationToken = default) where TChild : IActor
@@ -89,6 +91,20 @@ public abstract class ActorBase : ISupervisor
                 "Ensure the actor is created with an IActorFactory instance.");
         }
 
+        // Validate actorId before checking for duplicates (CreateActor will validate, but we check early)
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException("Actor ID cannot be null or whitespace.", nameof(actorId));
+        }
+
+        // Check if a child with this ID already exists
+        if (_children.ContainsKey(actorId))
+        {
+            throw new InvalidOperationException(
+                $"A child actor with ID '{actorId}' already exists. " +
+                "Each child actor must have a unique ID within its supervisor.");
+        }
+
         var child = _actorFactory.CreateActor<TChild>(actorId);
         _children[actorId] = child;
 
@@ -97,8 +113,9 @@ public abstract class ActorBase : ISupervisor
 
     /// <summary>
     /// Gets all child actors currently supervised by this actor.
+    /// Returns a snapshot of the children at the time of the call.
     /// </summary>
-    /// <returns>A read-only collection of child actors.</returns>
+    /// <returns>A read-only collection of child actors representing a snapshot at a point in time.</returns>
     public virtual IReadOnlyCollection<IActor> GetChildren()
     {
         return _children.Values.ToArray();

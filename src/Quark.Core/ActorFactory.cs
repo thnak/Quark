@@ -29,19 +29,29 @@ public sealed class ActorFactory : IActorFactory
         }
 
         // Try to create actor with factory support for child spawning
-        // First, try with two parameters (actorId, factory)
-        try
+        // Check if constructor with (string, IActorFactory) exists
+        var type = typeof(TActor);
+        var twoParamConstructor = type.GetConstructor(new[] { typeof(string), typeof(IActorFactory) });
+        
+        if (twoParamConstructor != null)
         {
-            var actor = (TActor)Activator.CreateInstance(typeof(TActor), actorId, this)!;
+            // Create with factory support
+            var actor = (TActor)twoParamConstructor.Invoke(new object?[] { actorId, this });
             return actor;
         }
-        catch (MissingMethodException)
+        
+        // Fall back to single parameter constructor (actorId only)
+        // TODO: Integrate with source-generated factory code for AOT compatibility
+        var oneParamConstructor = type.GetConstructor(new[] { typeof(string) });
+        if (oneParamConstructor != null)
         {
-            // Fall back to single parameter constructor (actorId only)
-            // TODO: Integrate with source-generated factory code for AOT compatibility
-            var actor = (TActor)Activator.CreateInstance(typeof(TActor), actorId)!;
+            var actor = (TActor)oneParamConstructor.Invoke(new object[] { actorId });
             return actor;
         }
+        
+        throw new InvalidOperationException(
+            $"Actor type {type.Name} must have a constructor with signature " +
+            $"({type.Name}(string actorId)) or ({type.Name}(string actorId, IActorFactory actorFactory))");
     }
 
     /// <inheritdoc />

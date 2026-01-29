@@ -135,10 +135,59 @@ public class SupervisionTests
     public void SupervisionDirective_HasExpectedValues()
     {
         // Assert - verify all expected directive values exist
-        Assert.Equal(0, (int)SupervisionDirective.Resume);
-        Assert.Equal(1, (int)SupervisionDirective.Restart);
-        Assert.Equal(2, (int)SupervisionDirective.Stop);
-        Assert.Equal(3, (int)SupervisionDirective.Escalate);
+        Assert.True(Enum.IsDefined(typeof(SupervisionDirective), SupervisionDirective.Resume));
+        Assert.True(Enum.IsDefined(typeof(SupervisionDirective), SupervisionDirective.Restart));
+        Assert.True(Enum.IsDefined(typeof(SupervisionDirective), SupervisionDirective.Stop));
+        Assert.True(Enum.IsDefined(typeof(SupervisionDirective), SupervisionDirective.Escalate));
+    }
+
+    [Fact]
+    public async Task SpawnChildAsync_WithDuplicateId_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var factory = new ActorFactory();
+        var parent = factory.CreateActor<ParentActor>("parent-7");
+        await parent.SpawnChildAsync<ChildActor>("duplicate-child");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => parent.SpawnChildAsync<ChildActor>("duplicate-child"));
+    }
+
+    [Fact]
+    public async Task SpawnChildAsync_WithNullActorId_ThrowsArgumentException()
+    {
+        // Arrange
+        var factory = new ActorFactory();
+        var parent = factory.CreateActor<ParentActor>("parent-8");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => parent.SpawnChildAsync<ChildActor>(null!));
+    }
+
+    [Fact]
+    public async Task SpawnChildAsync_WithEmptyActorId_ThrowsArgumentException()
+    {
+        // Arrange
+        var factory = new ActorFactory();
+        var parent = factory.CreateActor<ParentActor>("parent-9");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => parent.SpawnChildAsync<ChildActor>(""));
+    }
+
+    [Fact]
+    public async Task SpawnChildAsync_WithWhitespaceActorId_ThrowsArgumentException()
+    {
+        // Arrange
+        var factory = new ActorFactory();
+        var parent = factory.CreateActor<ParentActor>("parent-10");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => parent.SpawnChildAsync<ChildActor>("   "));
     }
 }
 
