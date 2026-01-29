@@ -12,6 +12,7 @@ public static class StreamRegistry
 {
     private static StreamBroker? _globalBroker;
     private static readonly ConcurrentQueue<DeferredRegistration> _deferredRegistrations = new();
+    private static readonly object _lock = new();
 
     /// <summary>
     /// Sets the global stream broker instance.
@@ -22,15 +23,21 @@ public static class StreamRegistry
     /// <param name="broker">The broker to use for stream registrations.</param>
     public static void SetBroker(StreamBroker broker)
     {
-        _globalBroker = broker ?? throw new ArgumentNullException(nameof(broker));
-        
-        // Process any deferred registrations that arrived before the broker was set
-        while (_deferredRegistrations.TryDequeue(out var registration))
+        if (broker == null)
+            throw new ArgumentNullException(nameof(broker));
+
+        lock (_lock)
         {
-            _globalBroker.RegisterImplicitSubscription(
-                registration.Namespace,
-                registration.ActorType,
-                registration.MessageType);
+            _globalBroker = broker;
+
+            // Process any deferred registrations that arrived before the broker was set
+            while (_deferredRegistrations.TryDequeue(out var registration))
+            {
+                _globalBroker.RegisterImplicitSubscription(
+                    registration.Namespace,
+                    registration.ActorType,
+                    registration.MessageType);
+            }
         }
     }
 
@@ -46,14 +53,17 @@ public static class StreamRegistry
     /// <param name="messageType">The message type for this stream.</param>
     public static void RegisterImplicitSubscription(string @namespace, Type actorType, Type messageType)
     {
-        if (_globalBroker == null)
+        lock (_lock)
         {
-            // Broker not yet set - defer registration until SetBroker is called
-            _deferredRegistrations.Enqueue(new DeferredRegistration(@namespace, actorType, messageType));
-            return;
-        }
+            if (_globalBroker == null)
+            {
+                // Broker not yet set - defer registration until SetBroker is called
+                _deferredRegistrations.Enqueue(new DeferredRegistration(@namespace, actorType, messageType));
+                return;
+            }
 
-        _globalBroker.RegisterImplicitSubscription(@namespace, actorType, messageType);
+            _globalBroker.RegisterImplicitSubscription(@namespace, actorType, messageType);
+        }
     }
 
     /// <summary>
