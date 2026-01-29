@@ -13,25 +13,37 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 ## **🗺️ Development Roadmap**
 
-### **Phase 1: The Core "Static" Engine (Local Runtime)**
+### **Phase 1: The Core "Static" Engine (Local Runtime)** ✅ COMPLETED
 
 *Focus: AOT-compatible code generation and basic actor lifecycle.*
 
-* \[ \] **Source Generator V1:** Incremental generator for \[QuarkActor\] attributes.  
-* \[ \] **Turn-based Mailbox:** High-performance messaging via System.Threading.Channels.  
-* \[ \] **Explicit Lifecycle:** Support for ActivateAsync and DeactivateAsync (Explicit Stop).  
-* \[ \] **Local Context:** Request ID and Metadata propagation for tracing.
+* \[✓\] **Source Generator V1:** Incremental generator for \[QuarkActor\] attributes.  
+* \[✓\] **Turn-based Mailbox:** High-performance messaging via System.Threading.Channels.  
+* \[✓\] **Explicit Lifecycle:** Support for ActivateAsync and DeactivateAsync (Explicit Stop).  
+* \[✓\] **Local Context:** Request ID and Metadata propagation for tracing.
+* \[✓\] **Supervision Hierarchies:** Parent-child actor relationships with failure handling.
+* \[✓\] **Persistence Abstractions:** Multi-storage provider support with IStateStorage.
 
-### **Phase 2: The Cluster & Networking Layer**
+**Status:** All features implemented and tested. 33/33 tests passing.
+
+### **Phase 2: The Cluster & Networking Layer** 🚧 IN PROGRESS
 
 *Focus: Silo-to-Silo communication over encrypted UDP.*
 
-* \[ \] **Full Mesh Transport:** gRPC over HTTP/3 (QUIC) for encrypted datagrams.  
+* \[ \] **Transport Abstraction:** IActorTransport interface for pluggable networking.  
+* \[ \] **QUIC Transport:** gRPC over HTTP/3 (QUIC) for encrypted datagrams.  
 * \[ \] **Silo Membership:** Distributed Silo table (Redis/SQL/K8s) for node discovery.  
 * \[ \] **Location Transparency:** Routing logic to locate and invoke actors across the mesh.  
-* \[ \] **Placement Policies:** \- Random (Orleans style)  
+* \[ \] **Placement Policies:**  
+  * Random (Orleans style)  
   * Prefer Local (Minimize hops)  
   * Stateless Workers (Auto-scaling pool)
+
+**Next Steps:**
+1. Define IActorTransport and IClusterMembership abstractions
+2. Implement local in-memory clustering for testing
+3. Add remote actor proxy generation
+4. Implement QUIC-based transport
 
 ### **Phase 3: Reliability & Supervision (The "Power" Layer)**
 
