@@ -3,7 +3,11 @@
         <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
         <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
     </Folder>
-    <Folder Name="/src/" />
+    <Folder Name="/src/">
+        <Project Path="src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
+        <Project Path="src/Quark.Storage.Postgres/Quark.Storage.Postgres.csproj" />
+        <Project Path="src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
+    </Folder>
     <Folder Name="/src/Abstractions/">
         <Project Path="src/Quark.Abstractions/Quark.Abstractions.csproj" />
         <Project Path="src/Quark.Networking.Abstractions/Quark.Networking.Abstractions.csproj" />
