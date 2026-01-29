@@ -44,6 +44,22 @@ Quark/
 - .NET 10 SDK or later
 - A C# IDE (Visual Studio, VS Code, or Rider)
 
+### Project Setup
+
+⚠️ **Important**: When creating a project that uses Quark, you must explicitly reference the source generator:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="path/to/Quark.Core/Quark.Core.csproj" />
+  <!-- REQUIRED: Source generator reference (not transitive) -->
+  <ProjectReference Include="path/to/Quark.Generators/Quark.Generators.csproj" 
+                    OutputItemType="Analyzer" 
+                    ReferenceOutputAssembly="false" />
+</ItemGroup>
+```
+
+See [SOURCE_GENERATOR_SETUP.md](docs/SOURCE_GENERATOR_SETUP.md) for detailed information.
+
 ### Building
 
 ```bash
