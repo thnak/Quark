@@ -28,6 +28,9 @@
     <ProjectReference Include="../../src/Quark.Networking.Abstractions/Quark.Networking.Abstractions.csproj" />
     <ProjectReference Include="../../src/Quark.Clustering.Redis/Quark.Clustering.Redis.csproj" />
     <ProjectReference Include="../../src/Quark.Transport.Grpc/Quark.Transport.Grpc.csproj" />
+    <ProjectReference Include="../../src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
+    <ProjectReference Include="../../src/Quark.Storage.Postgres/Quark.Storage.Postgres.csproj" />
+    <ProjectReference Include="../../src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
     <ProjectReference Include="../../src/Quark.Generators/Quark.Generators.csproj" 
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />

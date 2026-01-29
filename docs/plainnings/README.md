@@ -71,11 +71,11 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * \[✓\] **Reminder Abstractions:** IReminderTable, IRemindable interfaces.
 * \[✓\] **InMemoryReminderTable:** Implementation with consistent hash ring integration.
 * \[✓\] **Timers:** Lightweight, in-memory volatile timers.
-* \[ \] **State Providers:** Redis and Postgres storage with optimistic concurrency (deferred).
-* \[ \] **Reminder Storage:** Redis and Postgres reminder tables (deferred).
-* \[ \] **Event Sourcing:** Native journaling support for audit-logs and state replay (deferred).
+* \[✓\] **State Providers:** Redis and Postgres storage with optimistic concurrency.
+* \[✓\] **Reminder Storage:** Redis and Postgres reminder tables.
+* \[✓\] **Event Sourcing:** Native journaling support for audit-logs and state replay.
 
-**Status:** Core features complete with comprehensive tests (138/138 tests passing). Storage providers and event sourcing are deferred to future phases.
+**Status:** All Phase 4 features complete. Storage providers and event sourcing implementations ready for Phase 6.
 
 ### **Phase 5: Reactive Streaming** ✅ COMPLETED
 
@@ -201,6 +201,9 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * **Quark.Networking.Abstractions:** Transport and clustering interfaces.
 * **Quark.Transport.Grpc:** gRPC bi-directional streaming transport over HTTP/3.
 * **Quark.Clustering.Redis:** Redis-based cluster membership with consistent hashing.
+* **Quark.Storage.Redis:** Redis state storage and reminder tables with optimistic concurrency.
+* **Quark.Storage.Postgres:** PostgreSQL state storage and reminder tables with optimistic concurrency.
+* **Quark.EventSourcing:** Event sourcing framework with event store, journaling, and state replay.
 
 **Missing (Phase 6):**
 * **Quark.Hosting:** IQuarkSilo host with lifecycle orchestration.
