@@ -17,8 +17,7 @@ public class RedisClusterMembershipTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Start Redis container
-        _redisContainer = new RedisBuilder()
-            .WithImage("redis:7-alpine")
+        _redisContainer = new RedisBuilder("redis:7-alpine")
             .Build();
 
         await _redisContainer.StartAsync();
