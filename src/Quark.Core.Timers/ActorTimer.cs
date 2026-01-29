@@ -11,7 +11,7 @@ internal sealed class ActorTimer : IActorTimer
     private readonly TimeSpan _dueTime;
     private readonly TimeSpan? _period;
     private readonly Func<Task> _callback;
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private Timer? _timer;
     private volatile bool _isDisposed;
     private volatile bool _isRunning;

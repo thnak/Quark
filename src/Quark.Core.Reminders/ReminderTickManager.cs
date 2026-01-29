@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quark.Abstractions.Reminders;
-using Quark.Networking.Abstractions;
 
 namespace Quark.Core.Reminders;
 

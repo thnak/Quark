@@ -9,6 +9,8 @@
         <Project Path="src/Quark.Networking.Abstractions/Quark.Networking.Abstractions.csproj" />
     </Folder>
     <Folder Name="/src/Core/">
+        <Project Path="src/Quark.Core.Reminders/Quark.Core.Reminders.csproj" />
+        <Project Path="src/Quark.Core.Timers/Quark.Core.Timers.csproj" />
         <Project Path="src/Quark.Core/Quark.Core.csproj" />
         <Project Path="src/Quark.Core.Actors/Quark.Core.Actors.csproj" />
         <Project Path="src/Quark.Core.Persistence/Quark.Core.Persistence.csproj" />
