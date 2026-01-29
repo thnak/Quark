@@ -3,7 +3,6 @@ using Quark.Clustering.Redis;
 using Quark.Networking.Abstractions;
 using StackExchange.Redis;
 using Testcontainers.Redis;
-using Xunit;
 
 namespace Quark.Tests;
 

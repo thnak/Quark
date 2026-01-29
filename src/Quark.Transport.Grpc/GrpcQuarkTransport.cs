@@ -55,7 +55,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             var protoMessage = ToProtoMessage(envelope);
 
             // Send via stream
-            await connection.RequestStream.WriteAsync(protoMessage);
+            await connection.RequestStream.WriteAsync(protoMessage, cancellationToken);
 
             // Wait for response (30s timeout)
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
