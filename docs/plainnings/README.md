@@ -60,14 +60,22 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 **Status:** Core reliability features complete. 77/77 tests passing.
 
-### **Phase 4: Persistence & Temporal Services**
+### **Phase 4: Persistence & Temporal Services** 🚧 IN PROGRESS
 
 *Focus: Making state and time durable.*
 
-* \[ \] **Reminders:** Persistent, distributed timers that survive cluster reboots.  
-* \[ \] **Timers:** Lightweight, in-memory volatile timers.  
-* \[ \] **State Providers:** AOT-safe storage for SQL, Redis, and Mongo using JSON Source Generators.  
+* \[✓\] **Production-Grade State Generator:** Auto-generates JsonSerializerContext for AOT-safe serialization.
+* \[✓\] **E-Tag / Optimistic Concurrency:** Version tracking prevents "Lost Updates" in distributed races.
+* \[✓\] **Persistent Reminders:** Durable timers that survive cluster reboots.
+* \[✓\] **Distributed Scheduler:** ReminderTickManager polls reminder table using consistent hashing.
+* \[✓\] **Reminder Abstractions:** IReminderTable, IRemindable interfaces.
+* \[✓\] **InMemoryReminderTable:** Implementation with consistent hash ring integration.
+* \[ \] **State Providers:** Redis and Postgres storage with optimistic concurrency.
+* \[ \] **Reminder Storage:** Redis and Postgres reminder tables.
+* \[ \] **Timers:** Lightweight, in-memory volatile timers.
 * \[ \] **Event Sourcing:** Native journaling support for audit-logs and state replay.
+
+**Status:** Core features complete (94/94 tests passing). Storage providers next.
 
 ### **Phase 5: Reactive Streaming**
 
