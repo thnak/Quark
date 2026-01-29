@@ -15,8 +15,6 @@ public record UpdateLocationRequest(double Latitude, double Longitude);
 /// </summary>
 public class UpdateDriverLocationEndpoint : Endpoint<UpdateLocationRequest>
 {
-    private readonly IActorFactory _actorFactory = null!;
-
     public override void Configure()
     {
         Put("/api/drivers/{driverId}/location");
@@ -25,8 +23,10 @@ public class UpdateDriverLocationEndpoint : Endpoint<UpdateLocationRequest>
 
     public override async Task HandleAsync(UpdateLocationRequest req, CancellationToken ct)
     {
+        var actorFactory = Resolve<IActorFactory>();
+        
         var driverId = Route<string>("driverId")!;
-        var driverActor = _actorFactory.GetOrCreateActor<DeliveryDriverActor>(driverId);
+        var driverActor = actorFactory.GetOrCreateActor<DeliveryDriverActor>(driverId);
         
         await driverActor.UpdateLocationAsync(req.Latitude, req.Longitude);
         
@@ -34,7 +34,7 @@ public class UpdateDriverLocationEndpoint : Endpoint<UpdateLocationRequest>
         var currentOrderId = await driverActor.GetCurrentOrderIdAsync();
         if (!string.IsNullOrEmpty(currentOrderId))
         {
-            var pizzaActor = _actorFactory.GetOrCreateActor<PizzaActor>(currentOrderId);
+            var pizzaActor = actorFactory.GetOrCreateActor<PizzaActor>(currentOrderId);
             var location = await driverActor.GetLocationAsync();
             if (location != null)
             {

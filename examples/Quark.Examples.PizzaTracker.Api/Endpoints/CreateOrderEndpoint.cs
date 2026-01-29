@@ -20,8 +20,6 @@ public record CreateOrderResponse(string OrderId, PizzaStatus Status, DateTime O
 /// </summary>
 public class CreateOrderEndpoint : Endpoint<CreateOrderRequest, CreateOrderResponse>
 {
-    private readonly IActorFactory _actorFactory = null!;
-
     public override void Configure()
     {
         Post("/api/orders");
@@ -30,8 +28,10 @@ public class CreateOrderEndpoint : Endpoint<CreateOrderRequest, CreateOrderRespo
 
     public override async Task HandleAsync(CreateOrderRequest req, CancellationToken ct)
     {
+        var actorFactory = Resolve<IActorFactory>();
+        
         var orderId = $"order-{Guid.NewGuid():N}";
-        var pizzaActor = _actorFactory.CreateActor<PizzaActor>(orderId);
+        var pizzaActor = actorFactory.GetOrCreateActor<PizzaActor>(orderId);
         
         await pizzaActor.OnActivateAsync(ct);
         var order = await pizzaActor.CreateOrderAsync(req.CustomerId, req.PizzaType);

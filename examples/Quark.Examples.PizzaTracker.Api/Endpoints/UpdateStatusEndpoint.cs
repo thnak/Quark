@@ -15,8 +15,6 @@ public record UpdateStatusRequest(PizzaStatus Status, string? DriverId);
 /// </summary>
 public class UpdateStatusEndpoint : Endpoint<UpdateStatusRequest>
 {
-    private readonly IActorFactory _actorFactory = null!;
-
     public override void Configure()
     {
         Put("/api/orders/{orderId}/status");
@@ -25,8 +23,17 @@ public class UpdateStatusEndpoint : Endpoint<UpdateStatusRequest>
 
     public override async Task HandleAsync(UpdateStatusRequest req, CancellationToken ct)
     {
+        var actorFactory = Resolve<IActorFactory>();
+        
         var orderId = Route<string>("orderId")!;
-        var pizzaActor = _actorFactory.GetOrCreateActor<PizzaActor>(orderId);
+        var pizzaActor = actorFactory.GetOrCreateActor<PizzaActor>(orderId);
+        
+        // If assigning a driver, also update the driver actor
+        if (!string.IsNullOrEmpty(req.DriverId))
+        {
+            var driverActor = actorFactory.GetOrCreateActor<DeliveryDriverActor>(req.DriverId);
+            await driverActor.AssignOrderAsync(orderId);
+        }
         
         var order = await pizzaActor.UpdateStatusAsync(req.Status, req.DriverId);
         await SendAsync(order, cancellation: ct);

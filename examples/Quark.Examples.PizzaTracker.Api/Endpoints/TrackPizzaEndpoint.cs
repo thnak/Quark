@@ -10,9 +10,8 @@ namespace Quark.Examples.PizzaTracker.Api.Endpoints;
 /// <summary>
 /// Server-Sent Events endpoint for tracking pizza orders in real-time.
 /// </summary>
-public class TrackPizzaEndpoint : EndpointWithoutRequest
+public class TrackPizzaEndpoint : Endpoint<EmptyRequest>
 {
-    private readonly IActorFactory _actorFactory = null!;
     private static readonly ConcurrentDictionary<string, List<Action<PizzaStatusUpdate>>> _subscribers = new();
 
     public override void Configure()
@@ -21,8 +20,10 @@ public class TrackPizzaEndpoint : EndpointWithoutRequest
         AllowAnonymous();
     }
 
-    public override async Task HandleAsync(CancellationToken ct)
+    public override async Task HandleAsync(EmptyRequest req, CancellationToken ct)
     {
+        var actorFactory = Resolve<IActorFactory>();
+        
         var orderId = Route<string>("orderId")!;
         
         // Set up SSE headers
@@ -30,7 +31,7 @@ public class TrackPizzaEndpoint : EndpointWithoutRequest
         HttpContext.Response.Headers.Append("Cache-Control", "no-cache");
         HttpContext.Response.Headers.Append("Connection", "keep-alive");
 
-        var pizzaActor = _actorFactory.GetOrCreateActor<PizzaActor>(orderId);
+        var pizzaActor = actorFactory.GetOrCreateActor<PizzaActor>(orderId);
         
         // Send initial state
         var currentOrder = await pizzaActor.GetOrderAsync();

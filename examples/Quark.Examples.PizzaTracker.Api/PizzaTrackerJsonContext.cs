@@ -16,6 +16,7 @@ namespace Quark.Examples.PizzaTracker.Api;
 [JsonSerializable(typeof(UpdateStatusRequest))]
 [JsonSerializable(typeof(UpdateLocationRequest))]
 [JsonSerializable(typeof(ApiInfoResponse))]
+[JsonSerializable(typeof(EmptyRequest))]
 public partial class PizzaTrackerJsonContext : JsonSerializerContext
 {
 }

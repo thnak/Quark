@@ -3,6 +3,14 @@ using FastEndpoints;
 namespace Quark.Examples.PizzaTracker.Api.Endpoints;
 
 /// <summary>
+/// Empty request for endpoints without body.
+/// </summary>
+public class EmptyRequest 
+{ 
+    public string? Dummy { get; set; }
+}
+
+/// <summary>
 /// Response for the root endpoint.
 /// </summary>
 public record ApiInfoResponse(
@@ -14,7 +22,7 @@ public record ApiInfoResponse(
 /// <summary>
 /// Root endpoint that returns API information.
 /// </summary>
-public class RootEndpoint : EndpointWithoutRequest<ApiInfoResponse>
+public class RootEndpoint : Endpoint<EmptyRequest, ApiInfoResponse>
 {
     public override void Configure()
     {
@@ -22,7 +30,7 @@ public class RootEndpoint : EndpointWithoutRequest<ApiInfoResponse>
         AllowAnonymous();
     }
 
-    public override async Task HandleAsync(CancellationToken ct)
+    public override async Task HandleAsync(EmptyRequest req, CancellationToken ct)
     {
         await SendAsync(new ApiInfoResponse(
             Service: "Pizza GPS Tracker API",
