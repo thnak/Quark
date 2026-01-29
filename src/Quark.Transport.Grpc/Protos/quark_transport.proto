@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option csharp_namespace = "Quark.Transport.Grpc";
+
+package quark;
+
+// Quark actor transport service using bi-directional streaming
+service QuarkTransport {
+  // Bi-directional stream for actor invocations
+  // One stream per silo connection for efficiency
+  rpc ActorStream (stream EnvelopeMessage) returns (stream EnvelopeMessage);
+}
+
+// Message envelope for actor invocations
+message EnvelopeMessage {
+  string message_id = 1;
+  string actor_id = 2;
+  string actor_type = 3;
+  string method_name = 4;
+  bytes payload = 5;
+  string correlation_id = 6;
+  int64 timestamp = 7;
+  
+  // Response fields
+  bytes response_payload = 8;
+  bool is_error = 9;
+  string error_message = 10;
+}
