@@ -118,7 +118,10 @@ public class DistributedSupervisionTests
         {
             var actorKey = $"WorkerActor:worker-{i}";
             var silo = hashRing.GetNode(actorKey);
-            placements[silo] = placements.GetValueOrDefault(silo, 0) + 1;
+            if (!string.IsNullOrEmpty(silo))
+            {
+                placements[silo] = placements.GetValueOrDefault(silo, 0) + 1;
+            }
         }
 
         // Assert - Each silo should get roughly 33% (20-50 actors each)
@@ -141,9 +144,10 @@ public class DistributedSupervisionTests
 
         var actorKey = "WorkerActor:critical-worker";
         var initialSilo = hashRing.GetNode(actorKey);
+        Assert.NotNull(initialSilo); // Ensure we got a silo
 
         // Act - Simulate silo failure
-        hashRing.RemoveNode(initialSilo);
+        hashRing.RemoveNode(initialSilo!);
 
         var newSilo = hashRing.GetNode(actorKey);
 
