@@ -166,14 +166,18 @@ curl -N http://localhost:5002/api/orders/{orderId}/track
 Both projects are configured for Native AOT compilation:
 
 ```bash
-# Publish Console App
+# Publish Console App (Full AOT Support)
 cd examples/Quark.Examples.PizzaTracker.Console
 dotnet publish -c Release -r linux-x64 --self-contained
 
-# Publish API
+# Publish API (Note: FastEndpoints has limited AOT support)
 cd examples/Quark.Examples.PizzaTracker.Api
 dotnet publish -c Release -r linux-x64 --self-contained
 ```
+
+**Note on AOT Compatibility:**
+- The **Console application** has full Native AOT support and works perfectly with AOT compilation.
+- The **API application** compiles with AOT but FastEndpoints has limitations with endpoint discovery in AOT mode. The API works perfectly in regular JIT mode and demonstrates AOT-compatible actor usage.
 
 The resulting binaries:
 - Are self-contained (no .NET runtime required)

@@ -3,6 +3,7 @@ using Quark.Core.Actors;
 using Quark.Abstractions;
 using Quark.Examples.PizzaTracker.Api;
 using System.Text.Json.Serialization;
+using Quark.Examples.PizzaTracker.Api.Endpoints;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -15,8 +16,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 // Register Quark Actor Factory as a singleton
 builder.Services.AddSingleton<IActorFactory, ActorFactory>();
 
-// Add FastEndpoints
-builder.Services.AddFastEndpoints();
+// Add FastEndpoints with explicit endpoint types for AOT
+builder.Services.AddFastEndpoints(o =>
+{
+    o.Assemblies = new[] { typeof(Program).Assembly };
+});
 
 var app = builder.Build();
 
