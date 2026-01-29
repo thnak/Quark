@@ -1,9 +1,8 @@
 using FastEndpoints;
+using FastEndpoints.Swagger;
 using Quark.Core.Actors;
 using Quark.Abstractions;
 using Quark.Examples.PizzaTracker.Api;
-using System.Text.Json.Serialization;
-using Quark.Examples.PizzaTracker.Api.Endpoints;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -17,17 +16,17 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddSingleton<IActorFactory, ActorFactory>();
 
 // Add FastEndpoints with explicit endpoint types for AOT
-builder.Services.AddFastEndpoints(o =>
-{
-    o.Assemblies = new[] { typeof(Program).Assembly };
-});
+builder.Services
+    .AddFastEndpoints(o => o.SourceGeneratorDiscoveredTypes = DiscoveredTypes.All)
+    .SwaggerDocument();
 
 var app = builder.Build();
 
 // Configure FastEndpoints
 app.UseFastEndpoints(c =>
-{
-    c.Serializer.Options.TypeInfoResolverChain.Add(PizzaTrackerJsonContext.Default);
-});
+    {
+        c.Serializer.Options.TypeInfoResolverChain.Add(PizzaTrackerJsonContext.Default);
+    })
+    .UseSwaggerGen();
 
 app.Run();

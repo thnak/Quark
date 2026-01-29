@@ -1,7 +1,6 @@
 using FastEndpoints;
 using Quark.Abstractions;
 using Quark.Examples.PizzaTracker.Shared.Actors;
-using Quark.Examples.PizzaTracker.Shared.Models;
 
 namespace Quark.Examples.PizzaTracker.Api.Endpoints;
 
@@ -24,12 +23,12 @@ public class UpdateDriverLocationEndpoint : Endpoint<UpdateLocationRequest>
     public override async Task HandleAsync(UpdateLocationRequest req, CancellationToken ct)
     {
         var actorFactory = Resolve<IActorFactory>();
-        
+
         var driverId = Route<string>("driverId")!;
         var driverActor = actorFactory.GetOrCreateActor<DeliveryDriverActor>(driverId);
-        
+
         await driverActor.UpdateLocationAsync(req.Latitude, req.Longitude);
-        
+
         // Update pizza with driver location
         var currentOrderId = await driverActor.GetCurrentOrderIdAsync();
         if (!string.IsNullOrEmpty(currentOrderId))
@@ -42,6 +41,6 @@ public class UpdateDriverLocationEndpoint : Endpoint<UpdateLocationRequest>
             }
         }
 
-        await SendOkAsync(ct);
+        await Send.OkAsync(cancellation: ct);
     }
 }

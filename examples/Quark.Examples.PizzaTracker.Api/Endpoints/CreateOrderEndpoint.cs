@@ -36,7 +36,7 @@ public class CreateOrderEndpoint : Endpoint<CreateOrderRequest, CreateOrderRespo
         await pizzaActor.OnActivateAsync(ct);
         var order = await pizzaActor.CreateOrderAsync(req.CustomerId, req.PizzaType);
 
-        await SendAsync(new CreateOrderResponse(
+        await Send.OkAsync(new CreateOrderResponse(
             order.OrderId,
             order.Status,
             order.OrderTime), cancellation: ct);

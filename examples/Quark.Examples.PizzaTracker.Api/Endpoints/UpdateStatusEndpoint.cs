@@ -36,6 +36,6 @@ public class UpdateStatusEndpoint : Endpoint<UpdateStatusRequest>
         }
         
         var order = await pizzaActor.UpdateStatusAsync(req.Status, req.DriverId);
-        await SendAsync(order, cancellation: ct);
+        await Send.OkAsync(order, cancellation: ct);
     }
 }

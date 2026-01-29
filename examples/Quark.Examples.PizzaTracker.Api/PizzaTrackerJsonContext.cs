@@ -7,6 +7,8 @@ namespace Quark.Examples.PizzaTracker.Api;
 /// <summary>
 /// Source-generated JSON serializer context for AOT compatibility.
 /// </summary>
+[JsonSourceGenerationOptions(WriteIndented = false)]
+[JsonSerializable(typeof(IEnumerable<string>))]
 [JsonSerializable(typeof(PizzaOrder))]
 [JsonSerializable(typeof(PizzaStatusUpdate))]
 [JsonSerializable(typeof(GpsLocation))]

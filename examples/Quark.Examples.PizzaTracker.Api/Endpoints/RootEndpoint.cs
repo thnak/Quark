@@ -32,7 +32,7 @@ public class RootEndpoint : Endpoint<EmptyRequest, ApiInfoResponse>
 
     public override async Task HandleAsync(EmptyRequest req, CancellationToken ct)
     {
-        await SendAsync(new ApiInfoResponse(
+        await Send.OkAsync(new ApiInfoResponse(
             Service: "Pizza GPS Tracker API",
             Version: "1.0.0",
             Framework: "Quark - AOT Compatible Actor Framework",
