@@ -14,6 +14,7 @@
         <Project Path="src/Quark.Core.Persistence/Quark.Core.Persistence.csproj" />
     </Folder>
     <Folder Name="/src/Generators/">
+        <Project Path="src/Quark.Generators.Logging/Quark.Generators.Logging.csproj" />
         <Project Path="src/Quark.Generators/Quark.Generators.csproj" />
         <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
     </Folder>
