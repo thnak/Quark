@@ -1,5 +1,6 @@
 using Quark.Abstractions;
 using Quark.Core.Actors;
+using Quark.Examples.Supervision.Actors;
 
 Console.WriteLine("=== Quark Actor Framework - Supervision Example ===");
 Console.WriteLine();
@@ -84,86 +85,3 @@ Console.WriteLine("✓ All actors deactivated");
 
 Console.WriteLine();
 Console.WriteLine("=== Example completed successfully ===");
-
-/// <summary>
-/// A supervisor actor that uses the default supervision strategy (Restart).
-/// </summary>
-[Actor(Name = "Supervisor", Reentrant = false)]
-public class SupervisorActor : ActorBase
-{
-    public SupervisorActor(string actorId) : base(actorId)
-    {
-    }
-
-    public SupervisorActor(string actorId, IActorFactory actorFactory) : base(actorId, actorFactory)
-    {
-    }
-
-    public override Task OnActivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  → SupervisorActor {ActorId} is being activated");
-        return base.OnActivateAsync(cancellationToken);
-    }
-
-    public override Task OnDeactivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  → SupervisorActor {ActorId} is being deactivated");
-        return base.OnDeactivateAsync(cancellationToken);
-    }
-}
-
-/// <summary>
-/// A custom supervisor actor with specific supervision strategies.
-/// </summary>
-[Actor(Name = "CustomSupervisor", Reentrant = false)]
-public class CustomSupervisorActor : ActorBase
-{
-    public CustomSupervisorActor(string actorId) : base(actorId)
-    {
-    }
-
-    public CustomSupervisorActor(string actorId, IActorFactory actorFactory) : base(actorId, actorFactory)
-    {
-    }
-
-    public override Task<SupervisionDirective> OnChildFailureAsync(
-        ChildFailureContext context,
-        CancellationToken cancellationToken = default)
-    {
-        // Custom supervision logic based on exception type
-        return context.Exception switch
-        {
-            TimeoutException => Task.FromResult(SupervisionDirective.Resume),
-            OutOfMemoryException => Task.FromResult(SupervisionDirective.Stop),
-            InvalidOperationException => Task.FromResult(SupervisionDirective.Escalate),
-            _ => Task.FromResult(SupervisionDirective.Restart)
-        };
-    }
-
-    public override Task OnActivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  → CustomSupervisorActor {ActorId} is being activated");
-        return base.OnActivateAsync(cancellationToken);
-    }
-}
-
-/// <summary>
-/// A simple worker actor that can be supervised.
-/// </summary>
-[Actor(Name = "Worker", Reentrant = false)]
-public class WorkerActor : ActorBase
-{
-    public WorkerActor(string actorId) : base(actorId)
-    {
-    }
-
-    public WorkerActor(string actorId, IActorFactory actorFactory) : base(actorId, actorFactory)
-    {
-    }
-
-    public async Task<string> DoWorkAsync(string task)
-    {
-        await Task.Delay(10); // Simulate work
-        return $"Worker {ActorId} completed: {task}";
-    }
-}
