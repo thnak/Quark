@@ -65,11 +65,8 @@ public class ActorFactoryTests
         // Arrange
         var actor = new TestActor("test-actor-4");
 
-        // Act
+        // Act & Assert - no exception thrown
         await actor.OnActivateAsync();
-
-        // Assert - no exception thrown
-        Assert.True(true);
     }
 
     [Fact]
@@ -78,11 +75,8 @@ public class ActorFactoryTests
         // Arrange
         var actor = new TestActor("test-actor-5");
 
-        // Act
+        // Act & Assert - no exception thrown
         await actor.OnDeactivateAsync();
-
-        // Assert - no exception thrown
-        Assert.True(true);
     }
 }
 
