@@ -193,6 +193,7 @@ public class SupervisionTests
 }
 
 // Test actors for supervision tests
+[Quark.Abstractions.Actor]
 public class ParentActor : ActorBase
 {
     public ParentActor(string actorId) : base(actorId)
@@ -204,6 +205,7 @@ public class ParentActor : ActorBase
     }
 }
 
+[Quark.Abstractions.Actor]
 public class ParentActorWithoutFactory : ActorBase
 {
     public ParentActorWithoutFactory(string actorId) : base(actorId)
@@ -211,6 +213,7 @@ public class ParentActorWithoutFactory : ActorBase
     }
 }
 
+[Quark.Abstractions.Actor]
 public class ChildActor : ActorBase
 {
     public ChildActor(string actorId) : base(actorId)
@@ -222,6 +225,7 @@ public class ChildActor : ActorBase
     }
 }
 
+[Quark.Abstractions.Actor]
 public class CustomSupervisorActor : ActorBase
 {
     public CustomSupervisorActor(string actorId) : base(actorId)

@@ -97,8 +97,8 @@ public class ActorSourceGenerator : IIncrementalGenerator
             // Generate factory method for this actor
             GenerateActorFactory(context, className, fullClassName, namespaceName, classSymbol);
 
-            // Add to registration list
-            registrations.AppendLine($"        ActorFactoryRegistry.RegisterFactory<{fullClassName}>({className}Factory.Create);");
+            // Add to registration list with fully qualified factory name
+            registrations.AppendLine($"        ActorFactoryRegistry.RegisterFactory<{fullClassName}>({namespaceName}.{className}Factory.Create);");
         }
 
         // Generate the module initializer
