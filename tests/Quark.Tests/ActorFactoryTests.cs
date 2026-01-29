@@ -81,7 +81,7 @@ public class ActorFactoryTests
 }
 
 // Test actor for unit tests
-[Quark.Abstractions.Actor]
+[Abstractions.Actor]
 public class TestActor : ActorBase
 {
     public TestActor(string actorId) : base(actorId)
