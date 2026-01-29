@@ -182,7 +182,7 @@ public class ReminderTickManagerTests
             NullLogger<ReminderTickManager>.Instance,
             TimeSpan.FromMilliseconds(50));
 
-        var firedReminders = new List<string>();
+        var firedReminders = new System.Collections.Concurrent.ConcurrentBag<string>();
         manager.ReminderFired += (sender, args) => firedReminders.Add(args.Reminder.Name);
 
         using var cts = new CancellationTokenSource();

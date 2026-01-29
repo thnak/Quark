@@ -11,9 +11,10 @@ internal sealed class ActorTimer : IActorTimer
     private readonly TimeSpan _dueTime;
     private readonly TimeSpan? _period;
     private readonly Func<Task> _callback;
+    private readonly object _lock = new();
     private Timer? _timer;
-    private bool _isDisposed;
-    private bool _isRunning;
+    private volatile bool _isDisposed;
+    private volatile bool _isRunning;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ActorTimer"/> class.
@@ -41,44 +42,58 @@ internal sealed class ActorTimer : IActorTimer
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        if (_isRunning)
+        lock (_lock)
         {
-            Stop();
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(GetType().Name);
+            }
+
+            if (_isRunning)
+            {
+                Stop();
+            }
+
+            _timer = new Timer(
+                TimerCallback,
+                null,
+                _dueTime,
+                _period ?? Timeout.InfiniteTimeSpan);
+
+            _isRunning = true;
         }
-
-        _timer = new Timer(
-            TimerCallback,
-            null,
-            _dueTime,
-            _period ?? Timeout.InfiniteTimeSpan);
-
-        _isRunning = true;
     }
 
     /// <inheritdoc />
     public void Stop()
     {
-        if (!_isRunning)
+        lock (_lock)
         {
-            return;
-        }
+            if (!_isRunning)
+            {
+                return;
+            }
 
-        _timer?.Change(Timeout.Infinite, Timeout.Infinite);
-        _isRunning = false;
+            _timer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _isRunning = false;
+        }
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_isDisposed)
+        lock (_lock)
         {
-            return;
-        }
+            if (_isDisposed)
+            {
+                return;
+            }
 
-        Stop();
-        _timer?.Dispose();
-        _timer = null;
-        _isDisposed = true;
+            _isRunning = false;
+            _timer?.Dispose();
+            _timer = null;
+            _isDisposed = true;
+        }
     }
 
     private void TimerCallback(object? state)

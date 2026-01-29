@@ -10,7 +10,7 @@ namespace Quark.Core.Timers;
 public sealed class ActorTimerManager : IActorTimerManager
 {
     private readonly ConcurrentDictionary<string, ActorTimer> _timers = new();
-    private bool _isDisposed;
+    private volatile bool _isDisposed;
 
     /// <inheritdoc />
     public IActorTimer RegisterTimer(string name, TimeSpan dueTime, TimeSpan? period, Func<Task> callback)
@@ -72,12 +72,13 @@ public sealed class ActorTimerManager : IActorTimerManager
             return;
         }
 
+        _isDisposed = true;
+
         foreach (var timer in _timers.Values)
         {
             timer.Dispose();
         }
 
         _timers.Clear();
-        _isDisposed = true;
     }
 }
