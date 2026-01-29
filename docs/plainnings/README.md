@@ -56,9 +56,8 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * \[✓\] **Restart Strategies:** OneForOne, AllForOne, RestForOne with exponential backoff.
 * \[✓\] **Supervision Options:** Configurable supervision with time windows and escalation.
 * \[✓\] **Consistent Hashing:** Predictable actor placement (implemented in Phase 2).
-* \[🚧\] **Cluster Health:** Advanced heartbeat monitoring and automatic silo eviction (future).
 
-**Status:** Core reliability features complete. 77/77 tests passing.
+**Status:** Core reliability features complete. 77/77 tests passing. Advanced cluster health monitoring deferred to Phase 7.
 
 ### **Phase 4: Persistence & Temporal Services** ✅ COMPLETED
 
@@ -85,9 +84,8 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * \[✓\] **Implicit Streams:** Automatically activate actors based on stream namespaces.  
 * \[✓\] **Source Generator:** Auto-generates stream-to-actor mappings at build time.
 * \[✓\] **Analyzer:** Validates stream attribute usage and namespace formats.
-* \[ \] **Backpressure:** Adaptive flow control for slow consumers (future enhancement).
 
-**Status:** All core features complete. 26 streaming tests passing (164 total tests passing).
+**Status:** All core features complete. 26 streaming tests passing (164 total tests passing). Advanced backpressure control deferred to Phase 8.
 
 ### **Phase 6: Silo Host & Client Gateway** ✅ COMPLETED
 
@@ -115,7 +113,6 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
    * \[✓\] **gRPC Client:** Send actor invocations to appropriate Silos
    * \[✓\] **Connection Pooling:** Reuse gRPC connections across requests
    * \[✓\] **Retry Logic:** Handle transient failures and silo unavailability
-   * \[🚧\] **Smart Routing:** Direct local invocation when running inside a Silo (future optimization)
 
 3. **IServiceCollection Extensions** - Clean DI registration:
    * \[✓\] **AddQuarkSilo():** Register all silo components with lifecycle management
@@ -124,7 +121,6 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
    * \[✓\] **Health Checks:** ASP.NET Core health check integration
    * \[✓\] **WithReminders():** Fluent configuration for ReminderTickManager
    * \[✓\] **WithStreaming():** Fluent configuration for StreamBroker
-   * \[🚧\] **Connection Reuse:** Direct IConnectionMultiplexer support (can be added via custom registration)
 
 4. **Actor Method Signature Analyzer** - Enforce async return types:
    * \[🚧\] **Allowed Types:** Task, ValueTask, Task&lt;T&gt;, ValueTask&lt;T&gt; (future enhancement)
@@ -145,7 +141,7 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 │  IClusterClient (Lightweight)  │  IQuarkSilo (Full)    │
 │  - ConsistentHashRing          │  - Actor Registry     │
 │  - gRPC Client                 │  - Mailbox Management │
-│  - Smart Routing               │  - ReminderTickMgr    │
+│                                 │  - ReminderTickMgr    │
 │                                 │  - StreamBroker       │
 ├─────────────────────────────────────────────────────────┤
 │              IServiceCollection Extensions              │
@@ -182,13 +178,15 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 **Key Design Considerations:**
 
-* **Connection Reuse:** Both IQuarkSilo and IClusterClient should accept existing IConnectionMultiplexer to avoid multiple Redis connections
-* **Smart Client:** When IClusterClient detects it's running inside a Silo host, bypass network calls and invoke actors directly
 * **AOT Compatible:** All components must work with Native AOT (no reflection)
 * **Testability:** Support in-memory testing without Redis/gRPC dependencies
 * **Observability:** Built-in metrics and distributed tracing support
 
-**Status:** Core features complete. **182/182 tests passing**. Advanced features (analyzers, smart routing, protobuf generation) deferred for future enhancements.
+**Future Enhancements (Phase 8):**
+* **Connection Reuse:** Direct IConnectionMultiplexer support to avoid multiple Redis connections
+* **Smart Routing:** Direct local invocation when IClusterClient runs inside a Silo host
+
+**Status:** Core features complete. **182/182 tests passing**. Advanced optimizations (smart routing, connection reuse, enhanced analyzers, protobuf generation) deferred to Phase 8 and Phase 9.
 
 ---
 
@@ -239,9 +237,28 @@ Now that Quark has achieved production-readiness with all 6 phases complete and 
   - 🚧 Retry policies with exponential backoff (future enhancement)
   - 🚧 DLQ inspection and replay tools (future enhancement)
 
-**Status:** Core health checks and diagnostic endpoints complete. DLQ planned for future release.
+**Status:** Core health checks and diagnostic endpoints complete. DLQ and advanced cluster health monitoring planned for future release.
 
-#### 7.3 Performance Profiling & Analysis
+#### 7.4 Advanced Cluster Health Monitoring 🚧 PLANNED
+* [ ] **Advanced Heartbeat Monitoring:** Enhanced silo health tracking
+  - Health scores per silo (CPU, memory, latency)
+  - Predictive failure detection
+  - Gradual degradation detection
+  - Customizable health score algorithms
+* [ ] **Automatic Silo Eviction:** Intelligent node removal
+  - Automatic eviction of unhealthy silos
+  - Configurable eviction policies (timeout-based, health-score-based)
+  - Graceful actor migration before eviction
+  - Split-brain detection and resolution
+* [ ] **Cluster Resilience:** Enhanced fault tolerance
+  - Quorum-based membership decisions
+  - Automatic cluster rebalancing after eviction
+  - Network partition detection
+  - Graceful degradation strategies
+
+**Status:** Deferred from Phase 3. Planned for future release after core observability features.
+
+#### 7.5 Performance Profiling & Analysis
 * [ ] **Actor Profiler:** Runtime performance analysis
   - Per-actor CPU and memory usage
   - Method-level latency tracking
@@ -291,10 +308,12 @@ Now that Quark has achieved production-readiness with all 6 phases complete and 
   - Cost-aware migration (state size, activation time)
   - Minimal disruption migrations
   - Configurable rebalancing policies
-* [ ] **Smart Routing:** Optimize inter-actor communication
-  - Local bypass for co-located actors (already planned in Phase 6)
-  - Short-circuit for same-silo calls
+* [ ] **Smart Routing:** Optimize inter-actor communication (deferred from Phase 6)
+  - Direct local invocation when IClusterClient runs inside a Silo host
+  - Local bypass for co-located actors (same silo)
+  - Short-circuit for same-process calls
   - Request coalescing for fan-out patterns
+  - Intelligent routing based on actor location cache
 
 #### 8.3 Massive Scale Support
 * [ ] **Large Cluster Support:** Scale to 1000+ silos
@@ -312,6 +331,36 @@ Now that Quark has achieved production-readiness with all 6 phases complete and 
   - Overflow queues with backpressure
   - Circuit breakers per actor type
   - Rate limiting and throttling
+
+#### 8.4 Connection Optimization 🚧 PLANNED
+* [ ] **Connection Reuse:** Efficient resource sharing (deferred from Phase 6)
+  - Direct IConnectionMultiplexer support in AddQuarkSilo/AddQuarkClient
+  - Shared Redis connections across Silo and Client components
+  - Connection pooling for gRPC channels
+  - Configurable connection lifetime and recycling
+  - Avoid duplicate connections in co-hosted scenarios
+* [ ] **Connection Health Management:**
+  - Automatic connection health monitoring
+  - Graceful connection recovery
+  - Connection failover for Redis clusters
+  - gRPC channel state management
+
+#### 8.5 Backpressure & Flow Control 🚧 PLANNED
+* [ ] **Adaptive Backpressure:** Smart flow control for slow consumers (deferred from Phase 5)
+  - Per-stream backpressure policies
+  - Consumer-driven flow control
+  - Adaptive buffer sizing based on consumer rate
+  - Pressure propagation across actor chains
+* [ ] **Flow Control Strategies:**
+  - Drop oldest/newest message strategies
+  - Sampling for high-frequency streams
+  - Time-based windowing with aggregation
+  - Rate limiting at stream source
+* [ ] **Backpressure Metrics:**
+  - Track buffer utilization per stream
+  - Monitor consumer lag metrics
+  - Alert on persistent backpressure conditions
+  - Dashboard integration for flow control visualization
 
 **Target:** Q3 2026 - Support for 100K+ actors per silo, 1000+ silo clusters.
 
@@ -700,10 +749,13 @@ spec:
 * **Quark.Storage.Postgres:** PostgreSQL state storage and reminder tables with optimistic concurrency.
 * **Quark.EventSourcing:** Event sourcing framework with event store, journaling, and state replay.
 
-**Missing (Phase 6 Future Enhancements):**
-* **Quark.Analyzers (Enhanced):** Actor method signature analyzers and code fix providers.
-* **Quark.Generators (Enhanced):** Protobuf proxy generation for type-safe remote calls.
-* **Smart Routing:** Direct local invocation when client runs inside a silo.
+**Future Enhancements (Phases 7-10):**
+* **Phase 7:** Advanced cluster health monitoring with automatic silo eviction
+* **Phase 8:** Smart routing optimization for direct local invocation
+* **Phase 8:** Connection reuse optimization for shared Redis connections
+* **Phase 8:** Adaptive backpressure and flow control for streams
+* **Phase 9:** Enhanced analyzers with code fix providers
+* **Phase 9:** Protobuf proxy generation for type-safe remote calls
 
 **Completed (Phase 6):**
 * **Quark.Hosting:** IQuarkSilo host with lifecycle orchestration.
