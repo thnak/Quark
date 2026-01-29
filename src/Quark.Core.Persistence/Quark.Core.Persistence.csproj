@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -7,16 +7,11 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <IsAotCompatible>true</IsAotCompatible>
         <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
+
     </PropertyGroup>
 
-    <!-- Quark.Core is now a meta-package that brings in all core components -->
     <ItemGroup>
         <ProjectReference Include="../Quark.Abstractions/Quark.Abstractions.csproj"/>
-        <ProjectReference Include="../Quark.Core.Actors/Quark.Core.Actors.csproj"/>
-        <ProjectReference Include="../Quark.Core.Persistence/Quark.Core.Persistence.csproj"/>
-        <ProjectReference Include="../Quark.Generators/Quark.Generators.csproj"
-                          OutputItemType="Analyzer"
-                          ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
 </Project>

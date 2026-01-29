@@ -1,4 +1,5 @@
-﻿using Quark.Core;
+﻿using Quark.Core.Actors;
+using Quark.Examples.Basic.Actors;
 
 Console.WriteLine("=== Quark Actor Framework - Basic Example ===");
 Console.WriteLine();
@@ -37,46 +38,3 @@ Console.WriteLine("✓ Actor deactivated");
 
 Console.WriteLine();
 Console.WriteLine("=== Example completed successfully ===");
-
-/// <summary>
-/// A simple counter actor that demonstrates basic actor functionality.
-/// </summary>
-[Actor(Name = "Counter", Reentrant = false)]
-public class CounterActor : ActorBase
-{
-    private int _counter;
-
-    public CounterActor(string actorId) : base(actorId)
-    {
-        _counter = 0;
-    }
-
-    public void Increment()
-    {
-        _counter++;
-    }
-
-    public int GetValue()
-    {
-        return _counter;
-    }
-
-    public async Task<string> ProcessMessageAsync(string message)
-    {
-        await Task.Delay(10); // Simulate some async work
-        return $"Actor {ActorId} received: {message}";
-    }
-
-    public override Task OnActivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  → CounterActor {ActorId} is being activated");
-        return base.OnActivateAsync(cancellationToken);
-    }
-
-    public override Task OnDeactivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  → CounterActor {ActorId} is being deactivated");
-        return base.OnDeactivateAsync(cancellationToken);
-    }
-}
-

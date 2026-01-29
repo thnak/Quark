@@ -1,12 +1,27 @@
 <Solution>
-  <Folder Name="/examples/">
-    <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
-  </Folder>
-  <Folder Name="/src/">
-    <Project Path="src/Quark.Core/Quark.Core.csproj" />
-    <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Quark.Tests/Quark.Tests.csproj" />
-  </Folder>
+    <Folder Name="/examples/">
+        <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
+        <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
+    </Folder>
+    <Folder Name="/src/" />
+    <Folder Name="/src/Abstractions/">
+        <Project Path="src/Quark.Abstractions/Quark.Abstractions.csproj" />
+        <Project Path="src/Quark.Networking.Abstractions/Quark.Networking.Abstractions.csproj" />
+    </Folder>
+    <Folder Name="/src/Core/">
+        <Project Path="src/Quark.Core/Quark.Core.csproj" />
+        <Project Path="src/Quark.Core.Actors/Quark.Core.Actors.csproj" />
+        <Project Path="src/Quark.Core.Persistence/Quark.Core.Persistence.csproj" />
+    </Folder>
+    <Folder Name="/src/Generators/">
+        <Project Path="src/Quark.Generators.Logging/Quark.Generators.Logging.csproj" />
+        <Project Path="src/Quark.Generators/Quark.Generators.csproj" />
+    </Folder>
+    <Folder Name="/src/Networking/">
+        <Project Path="src/Quark.Transport.Grpc/Quark.Transport.Grpc.csproj" />
+        <Project Path="src/Quark.Clustering.Redis/Quark.Clustering.Redis.csproj" />
+    </Folder>
+    <Folder Name="/tests/">
+        <Project Path="tests/Quark.Tests/Quark.Tests.csproj" />
+    </Folder>
 </Solution>
