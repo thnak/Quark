@@ -223,10 +223,28 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
   - [x] Parent-child actor relationships with SpawnChildAsync
   - [x] Child failure handling with OnChildFailureAsync
   - [x] GetChildren for accessing supervised actors
-- [ ] Complete source generator integration with ActorFactory
-- [ ] Add distributed actor support
-- [ ] Implement grain persistence
-- [ ] Add clustering support
-- [ ] Performance benchmarks
-- [ ] More examples and documentation
+- [x] **Phase 2: Cluster & Networking** - gRPC transport and distributed actors
+  - [x] Bi-directional gRPC streaming
+  - [x] Consistent hashing for actor placement
+  - [x] Redis-based cluster membership
+  - [x] Location transparency with routing
+- [x] **Phase 3: Reliability & Supervision** - Advanced failure handling
+  - [x] Call-chain reentrancy with Chain IDs
+  - [x] Restart strategies (OneForOne, AllForOne, RestForOne)
+  - [x] Configurable supervision with exponential backoff
+- [x] **Phase 4: Persistence & Temporal Services** - State durability and timers
+  - [x] Production-grade state generator with JsonSerializerContext
+  - [x] E-Tag/optimistic concurrency for state management
+  - [x] Persistent reminders that survive reboots
+  - [x] Distributed scheduler with consistent hashing
+  - [x] Lightweight in-memory timers
+- [x] **Phase 5: Reactive Streaming** - Decoupled messaging patterns
+  - [x] Implicit subscriptions with `[QuarkStream]` attribute
+  - [x] Explicit pub/sub with `IQuarkStreamProvider`
+  - [x] Stream-to-actor mappings via source generator
+  - [x] Analyzer for compile-time validation
+  - [x] Multiple subscribers support
+- [ ] Performance benchmarks and optimization
+- [ ] Additional storage providers (Redis, Postgres)
+- [ ] Event sourcing support
 
