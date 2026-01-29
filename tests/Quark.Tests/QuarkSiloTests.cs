@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
 using Quark.Core.Actors;
 using Quark.Hosting;

@@ -4,7 +4,10 @@
         <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
     </Folder>
     <Folder Name="/src/">
+        <Project Path="src/Quark.Client/Quark.Client.csproj" />
         <Project Path="src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
+        <Project Path="src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
+        <Project Path="src/Quark.Hosting/Quark.Hosting.csproj" />
         <Project Path="src/Quark.Storage.Postgres/Quark.Storage.Postgres.csproj" />
         <Project Path="src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
     </Folder>
@@ -14,6 +17,7 @@
     </Folder>
     <Folder Name="/src/Core/">
         <Project Path="src/Quark.Core.Reminders/Quark.Core.Reminders.csproj" />
+        <Project Path="src/Quark.Core.Streaming/Quark.Core.Streaming.csproj" />
         <Project Path="src/Quark.Core.Timers/Quark.Core.Timers.csproj" />
         <Project Path="src/Quark.Core/Quark.Core.csproj" />
         <Project Path="src/Quark.Core.Actors/Quark.Core.Actors.csproj" />
