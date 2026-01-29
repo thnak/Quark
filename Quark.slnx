@@ -16,7 +16,6 @@
     <Folder Name="/src/Generators/">
         <Project Path="src/Quark.Generators.Logging/Quark.Generators.Logging.csproj" />
         <Project Path="src/Quark.Generators/Quark.Generators.csproj" />
-        <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
     </Folder>
     <Folder Name="/src/Networking/">
         <Project Path="src/Quark.Transport.Grpc/Quark.Transport.Grpc.csproj" />
