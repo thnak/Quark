@@ -67,7 +67,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         _hashRing.AddNode(new HashRingNode(siloInfo.SiloId));
 
         // Publish membership change
-        await _redis.GetSubscriber().PublishAsync(MembershipChannel, $"join:{siloInfo.SiloId}");
+        await _redis.GetSubscriber().PublishAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),$"join:{siloInfo.SiloId}");
     }
 
     /// <inheritdoc />
@@ -77,7 +77,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         var key = SiloKeyPrefix + _currentSiloId;
         
         await db.KeyDeleteAsync(key);
-        await _redis.GetSubscriber().PublishAsync(MembershipChannel, $"leave:{_currentSiloId}");
+        await _redis.GetSubscriber().PublishAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto),$"leave:{_currentSiloId}");
 
         _hashRing.RemoveNode(_currentSiloId);
         _silos.TryRemove(_currentSiloId, out _);
@@ -148,7 +148,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
     {
         // Subscribe to membership changes
         _subscriber = _redis.GetSubscriber();
-        await _subscriber.SubscribeAsync(MembershipChannel, OnMembershipMessage);
+        await _subscriber.SubscribeAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto), OnMembershipMessage);
 
         // Load existing silos
         var silos = await GetActiveSilosAsync(cancellationToken);
@@ -171,7 +171,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
 
         if (_subscriber != null)
         {
-            await _subscriber.UnsubscribeAsync(MembershipChannel);
+            await _subscriber.UnsubscribeAsync(new RedisChannel(MembershipChannel, RedisChannel.PatternMode.Auto));
         }
 
         await UnregisterSiloAsync(cancellationToken);
