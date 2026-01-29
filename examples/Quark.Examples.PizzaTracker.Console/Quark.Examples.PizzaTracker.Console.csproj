@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPublishable>true</IsPublishable>
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Quark.Examples.PizzaTracker.Shared/Quark.Examples.PizzaTracker.Shared.csproj" />
+    <ProjectReference Include="../../src/Quark.Hosting/Quark.Hosting.csproj" />
+    <ProjectReference Include="../../src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
+    <ProjectReference Include="../../src/Quark.Clustering.Redis/Quark.Clustering.Redis.csproj" />
+    <ProjectReference Include="../../src/Quark.Transport.Grpc/Quark.Transport.Grpc.csproj" />
+    <ProjectReference Include="../../src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
+    <ProjectReference Include="../../src/Quark.Generators/Quark.Generators.csproj" 
+                      OutputItemType="Analyzer" 
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Quark.Generators.Logging/Quark.Generators.Logging.csproj" 
+                      OutputItemType="Analyzer" 
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+  </ItemGroup>
+
+</Project>

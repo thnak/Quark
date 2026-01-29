@@ -1,0 +1,67 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api-silo-1:
+    build:
+      context: ../..
+      dockerfile: examples/Quark.Examples.PizzaTracker.Api/Dockerfile
+    ports:
+      - "5001:5000"
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - REDIS_CONNECTION=redis:6379
+      - SILO_ID=api-silo-1
+      - SILO_PORT=11111
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  api-silo-2:
+    build:
+      context: ../..
+      dockerfile: examples/Quark.Examples.PizzaTracker.Api/Dockerfile
+    ports:
+      - "5002:5000"
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - REDIS_CONNECTION=redis:6379
+      - SILO_ID=api-silo-2
+      - SILO_PORT=11112
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  api-silo-3:
+    build:
+      context: ../..
+      dockerfile: examples/Quark.Examples.PizzaTracker.Api/Dockerfile
+    ports:
+      - "5003:5000"
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - REDIS_CONNECTION=redis:6379
+      - SILO_ID=api-silo-3
+      - SILO_PORT=11113
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  console-silo:
+    build:
+      context: ../..
+      dockerfile: examples/Quark.Examples.PizzaTracker.Console/Dockerfile
+    environment:
+      - REDIS_CONNECTION=redis:6379
+      - SILO_ID=console-silo
+      - SILO_PORT=11114
+    depends_on:
+      redis:
+        condition: service_healthy
