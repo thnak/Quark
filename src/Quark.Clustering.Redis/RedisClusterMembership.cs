@@ -96,7 +96,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
             var data = await db.StringGetAsync(key);
             if (!data.IsNullOrEmpty)
             {
-                var silo = System.Text.Json.JsonSerializer.Deserialize<SiloInfo>(data!);
+                var silo = System.Text.Json.JsonSerializer.Deserialize<SiloInfo>(data.ToString());
                 if (silo != null)
                 {
                     silos.Add(silo);
@@ -120,7 +120,7 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         if (data.IsNullOrEmpty)
             return null;
 
-        return System.Text.Json.JsonSerializer.Deserialize<SiloInfo>(data!);
+        return System.Text.Json.JsonSerializer.Deserialize<SiloInfo>(data.ToString());
     }
 
     /// <inheritdoc />
@@ -131,8 +131,11 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         
         if (_silos.TryGetValue(_currentSiloId, out var silo))
         {
-            silo.LastHeartbeat = DateTimeOffset.UtcNow;
-            var data = System.Text.Json.JsonSerializer.Serialize(silo);
+            // Create new instance with updated heartbeat
+            var updated = new SiloInfo(silo.SiloId, silo.Address, silo.Port, silo.Status);
+            _silos[_currentSiloId] = updated;
+            
+            var data = System.Text.Json.JsonSerializer.Serialize(updated);
             await db.StringSetAsync(key, data, TimeSpan.FromSeconds(SiloTimeoutSeconds));
         }
     }
