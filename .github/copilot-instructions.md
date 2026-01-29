@@ -17,7 +17,7 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
 
 ```
 Quark/
-├── .github/                        # GitHub configuration (you are creating this)
+├── .github/                        # GitHub configuration and workflows
 ├── src/                            # Source code organized by component
 │   ├── Quark.Abstractions/         # Pure interfaces and contracts
 │   ├── Quark.Core/                 # Meta-package (minimal code, mostly references)
@@ -33,7 +33,7 @@ Quark/
 │   ├── Quark.Transport.Grpc/       # gRPC transport layer
 │   ├── Quark.Storage.Redis/        # Redis state storage
 │   ├── Quark.Storage.Postgres/     # Postgres state storage
-│   ├── Quark.Hosting/              # Silo hosting
+│   ├── Quark.Hosting/              # Silo hosting (silo = actor system host/node)
 │   ├── Quark.Client/               # Client gateway
 │   ├── Quark.Extensions.DependencyInjection/ # DI extensions
 │   ├── Quark.Networking.Abstractions/ # Network abstractions
@@ -46,7 +46,7 @@ Quark/
 │   └── Quark.Examples.Streaming/   # Reactive streaming example
 ├── docs/                           # Documentation
 ├── Directory.Build.props           # Shared MSBuild properties
-└── Quark.slnx                     # Solution file (XML format)
+└── Quark.slnx                     # Solution file (XML-based .slnx format introduced in VS 2022)
 ```
 
 ## Building and Testing
@@ -61,7 +61,7 @@ Quark/
 # Restore dependencies (run first after cloning)
 dotnet restore
 
-# Build all projects (with parallel build enabled)
+# Build all projects (with parallel build enabled via MSBuild flag)
 dotnet build -maxcpucount
 
 # Build in Release mode
@@ -103,10 +103,10 @@ Any project that defines actors (classes with `[Actor]` attribute) must include:
 
 ```xml
 <ItemGroup>
-  <!-- Reference Quark.Core for the framework -->
+  <!-- REQUIRED: Reference Quark.Core for the framework -->
   <ProjectReference Include="path/to/Quark.Core/Quark.Core.csproj" />
   
-  <!-- REQUIRED: Explicit source generator reference -->
+  <!-- REQUIRED: Explicit source generator reference (not transitive) -->
   <ProjectReference Include="path/to/Quark.Generators/Quark.Generators.csproj" 
                     OutputItemType="Analyzer" 
                     ReferenceOutputAssembly="false" />
@@ -369,6 +369,7 @@ public class OrderProcessorActor : ActorBase, IStreamConsumer<OrderMessage>
 
 ### 1. Multi-Project Solution
 - The solution contains 23 projects organized by feature
+- Solution uses `.slnx` format (XML-based format introduced in Visual Studio 2022)
 - Core abstractions are in `Quark.Abstractions` (interfaces only, no implementations)
 - Implementations are split across feature-specific projects
 - `Quark.Core` is a meta-package that references core components
@@ -409,7 +410,7 @@ public class OrderProcessorActor : ActorBase, IStreamConsumer<OrderMessage>
 
 ### Adding a New Feature
 1. **Add abstractions first**: Create interfaces in `Quark.Abstractions`
-2. **Implement in appropriate project**: Create implementation in relevant `Quark.Core.*` or `Quark.*.csproj`
+2. **Implement in appropriate project**: Create implementation in relevant `Quark.Core.*` project or other appropriate `Quark.*` project
 3. **Update tests**: Add tests to `Quark.Tests`
 4. **Update examples**: If user-facing, add example to `examples/`
 5. **Document**: Update `README.md` and relevant docs in `docs/`
@@ -423,7 +424,7 @@ public class OrderProcessorActor : ActorBase, IStreamConsumer<OrderMessage>
 ### Adding Dependencies
 - Use NuGet packages that are AOT-compatible
 - Check for AOT warnings after adding dependencies
-- Prefer packages with Native AOT support
+- Prefer packages with Native AOT support (consistent capitalization with Microsoft's official terminology)
 - Document any known AOT incompatibilities
 
 ## Performance Considerations
