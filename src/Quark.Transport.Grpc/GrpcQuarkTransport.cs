@@ -72,6 +72,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     /// <inheritdoc />
     public async Task ConnectAsync(SiloInfo siloInfo, CancellationToken cancellationToken = default)
     {
+        await Task.Yield();
         if (_connections.ContainsKey(siloInfo.SiloId))
             return; // Already connected
 
