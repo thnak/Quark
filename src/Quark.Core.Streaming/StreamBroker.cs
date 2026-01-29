@@ -1,6 +1,7 @@
 // Copyright (c) Quark Framework. All rights reserved.
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using Quark.Abstractions;
 using Quark.Abstractions.Streaming;
 
@@ -14,10 +15,12 @@ public class StreamBroker
 {
     private readonly ConcurrentDictionary<string, List<StreamSubscription>> _implicitSubscriptions = new();
     private readonly IActorFactory? _actorFactory;
+    private readonly ILogger<StreamBroker>? _logger;
 
-    public StreamBroker(IActorFactory? actorFactory = null)
+    public StreamBroker(IActorFactory? actorFactory = null, ILogger<StreamBroker>? logger = null)
     {
         _actorFactory = actorFactory;
+        _logger = logger;
     }
 
     /// <summary>
@@ -95,9 +98,10 @@ public class StreamBroker
             
             if (dispatcher == null)
             {
-                // TODO: Add logging infrastructure and log warning
-                // Dispatcher not found - likely the actor doesn't have [QuarkStream] attribute
-                // or the source generator hasn't run yet
+                _logger?.LogWarning(
+                    "Dispatcher not found for actor type {ActorType}. " +
+                    "Ensure the actor has [QuarkStream] attribute and the source generator has run.",
+                    actorType.Name);
                 return;
             }
 
@@ -109,11 +113,11 @@ public class StreamBroker
         }
         catch (Exception ex)
         {
-            // TODO: Add logging infrastructure and log errors
-            // For now, we swallow exceptions to prevent one failing actor
-            // from breaking the entire stream delivery mechanism
-            // In production, this should be logged with: actor type, stream ID, message type, and exception details
-            _ = ex; // Acknowledge the variable to avoid unused warnings
+            _logger?.LogError(ex,
+                "Failed to deliver stream message to actor. ActorType: {ActorType}, StreamId: {StreamId}, MessageType: {MessageType}",
+                actorType.Name,
+                streamId,
+                typeof(T).Name);
         }
     }
 

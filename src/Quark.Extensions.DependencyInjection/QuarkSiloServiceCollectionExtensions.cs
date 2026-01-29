@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Quark.Abstractions;
 using Quark.Core.Actors;
 using Quark.Core.Reminders;
@@ -87,7 +88,8 @@ public static class QuarkSiloServiceCollectionExtensions
         builder.Services.AddSingleton(sp =>
         {
             var actorFactory = sp.GetRequiredService<IActorFactory>();
-            return new StreamBroker(actorFactory);
+            var logger = sp.GetService<ILogger<StreamBroker>>();
+            return new StreamBroker(actorFactory, logger);
         });
 
         return builder;
