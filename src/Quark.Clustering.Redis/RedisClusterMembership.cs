@@ -58,8 +58,8 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         var db = _redis.GetDatabase();
         var key = SiloKeyPrefix + siloInfo.SiloId;
         
-        // Store silo info in Redis
-        var data = System.Text.Json.JsonSerializer.Serialize(siloInfo);
+        // Store silo info in Redis using source-generated serialization (zero reflection)
+        var data = System.Text.Json.JsonSerializer.Serialize(siloInfo, QuarkJsonSerializerContext.Default.SiloInfo);
         await db.StringSetAsync(key, data, TimeSpan.FromSeconds(SiloTimeoutSeconds));
 
         // Add to local cache and hash ring
@@ -96,7 +96,8 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
             var data = await db.StringGetAsync(key);
             if (!data.IsNullOrEmpty)
             {
-                var silo = System.Text.Json.JsonSerializer.Deserialize<SiloInfo>(data.ToString());
+                // Use source-generated deserialization (zero reflection)
+                var silo = System.Text.Json.JsonSerializer.Deserialize(data.ToString(), QuarkJsonSerializerContext.Default.SiloInfo);
                 if (silo != null)
                 {
                     silos.Add(silo);
@@ -120,7 +121,8 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
         if (data.IsNullOrEmpty)
             return null;
 
-        return System.Text.Json.JsonSerializer.Deserialize<SiloInfo>(data.ToString());
+        // Use source-generated deserialization (zero reflection)
+        return System.Text.Json.JsonSerializer.Deserialize(data.ToString(), QuarkJsonSerializerContext.Default.SiloInfo);
     }
 
     /// <inheritdoc />
@@ -135,7 +137,8 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
             var updated = new SiloInfo(silo.SiloId, silo.Address, silo.Port, silo.Status);
             _silos[_currentSiloId] = updated;
             
-            var data = System.Text.Json.JsonSerializer.Serialize(updated);
+            // Use source-generated serialization (zero reflection)
+            var data = System.Text.Json.JsonSerializer.Serialize(updated, QuarkJsonSerializerContext.Default.SiloInfo);
             await db.StringSetAsync(key, data, TimeSpan.FromSeconds(SiloTimeoutSeconds));
         }
     }
