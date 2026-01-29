@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/examples/">
     <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
+    <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Quark.Core/Quark.Core.csproj" />

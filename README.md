@@ -110,9 +110,43 @@ public class CounterActor : ActorBase
 ### Core Components
 
 - **IActor**: Base interface for all actors
-- **ActorBase**: Abstract base class providing common actor functionality
+- **ISupervisor**: Interface for actors that can supervise child actors
+- **ActorBase**: Abstract base class providing common actor functionality and supervision support
 - **ActorFactory**: Factory for creating and managing actor instances
 - **ActorAttribute**: Marks classes for source generation
+- **SupervisionDirective**: Enum defining how to handle child actor failures (Resume, Restart, Stop, Escalate)
+- **ChildFailureContext**: Context information about a child actor failure
+
+### Supervision Hierarchy
+
+Quark supports Akka-style supervision hierarchies within the virtual actor model:
+
+```csharp
+// Create a supervisor that can manage child actors
+var factory = new ActorFactory();
+var supervisor = factory.CreateActor<SupervisorActor>("supervisor-1");
+
+// Spawn child actors under the supervisor
+var child = await supervisor.SpawnChildAsync<WorkerActor>("worker-1");
+
+// Get all children
+var children = supervisor.GetChildren();
+
+// Handle child failures with custom strategies
+public override Task<SupervisionDirective> OnChildFailureAsync(
+    ChildFailureContext context,
+    CancellationToken cancellationToken = default)
+{
+    return context.Exception switch
+    {
+        TimeoutException => Task.FromResult(SupervisionDirective.Resume),
+        OutOfMemoryException => Task.FromResult(SupervisionDirective.Stop),
+        _ => Task.FromResult(SupervisionDirective.Restart)
+    };
+}
+```
+
+See the `examples/Quark.Examples.Supervision` project for a complete example.
 
 ### Source Generator
 
@@ -160,6 +194,12 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 ## Roadmap
 
+- [x] **Phase 1: Core Actor Abstractions** - Lifecycle management and supervision hierarchies
+  - [x] OnActivateAsync and OnDeactivateAsync lifecycle methods
+  - [x] Supervision directives (Resume, Restart, Stop, Escalate)
+  - [x] Parent-child actor relationships with SpawnChildAsync
+  - [x] Child failure handling with OnChildFailureAsync
+  - [x] GetChildren for accessing supervised actors
 - [ ] Complete source generator integration with ActorFactory
 - [ ] Add distributed actor support
 - [ ] Implement grain persistence
