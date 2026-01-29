@@ -108,7 +108,8 @@ Quark is a high-performance, distributed virtual actor framework for .NET 10+ wi
 
 - Explicit Streams (manual Pub/Sub)
 - Implicit Streams (auto-activation)
-- Backpressure and flow control
+
+**Note:** Advanced backpressure and flow control deferred to Phase 8.
 
 ---
 

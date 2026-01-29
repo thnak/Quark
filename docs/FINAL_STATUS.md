@@ -205,23 +205,23 @@ Complete documentation available:
 
 ## 🔮 Future Enhancements
 
-### Phase 4: Persistence & Temporal Services
-- Reminders (persistent timers)
-- Timers (volatile)
-- State providers (SQL, Redis, Mongo)
-- Event sourcing support
+### Phase 7: Production Observability & Operations
+- Advanced cluster health monitoring with automatic silo eviction
+- Enhanced heartbeat monitoring with health scores
+- Split-brain detection and graceful degradation
 
-### Phase 5: Reactive Streaming
-- Explicit streams (Pub/Sub)
-- Implicit streams (auto-activation)
-- Backpressure and flow control
+### Phase 8: Performance & Scalability Enhancements
+- Smart routing for direct local invocation
+- Connection reuse optimization for shared Redis connections
+- Adaptive backpressure and flow control for streams
+- Zero-allocation messaging and SIMD acceleration
+- Dynamic actor rebalancing and massive scale support
 
-### Advanced Cluster Health (Future)
-- Health scores per silo
-- Advanced heartbeat monitoring
-- Automatic silo eviction
-- Split-brain detection
-- Graceful degradation
+### Phase 9: Developer Experience & Tooling
+- Enhanced analyzers with code fix providers
+- Protobuf proxy generation for type-safe remote calls
+- Quark CLI for development and testing
+- Visual Studio extension with rich IDE integration
 
 ---
 
