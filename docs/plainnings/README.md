@@ -60,7 +60,7 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 **Status:** Core reliability features complete. 77/77 tests passing.
 
-### **Phase 4: Persistence & Temporal Services** 🚧 IN PROGRESS
+### **Phase 4: Persistence & Temporal Services** ✅ COMPLETED
 
 *Focus: Making state and time durable.*
 
@@ -70,12 +70,12 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * \[✓\] **Distributed Scheduler:** ReminderTickManager polls reminder table using consistent hashing.
 * \[✓\] **Reminder Abstractions:** IReminderTable, IRemindable interfaces.
 * \[✓\] **InMemoryReminderTable:** Implementation with consistent hash ring integration.
+* \[✓\] **Timers:** Lightweight, in-memory volatile timers.
 * \[ \] **State Providers:** Redis and Postgres storage with optimistic concurrency.
 * \[ \] **Reminder Storage:** Redis and Postgres reminder tables.
-* \[ \] **Timers:** Lightweight, in-memory volatile timers.
 * \[ \] **Event Sourcing:** Native journaling support for audit-logs and state replay.
 
-**Status:** Core features complete (94/94 tests passing). Storage providers next.
+**Status:** Core features complete with comprehensive tests (138/138 tests passing). Storage providers and event sourcing are deferred to future phases.
 
 ### **Phase 5: Reactive Streaming**
 

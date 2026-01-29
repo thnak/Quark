@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Quark.Core/Quark.Core.csproj" />
+    <ProjectReference Include="../../src/Quark.Core.Persistence/Quark.Core.Persistence.csproj" />
+    <ProjectReference Include="../../src/Quark.Core.Reminders/Quark.Core.Reminders.csproj" />
+    <ProjectReference Include="../../src/Quark.Core.Timers/Quark.Core.Timers.csproj" />
     <ProjectReference Include="../../src/Quark.Networking.Abstractions/Quark.Networking.Abstractions.csproj" />
     <ProjectReference Include="../../src/Quark.Clustering.Redis/Quark.Clustering.Redis.csproj" />
     <ProjectReference Include="../../src/Quark.Transport.Grpc/Quark.Transport.Grpc.csproj" />
