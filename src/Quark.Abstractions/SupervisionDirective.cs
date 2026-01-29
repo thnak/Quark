@@ -3,7 +3,7 @@ namespace Quark.Abstractions;
 /// <summary>
 /// Defines the supervision directive to be applied when a child actor fails.
 /// </summary>
-public enum SupervisionDirective
+public enum SupervisionDirective : byte
 {
     /// <summary>
     /// Resume the child actor, keeping its current state.

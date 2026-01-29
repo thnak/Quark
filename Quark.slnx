@@ -16,6 +16,12 @@
       <Project Path="src/Quark.Generators/Quark.Generators.csproj" />
       <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
     </Folder>
+    <Project Path="src/Quark.Abstractions/Quark.Abstractions.csproj" />
+    <Project Path="src/Quark.Core.Actors/Quark.Core.Actors.csproj" />
+    <Project Path="src/Quark.Core.Persistence/Quark.Core.Persistence.csproj" />
+    <Project Path="src/Quark.Core/Quark.Core.csproj" />
+    <Project Path="src/Quark.Generators/Quark.Generators.csproj" />
+    <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Quark.Tests/Quark.Tests.csproj" />
