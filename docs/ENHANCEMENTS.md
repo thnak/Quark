@@ -220,16 +220,17 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ Async return type validation (Task, ValueTask) - `ActorMethodSignatureAnalyzer` (QUARK004)
   - ✅ Analyzer detects synchronous methods in actor classes
   - ✅ Works with [Actor] attribute and ActorBase-derived classes
-  - 🚧 Parameter serializability checks (future enhancement)
+  - ✅ Parameter serializability checks - `ActorParameterSerializabilityAnalyzer` (QUARK006)
+  - ✅ Missing [Actor] attribute detection - `MissingActorAttributeAnalyzer` (QUARK005)
   - 🚧 Reentrancy detection (circular call warnings) (future enhancement)
   - 🚧 Performance anti-pattern detection (future enhancement)
-* [ ] **Smart Code Fixes:** IDE-integrated quick fixes
-  - 🚧 Convert sync methods to async (future enhancement)
-  - 🚧 Add missing [Actor] attributes (future enhancement)
+* [~] **Smart Code Fixes:** IDE-integrated quick fixes ✅ PARTIALLY COMPLETED
+  - ✅ Convert sync methods to async - `ActorMethodSignatureCodeFixProvider` (Task/ValueTask options)
+  - ✅ Add missing [Actor] attributes - `MissingActorAttributeCodeFixProvider`
   - 🚧 Generate state properties automatically (future enhancement)
   - 🚧 Scaffold supervision hierarchies (future enhancement)
 
-**Status:** Actor method signature analyzer complete. Protobuf generation and code fixes planned for future releases.
+**Status:** Enhanced analyzers with three new diagnostic rules (QUARK004, QUARK005, QUARK006) and two code fix providers. Protobuf generation and additional code fixes planned for future releases.
 
 ### 9.2 Development Tools
 
