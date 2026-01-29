@@ -28,12 +28,20 @@ public sealed class ActorFactory : IActorFactory
             throw new ArgumentException("Actor ID cannot be null or whitespace.", nameof(actorId));
         }
 
-        // TODO: Integrate with source-generated factory code for AOT compatibility
-        // The source generator creates factory methods that should be called here
-        // instead of using reflection-based Activator.CreateInstance.
-        // This is a temporary placeholder until the integration is complete.
-        var actor = (TActor)Activator.CreateInstance(typeof(TActor), actorId)!;
-        return actor;
+        // Try to create actor with factory support for child spawning
+        // First, try with two parameters (actorId, factory)
+        try
+        {
+            var actor = (TActor)Activator.CreateInstance(typeof(TActor), actorId, this)!;
+            return actor;
+        }
+        catch (MissingMethodException)
+        {
+            // Fall back to single parameter constructor (actorId only)
+            // TODO: Integrate with source-generated factory code for AOT compatibility
+            var actor = (TActor)Activator.CreateInstance(typeof(TActor), actorId)!;
+            return actor;
+        }
     }
 
     /// <inheritdoc />
