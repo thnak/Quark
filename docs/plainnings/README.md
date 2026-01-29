@@ -77,13 +77,17 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 **Status:** Core features complete with comprehensive tests (138/138 tests passing). Storage providers and event sourcing are deferred to future phases.
 
-### **Phase 5: Reactive Streaming**
+### **Phase 5: Reactive Streaming** ✅ COMPLETED
 
 *Focus: Decoupled data broadcasting.*
 
-* \[ \] **Explicit Streams:** Manual Pub/Sub via StreamID.  
-* \[ \] **Implicit Streams:** Automatically activate actors based on stream namespaces.  
-* \[ \] **Backpressure:** Adaptive flow control for slow consumers.
+* \[✓\] **Explicit Streams:** Manual Pub/Sub via StreamID.  
+* \[✓\] **Implicit Streams:** Automatically activate actors based on stream namespaces.  
+* \[✓\] **Source Generator:** Auto-generates stream-to-actor mappings at build time.
+* \[✓\] **Analyzer:** Validates stream attribute usage and namespace formats.
+* \[ \] **Backpressure:** Adaptive flow control for slow consumers (future enhancement).
+
+**Status:** All core features complete. 26 streaming tests passing (164 total tests passing).
 
 ## **🏗️ Project Structure**
 
