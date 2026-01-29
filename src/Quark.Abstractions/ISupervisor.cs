@@ -1,14 +1,12 @@
-namespace Quark.Core;
+namespace Quark.Abstractions;
 
 /// <summary>
 /// Interface for actors that can supervise child actors.
-/// Provides lifecycle management and failure handling for child actors.
 /// </summary>
 public interface ISupervisor : IActor
 {
     /// <summary>
     /// Called when a child actor fails.
-    /// The supervisor should return a directive indicating how to handle the failure.
     /// </summary>
     /// <param name="context">Context information about the child failure.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
@@ -19,7 +17,6 @@ public interface ISupervisor : IActor
 
     /// <summary>
     /// Spawns a new child actor under this supervisor.
-    /// The child will be monitored and supervised by this actor.
     /// </summary>
     /// <typeparam name="TChild">The type of child actor to spawn.</typeparam>
     /// <param name="actorId">The unique identifier for the child actor.</param>

@@ -1,4 +1,5 @@
-﻿using Quark.Core;
+﻿using Quark.Abstractions;
+using Quark.Core.Actors;
 
 Console.WriteLine("=== Quark Actor Framework - Basic Example ===");
 Console.WriteLine();

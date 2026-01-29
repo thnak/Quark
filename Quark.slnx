@@ -4,8 +4,18 @@
     <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/Quark.Core/Quark.Core.csproj" />
-    <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
+    <Folder Name="Abstractions">
+      <Project Path="src/Quark.Abstractions/Quark.Abstractions.csproj" />
+    </Folder>
+    <Folder Name="Core">
+      <Project Path="src/Quark.Core/Quark.Core.csproj" />
+      <Project Path="src/Quark.Core.Actors/Quark.Core.Actors.csproj" />
+      <Project Path="src/Quark.Core.Persistence/Quark.Core.Persistence.csproj" />
+    </Folder>
+    <Folder Name="Generators">
+      <Project Path="src/Quark.Generators/Quark.Generators.csproj" />
+      <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
+    </Folder>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Quark.Tests/Quark.Tests.csproj" />
