@@ -71,9 +71,9 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * \[✓\] **Reminder Abstractions:** IReminderTable, IRemindable interfaces.
 * \[✓\] **InMemoryReminderTable:** Implementation with consistent hash ring integration.
 * \[✓\] **Timers:** Lightweight, in-memory volatile timers.
-* \[ \] **State Providers:** Redis and Postgres storage with optimistic concurrency.
-* \[ \] **Reminder Storage:** Redis and Postgres reminder tables.
-* \[ \] **Event Sourcing:** Native journaling support for audit-logs and state replay.
+* \[ \] **State Providers:** Redis and Postgres storage with optimistic concurrency (deferred).
+* \[ \] **Reminder Storage:** Redis and Postgres reminder tables (deferred).
+* \[ \] **Event Sourcing:** Native journaling support for audit-logs and state replay (deferred).
 
 **Status:** Core features complete with comprehensive tests (138/138 tests passing). Storage providers and event sourcing are deferred to future phases.
 
@@ -89,13 +89,123 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 **Status:** All core features complete. 26 streaming tests passing (164 total tests passing).
 
+### **Phase 6: Silo Host & Client Gateway** 🚧 PLANNING
+
+*Focus: Production-ready hosting and client connectivity.*
+
+**Missing Components:**
+
+1. **IQuarkSilo (Silo Host)** - The orchestrator that manages the actor runtime lifecycle:
+   * \[ \] **Lifecycle Management:** Start/Stop orchestration for all subsystems
+   * \[ \] **ReminderTickManager Orchestration:** Start when silo becomes "Active"
+   * \[ \] **StreamBroker Orchestration:** Start when silo becomes "Active"  
+   * \[ \] **Status Transitions:** Joining → Active → Leaving → Dead
+   * \[ \] **Graceful Shutdown Workflow:**
+     - Mark silo as "Leaving" in Redis Silo Table
+     - Deactivate all local actors (trigger OnDeactivateAsync)
+     - Save all actor state (trigger SaveStateAsync)
+     - Wait for GrpcTransport to drain current calls
+     - Unregister from cluster membership
+   * \[ \] **Actor Registry:** Track all active actors on this silo
+   * \[ \] **Heartbeat Management:** Maintain cluster membership TTL
+
+2. **IClusterClient (Lightweight Gateway)** - Client-side connection without hosting actors:
+   * \[ \] **Minimal Footprint:** No Mailbox, no TickManager, no local actors
+   * \[ \] **ConsistentHashRing:** Know which Silo to route requests to
+   * \[ \] **gRPC Client:** Send actor invocations to appropriate Silos
+   * \[ \] **Smart Routing:** If IClusterClient runs inside a Silo host, directly invoke local actors for better performance
+   * \[ \] **Connection Pooling:** Reuse gRPC connections across requests
+   * \[ \] **Retry Logic:** Handle transient failures and silo unavailability
+
+3. **IServiceCollection Extensions** - Clean DI registration:
+   * \[ \] **AddQuarkSilo():** Register all silo components with lifecycle management
+   * \[ \] **AddQuarkClient():** Register lightweight client gateway
+   * \[ \] **Connection Reuse:** Support for reusing existing connections (e.g., IConnectionMultiplexer from Redis)
+   * \[ \] **Configuration Options:** Fluent API for silo and client configuration
+   * \[ \] **Health Checks:** ASP.NET Core health check integration
+
+4. **Actor Method Signature Analyzer** - Enforce async return types:
+   * \[ \] **Allowed Types:** Task, ValueTask, Task&lt;T&gt;, ValueTask&lt;T&gt;
+   * \[ \] **Analyzer Rule:** Warn/Error on synchronous method signatures
+   * \[ \] **Code Fix Provider:** Suggest converting void methods to Task
+
+5. **Protobuf Proxy Type Generation** - Type-safe remote calls:
+   * \[ \] **Source Generator:** Generate protobuf message types from actor interfaces
+   * \[ \] **Proxy Generation:** Create client proxies that serialize to protobuf
+   * \[ \] **Type Safety:** Compile-time verification of actor contracts
+
+**Architecture Overview:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Application Layer                    │
+├─────────────────────────────────────────────────────────┤
+│  IClusterClient (Lightweight)  │  IQuarkSilo (Full)    │
+│  - ConsistentHashRing          │  - Actor Registry     │
+│  - gRPC Client                 │  - Mailbox Management │
+│  - Smart Routing               │  - ReminderTickMgr    │
+│                                 │  - StreamBroker       │
+├─────────────────────────────────────────────────────────┤
+│              IServiceCollection Extensions              │
+│  - AddQuarkSilo(options)                                │
+│  - AddQuarkClient(options)                              │
+│  - Connection Pooling & Configuration                   │
+├─────────────────────────────────────────────────────────┤
+│            Shared Infrastructure (Phases 1-5)           │
+│  - Actor Runtime                                        │
+│  - Consistent Hashing                                   │
+│  - gRPC Transport                                       │
+│  - Redis Clustering                                     │
+│  - Persistence & Reminders                              │
+│  - Streaming                                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Graceful Shutdown Flow:**
+
+```
+1. Host receives SIGTERM/SIGINT
+2. IQuarkSilo.StopAsync() called
+3. Update Redis: SiloStatus = Leaving
+4. Stop accepting new actor activations
+5. For each active actor:
+   a. Call actor.OnDeactivateAsync()
+   b. If stateful: Call SaveStateAsync()
+6. Wait for in-flight gRPC calls to complete (with timeout)
+7. Stop ReminderTickManager
+8. Stop StreamBroker  
+9. Unregister from Redis cluster membership
+10. Dispose all resources
+```
+
+**Key Design Considerations:**
+
+* **Connection Reuse:** Both IQuarkSilo and IClusterClient should accept existing IConnectionMultiplexer to avoid multiple Redis connections
+* **Smart Client:** When IClusterClient detects it's running inside a Silo host, bypass network calls and invoke actors directly
+* **AOT Compatible:** All components must work with Native AOT (no reflection)
+* **Testability:** Support in-memory testing without Redis/gRPC dependencies
+* **Observability:** Built-in metrics and distributed tracing support
+
+**Status:** Planning phase. No implementation yet.
+
 ## **🏗️ Project Structure**
 
-* Quark.Abstractions: Core interfaces, attributes, and shared models. (No dependencies).  
-* Quark.Generators: The Roslyn Incremental Source Generator.  
-* Quark.Core: The actor runtime, mailbox, and local scheduling.  
-* Quark.Transport.Quic: UDP/QUIC networking implementation.  
-* Quark.Clustering.\*: Membership providers (Redis, Kubernetes, etc.).
+* **Quark.Abstractions:** Core interfaces, attributes, and shared models. (No dependencies).  
+* **Quark.Generators:** The Roslyn Incremental Source Generator for actors, state, streams, and logging.  
+* **Quark.Analyzers:** Roslyn analyzers for stream validation and method signature enforcement.
+* **Quark.Core.Actors:** The actor runtime, mailbox, and local scheduling.  
+* **Quark.Core.Persistence:** State management abstractions and in-memory storage.
+* **Quark.Core.Reminders:** Persistent reminder system with distributed tick manager.
+* **Quark.Core.Timers:** Lightweight volatile timer implementation.
+* **Quark.Core.Streaming:** Reactive streaming with pub/sub and auto-activation.
+* **Quark.Networking.Abstractions:** Transport and clustering interfaces.
+* **Quark.Transport.Grpc:** gRPC bi-directional streaming transport over HTTP/3.
+* **Quark.Clustering.Redis:** Redis-based cluster membership with consistent hashing.
+
+**Missing (Phase 6):**
+* **Quark.Hosting:** IQuarkSilo host with lifecycle orchestration.
+* **Quark.Client:** IClusterClient lightweight gateway.
+* **Quark.Extensions.DependencyInjection:** IServiceCollection extensions for clean setup.
 
 ## **🛠️ Requirements**
 
@@ -105,6 +215,13 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 
 ## **🤝 Contributing**
 
-Quark is currently in **Phase 0 (Architectural Planning)**. We welcome architectural feedback and discussions regarding the gRPC/QUIC transport layer.
+Quark has successfully completed **Phases 1-5** with 164/164 tests passing and is now in **Phase 6 Planning** for Silo Host and Client Gateway components.
+
+We welcome contributions in the following areas:
+* IQuarkSilo host implementation with graceful shutdown
+* IClusterClient lightweight gateway with smart routing
+* IServiceCollection extensions for clean DI registration
+* Actor method signature analyzers
+* Protobuf proxy generation for type-safe remote calls
 
 *Generated by the Quark Development Team.*
