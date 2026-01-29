@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Quark.Core/Quark.Core.csproj" />
+    <Project Path="src/Quark.SourceGenerator/Quark.SourceGenerator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Quark.Tests/Quark.Tests.csproj" />
+  </Folder>
+</Solution>

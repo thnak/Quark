@@ -1,0 +1,41 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    
+    <!-- Repository Information -->
+    <Authors>thnak</Authors>
+    <Company>Quark</Company>
+    <Copyright>Copyright © $(Company) 2026</Copyright>
+    <RepositoryUrl>https://github.com/thnak/Quark</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/thnak/Quark</PackageProjectUrl>
+    <PackageTags>actor;orleans;aot;native-aot;distributed;framework;high-performance</PackageTags>
+    
+    <!-- Version Information -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>alpha</VersionSuffix>
+  </PropertyGroup>
+
+  <!-- Enable AOT Support for non-test projects -->
+  <PropertyGroup Condition="'$(IsPublishable)' == 'true'">
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+  </PropertyGroup>
+  
+  <!-- Parallel Build Configuration -->
+  <PropertyGroup>
+    <BuildInParallel>true</BuildInParallel>
+    <ContinueOnError>false</ContinueOnError>
+  </PropertyGroup>
+</Project>
