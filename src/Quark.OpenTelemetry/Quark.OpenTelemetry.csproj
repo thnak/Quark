@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <IsAotCompatible>true</IsAotCompatible>
+        <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="OpenTelemetry" Version="1.10.2" />
+        <PackageReference Include="OpenTelemetry.Api" Version="1.10.2" />
+        <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.10.2" />
+        <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.10.0-beta.1" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.10.2" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.10.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Quark.Abstractions/Quark.Abstractions.csproj" />
+        <ProjectReference Include="../Quark.Hosting/Quark.Hosting.csproj" />
+        <ProjectReference Include="../Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
+    </ItemGroup>
+
+</Project>
