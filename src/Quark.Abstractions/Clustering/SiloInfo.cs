@@ -1,3 +1,5 @@
+using Quark.Abstractions.Migration;
+
 namespace Quark.Abstractions.Clustering;
 
 /// <summary>
@@ -15,7 +17,8 @@ public sealed class SiloInfo
         SiloStatus status = SiloStatus.Active,
         string? regionId = null,
         string? zoneId = null,
-        string? shardGroupId = null)
+        string? shardGroupId = null,
+        IReadOnlyDictionary<string, AssemblyVersionInfo>? actorTypeVersions = null)
     {
         SiloId = siloId ?? throw new ArgumentNullException(nameof(siloId));
         Address = address ?? throw new ArgumentNullException(nameof(address));
@@ -25,6 +28,7 @@ public sealed class SiloInfo
         RegionId = regionId;
         ZoneId = zoneId;
         ShardGroupId = shardGroupId;
+        ActorTypeVersions = actorTypeVersions;
     }
 
     /// <summary>
@@ -75,6 +79,12 @@ public sealed class SiloInfo
     ///     Null if not using shard groups.
     /// </summary>
     public string? ShardGroupId { get; }
+
+    /// <summary>
+    ///     Phase 10.1.1: Gets the actor type versions supported by this silo.
+    ///     Null if version tracking is not enabled.
+    /// </summary>
+    public IReadOnlyDictionary<string, AssemblyVersionInfo>? ActorTypeVersions { get; }
 
     /// <summary>
     ///     Gets the endpoint string in the format "address:port".

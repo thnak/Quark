@@ -7,8 +7,8 @@ This document describes the implementation status and usage of Phase 10.1.1 feat
 Phase 10.1.1 enables enterprise-grade deployment capabilities for production updates without service disruption. The implementation is split into three main areas:
 
 1. **Graceful Shutdown** ✅ COMPLETED (already implemented in QuarkSilo)
-2. **Live Actor Migration** 🚧 PARTIAL (abstractions and core implementations complete)
-3. **Version-Aware Placement** 🚧 PARTIAL (abstractions and core implementations complete)
+2. **Live Actor Migration** ✅ COMPLETED (abstractions, core implementations, and integrations complete)
+3. **Version-Aware Placement** ✅ COMPLETED (abstractions, core implementations, and cluster synchronization complete)
 
 ## Features Implemented
 
@@ -200,8 +200,9 @@ All implementations include comprehensive unit tests:
 - **VersionCompatibilityCheckerTests**: 19 tests covering all compatibility modes and edge cases
 - **ActorMigrationCoordinatorTests**: 13 tests covering migration lifecycle, status tracking, reminder migration
 - **VersionTrackerTests**: 17 tests covering version registration, capability tracking, silo discovery
+- **ClusterVersionTrackerTests**: 14 tests covering cluster-synchronized version tracking, Redis integration, and input validation
 
-**Total: 61 new tests, all passing ✅**
+**Total: 75 new tests, all passing ✅**
 
 Run tests:
 
@@ -210,6 +211,7 @@ dotnet test --filter "FullyQualifiedName~ActorActivityTrackerTests"
 dotnet test --filter "FullyQualifiedName~VersionCompatibilityCheckerTests"
 dotnet test --filter "FullyQualifiedName~ActorMigrationCoordinatorTests"
 dotnet test --filter "FullyQualifiedName~VersionTrackerTests"
+dotnet test --filter "FullyQualifiedName~ClusterVersionTrackerTests"
 ```
 
 ## Remaining Work
@@ -219,7 +221,7 @@ dotnet test --filter "FullyQualifiedName~VersionTrackerTests"
 1. **Mailbox Integration**: ✅ COMPLETED - Wire up `IActorActivityTracker` with mailbox operations to automatically track message queue depth
 2. **Silo Lifecycle Integration**: ✅ COMPLETED - Integrate migration coordinator with QuarkSilo shutdown sequence
 3. **Automatic Version Detection**: ✅ COMPLETED - Auto-detect assembly versions on silo startup using source generator
-4. **Cluster Synchronization**: Sync version information via Redis cluster membership
+4. **Cluster Synchronization**: ✅ COMPLETED - Sync version information via Redis cluster membership
 
 ### Advanced Features
 
@@ -443,6 +445,101 @@ The silo lifecycle integration coordinates with:
 
 This integration enables zero-downtime rolling upgrades - actors are gracefully moved to other silos before the old silo shuts down.
 
+## Cluster-Synchronized Version Tracking ✅
+
+Phase 10.1.1 now includes automatic cluster-wide synchronization of version information via Redis cluster membership. When cluster membership is available (e.g., `RedisClusterMembership`), version information is automatically propagated across all silos in the cluster.
+
+### How It Works
+
+1. **Automatic Detection**: When `AddVersionAwarePlacement()` is called, it detects if `IClusterMembership` is registered
+2. **ClusterVersionTracker**: If cluster membership is available, uses `ClusterVersionTracker` instead of local `VersionTracker`
+3. **SiloInfo Enhancement**: Extended `SiloInfo` to include `ActorTypeVersions` property for version metadata
+4. **Redis Serialization**: Added JSON source generation support for version types in `QuarkJsonSerializerContext`
+5. **Heartbeat Preservation**: Updated `UpdateHeartbeatAsync` to preserve version information during heartbeat updates
+
+### Implementation Details
+
+**SiloInfo Structure:**
+```csharp
+public sealed class SiloInfo
+{
+    // Existing properties...
+    
+    /// <summary>
+    /// Phase 10.1.1: Actor type versions supported by this silo.
+    /// Null if version tracking is not enabled.
+    /// </summary>
+    public IReadOnlyDictionary<string, AssemblyVersionInfo>? ActorTypeVersions { get; }
+}
+```
+
+**ClusterVersionTracker:**
+- Reads from and writes to cluster membership
+- Automatically syncs version info across silos
+- Queries all active silos for version-aware placement decisions
+
+**Automatic Selection:**
+```csharp
+// ZeroDowntimeExtensions.AddVersionAwarePlacement()
+services.TryAddSingleton<IVersionTracker>(sp =>
+{
+    var clusterMembership = sp.GetService<IClusterMembership>();
+    
+    if (clusterMembership != null)
+    {
+        // Use cluster-synchronized tracking
+        return new ClusterVersionTracker(logger, clusterMembership);
+    }
+    else
+    {
+        // Use local-only tracking
+        return new VersionTracker(logger);
+    }
+});
+```
+
+### Usage
+
+**No Code Changes Required!** The cluster synchronization works automatically:
+
+```csharp
+// Register Redis cluster membership
+services.AddSingleton<IQuarkClusterMembership>(sp =>
+    new RedisClusterMembership(redis, siloId));
+
+// Add version-aware placement (automatically uses cluster sync)
+services.AddVersionAwarePlacement();
+
+// Register versions (automatically synced to cluster)
+services.RegisterActorVersions(Quark.Generated.ActorVersionRegistry.VersionMap);
+```
+
+### Benefits
+
+- **Zero Configuration**: Cluster sync is automatic when cluster membership is available
+- **Fallback Support**: Works with local tracking when cluster membership is not available
+- **Redis Integration**: Leverages existing Redis cluster membership for storage
+- **AOT Compatible**: All serialization uses source-generated JSON (zero reflection)
+- **Real-Time Sync**: Version changes propagate immediately via Redis Pub/Sub
+- **Query Efficiency**: Can query all silos' versions without network round-trips
+
+### Testing
+
+Comprehensive unit tests covering cluster-synchronized version tracking:
+
+- **ClusterVersionTrackerTests**: 14 tests covering:
+  - Version registration with cluster membership updates
+  - Silo capability queries
+  - Compatible silo discovery
+  - Version synchronization across cluster
+  - Input validation (null/empty parameter handling)
+
+**Run tests:**
+```bash
+dotnet test --filter "FullyQualifiedName~ClusterVersionTrackerTests"
+```
+
+All 14 tests passing ✅
 
 
 ## Architecture Notes
