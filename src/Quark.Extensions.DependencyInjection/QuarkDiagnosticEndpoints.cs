@@ -162,6 +162,103 @@ public static class QuarkDiagnosticEndpoints
         .WithName("GetSiloStatus")
         .WithTags("Quark Diagnostics");
 
+        // GET /quark/dlq - View dead letter queue messages
+        endpoints.MapGet($"{basePath}/dlq", async (HttpContext context) =>
+        {
+            var dlq = context.RequestServices.GetService<Quark.Abstractions.IDeadLetterQueue>();
+            if (dlq == null)
+            {
+                context.Response.StatusCode = 503;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Dead Letter Queue not available"
+                });
+                return;
+            }
+
+            var actorIdFilter = context.Request.Query["actorId"].ToString();
+            var messages = string.IsNullOrEmpty(actorIdFilter)
+                ? await dlq.GetAllAsync()
+                : await dlq.GetByActorAsync(actorIdFilter);
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                totalMessages = dlq.MessageCount,
+                filteredCount = messages.Count,
+                messages = messages.Select(m => new
+                {
+                    messageId = m.Message.MessageId,
+                    actorId = m.ActorId,
+                    enqueuedAt = m.EnqueuedAt,
+                    retryCount = m.RetryCount,
+                    errorType = m.Exception.GetType().Name,
+                    errorMessage = m.Exception.Message,
+                    correlationId = m.Message.CorrelationId
+                })
+            }, new JsonSerializerOptions { WriteIndented = true });
+        })
+        .WithName("GetDeadLetterQueue")
+        .WithTags("Quark Diagnostics");
+
+        // DELETE /quark/dlq - Clear all dead letter messages
+        endpoints.MapDelete($"{basePath}/dlq", async (HttpContext context) =>
+        {
+            var dlq = context.RequestServices.GetService<Quark.Abstractions.IDeadLetterQueue>();
+            if (dlq == null)
+            {
+                context.Response.StatusCode = 503;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Dead Letter Queue not available"
+                });
+                return;
+            }
+
+            await dlq.ClearAsync();
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "Dead Letter Queue cleared successfully"
+            });
+        })
+        .WithName("ClearDeadLetterQueue")
+        .WithTags("Quark Diagnostics");
+
+        // DELETE /quark/dlq/{messageId} - Remove specific dead letter message
+        endpoints.MapDelete($"{basePath}/dlq/{{messageId}}", async (HttpContext context, string messageId) =>
+        {
+            var dlq = context.RequestServices.GetService<Quark.Abstractions.IDeadLetterQueue>();
+            if (dlq == null)
+            {
+                context.Response.StatusCode = 503;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Dead Letter Queue not available"
+                });
+                return;
+            }
+
+            var removed = await dlq.RemoveAsync(messageId);
+
+            if (removed)
+            {
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    message = "Message removed successfully"
+                });
+            }
+            else
+            {
+                context.Response.StatusCode = 404;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Message not found"
+                });
+            }
+        })
+        .WithName("RemoveDeadLetterMessage")
+        .WithTags("Quark Diagnostics");
+
         return endpoints;
     }
 }
