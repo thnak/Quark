@@ -251,4 +251,82 @@ public class ClusterVersionTrackerTests
         await Assert.ThrowsAsync<ArgumentNullException>(
             async () => await tracker.RegisterSiloVersionsAsync(null!));
     }
+
+    [Fact]
+    public async Task GetSiloCapabilitiesAsync_WithNullSiloId_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var logger = NullLogger<ClusterVersionTracker>.Instance;
+        var mockMembership = new Mock<IClusterMembership>();
+        var tracker = new ClusterVersionTracker(logger, mockMembership.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            async () => await tracker.GetSiloCapabilitiesAsync(null!));
+    }
+
+    [Fact]
+    public async Task GetSiloCapabilitiesAsync_WithEmptySiloId_ThrowsArgumentException()
+    {
+        // Arrange
+        var logger = NullLogger<ClusterVersionTracker>.Instance;
+        var mockMembership = new Mock<IClusterMembership>();
+        var tracker = new ClusterVersionTracker(logger, mockMembership.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            async () => await tracker.GetSiloCapabilitiesAsync(string.Empty));
+    }
+
+    [Fact]
+    public async Task GetActorTypeVersionAsync_WithNullActorType_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var logger = NullLogger<ClusterVersionTracker>.Instance;
+        var mockMembership = new Mock<IClusterMembership>();
+        var tracker = new ClusterVersionTracker(logger, mockMembership.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            async () => await tracker.GetActorTypeVersionAsync(null!));
+    }
+
+    [Fact]
+    public async Task GetActorTypeVersionAsync_WithEmptyActorType_ThrowsArgumentException()
+    {
+        // Arrange
+        var logger = NullLogger<ClusterVersionTracker>.Instance;
+        var mockMembership = new Mock<IClusterMembership>();
+        var tracker = new ClusterVersionTracker(logger, mockMembership.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            async () => await tracker.GetActorTypeVersionAsync(string.Empty));
+    }
+
+    [Fact]
+    public async Task FindCompatibleSilosAsync_WithNullActorType_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var logger = NullLogger<ClusterVersionTracker>.Instance;
+        var mockMembership = new Mock<IClusterMembership>();
+        var tracker = new ClusterVersionTracker(logger, mockMembership.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            async () => await tracker.FindCompatibleSilosAsync(null!));
+    }
+
+    [Fact]
+    public async Task FindCompatibleSilosAsync_WithEmptyActorType_ThrowsArgumentException()
+    {
+        // Arrange
+        var logger = NullLogger<ClusterVersionTracker>.Instance;
+        var mockMembership = new Mock<IClusterMembership>();
+        var tracker = new ClusterVersionTracker(logger, mockMembership.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            async () => await tracker.FindCompatibleSilosAsync(string.Empty));
+    }
 }

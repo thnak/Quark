@@ -52,7 +52,6 @@ public static class ZeroDowntimeExtensions
         // Register version tracker with factory that chooses between local and cluster-aware implementations
         services.TryAddSingleton<IVersionTracker>(sp =>
         {
-            var logger = sp.GetRequiredService<ILogger<VersionTracker>>();
             var clusterMembership = sp.GetService<Quark.Abstractions.Clustering.IClusterMembership>();
             
             if (clusterMembership != null)
@@ -64,7 +63,8 @@ public static class ZeroDowntimeExtensions
             else
             {
                 // No cluster membership - use local-only version tracking
-                return new VersionTracker(logger);
+                var localLogger = sp.GetRequiredService<ILogger<VersionTracker>>();
+                return new VersionTracker(localLogger);
             }
         });
         

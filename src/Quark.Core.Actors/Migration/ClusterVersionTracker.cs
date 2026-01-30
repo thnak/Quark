@@ -12,7 +12,7 @@ public sealed class ClusterVersionTracker : IVersionTracker
 {
     private readonly ILogger<ClusterVersionTracker> _logger;
     private readonly IClusterMembership _clusterMembership;
-    private IReadOnlyDictionary<string, AssemblyVersionInfo>? _currentSiloVersions;
+    private volatile IReadOnlyDictionary<string, AssemblyVersionInfo>? _currentSiloVersions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClusterVersionTracker"/> class.
@@ -83,6 +83,8 @@ public sealed class ClusterVersionTracker : IVersionTracker
         string siloId,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(siloId);
+
         var silo = await _clusterMembership.GetSiloAsync(siloId, cancellationToken);
         if (silo?.ActorTypeVersions == null)
         {
@@ -115,8 +117,10 @@ public sealed class ClusterVersionTracker : IVersionTracker
         string actorType,
         CancellationToken cancellationToken = default)
     {
-        if (_currentSiloVersions != null &&
-            _currentSiloVersions.TryGetValue(actorType, out var version))
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorType);
+
+        var versions = _currentSiloVersions;
+        if (versions != null && versions.TryGetValue(actorType, out var version))
         {
             return Task.FromResult<AssemblyVersionInfo?>(version);
         }
@@ -130,6 +134,8 @@ public sealed class ClusterVersionTracker : IVersionTracker
         string? version = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorType);
+
         var compatibleSilos = new List<string>();
         var silos = await _clusterMembership.GetActiveSilosAsync(cancellationToken);
 
