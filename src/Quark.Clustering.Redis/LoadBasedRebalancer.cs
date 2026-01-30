@@ -8,6 +8,20 @@ namespace Quark.Clustering.Redis;
 /// <summary>
 /// Load-based actor rebalancer that migrates actors to balance load across silos.
 /// </summary>
+/// <remarks>
+/// This implementation updates the actor directory to trigger actor migration.
+/// When an actor's location is updated, the next invocation will route to the new silo,
+/// causing the actor to be activated there. The old instance will be deactivated according
+/// to the configured idle timeout policy.
+/// 
+/// The migration cost calculation uses simplified heuristics:
+/// - State size is estimated from actor ID hash
+/// - Activation time is assumed constant
+/// - Message queue depth is not measured
+/// 
+/// For production use, consider enhancing CalculateMigrationCostAsync to use real metrics
+/// from profiling or telemetry systems.
+/// </remarks>
 public sealed class LoadBasedRebalancer : IActorRebalancer
 {
     private readonly IClusterHealthMonitor _healthMonitor;
@@ -71,9 +85,10 @@ public sealed class LoadBasedRebalancer : IActorRebalancer
             }
 
             // Calculate load scores (inverse of health score - higher means more loaded)
+            // OverallScore is 0-100, so normalize to 0-1 range first
             var loadScores = healthScores.ToDictionary(
                 kvp => kvp.Key,
-                kvp => 1.0 - kvp.Value.OverallScore);
+                kvp => 1.0 - (kvp.Value.OverallScore / 100.0));
 
             var avgLoad = loadScores.Values.Average();
             var maxLoad = loadScores.Values.Max();
@@ -204,7 +219,9 @@ public sealed class LoadBasedRebalancer : IActorRebalancer
                 "Executing migration: {ActorId} ({ActorType}) from {Source} to {Target}",
                 decision.ActorId, decision.ActorType, decision.SourceSiloId, decision.TargetSiloId);
 
-            // Unregister from old silo
+            // Update actor directory to point to new silo
+            // This causes the next invocation to route to the new silo, triggering activation there
+            // The old instance will deactivate according to the configured idle timeout
             await _actorDirectory.UnregisterActorAsync(
                 decision.ActorId, decision.ActorType, cancellationToken);
 
@@ -250,14 +267,20 @@ public sealed class LoadBasedRebalancer : IActorRebalancer
         // 2. Activation time (weighted by ActivationTimeWeight)
         // 3. Message queue depth (weighted by MessageQueueWeight)
 
-        // For now, use a simple heuristic:
-        // - Assume state size is proportional to actor ID hash (0.0-1.0)
-        // - Assume activation time is constant (0.5)
-        // - Assume message queue is empty (0.0)
-
+        // NOTE: This is a simplified heuristic implementation.
+        // For production use, consider enhancing this method to use real metrics:
+        // - Query actual state size from storage provider
+        // - Measure real activation time from profiling metrics
+        // - Get actual message queue depth from mailbox
+        
+        // Assume state size is proportional to actor ID hash (0.0-1.0)
         var stateHash = Math.Abs(actorId.GetHashCode()) / (double)int.MaxValue;
         var stateCost = stateHash * _options.StateSizeWeight;
+        
+        // Assume activation time is constant (0.5)
         var activationCost = 0.5 * _options.ActivationTimeWeight;
+        
+        // Assume message queue is empty (0.0)
         var queueCost = 0.0 * _options.MessageQueueWeight;
 
         var totalCost = stateCost + activationCost + queueCost;

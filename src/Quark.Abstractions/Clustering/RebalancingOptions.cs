@@ -3,6 +3,11 @@ namespace Quark.Abstractions.Clustering;
 /// <summary>
 /// Configuration options for actor rebalancing.
 /// </summary>
+/// <remarks>
+/// Weight properties (StateSizeWeight, ActivationTimeWeight, MessageQueueWeight) should
+/// sum to approximately 1.0 for balanced cost calculation, but can be any non-negative values.
+/// The system normalizes the total cost to the range [0.0, 1.0] in the calculation.
+/// </remarks>
 public sealed class RebalancingOptions
 {
     /// <summary>
