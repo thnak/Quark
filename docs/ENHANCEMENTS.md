@@ -315,6 +315,14 @@ Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.Current
 
 ### 9.1 Enhanced Source Generators ✅ COMPLETED
 
+* [✓] **Actor Proxy Generation:** Type-safe remote calls ✅ COMPLETED
+  - ✅ Generate Protobuf message contracts from actor interfaces - `ProxySourceGenerator`
+  - ✅ Client proxy generation with full type safety (ActorProxyFactory pattern)
+  - ✅ Type-safe method invocation via generated proxy classes (zero-reflection)
+  - ✅ Automatic Protobuf serialization/deserialization
+  - ✅ GetActor<TActorInterface>(actorId) method on IClusterClient
+  - 🚧 Contract versioning and compatibility checks (future enhancement)
+  - 🚧 Backward/forward compatibility analyzers (future enhancement)
 * [✓] **Actor Method Analyzers:** Enforce best practices ✅ COMPLETED
   - ✅ Async return type validation (Task, ValueTask) - `ActorMethodSignatureAnalyzer` (QUARK004)
   - ✅ Analyzer detects synchronous methods in actor classes
@@ -328,15 +336,10 @@ Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.Current
 * [✓] **Smart Code Fixes:** IDE-integrated quick fixes ✅ COMPLETED
   - ✅ Convert sync methods to async - `ActorMethodSignatureCodeFixProvider` (Task/ValueTask options)
   - ✅ Add missing [Actor] attributes - `MissingActorAttributeCodeFixProvider`
-  - ✅ Generate state properties automatically - `StatePropertyCodeFixProvider` (string, int, custom type) [QUARK010]
+  - ✅ Generate state properties automatically - `StatePropertyCodeFixProvider` (string, int, custom type)
   - ✅ Scaffold supervision hierarchies - `SupervisionScaffoldCodeFixProvider` (restart, stop, custom strategies)
-* [ ] **Protobuf Proxy Generation:** Type-safe remote calls (deferred to future releases)
-  - 🚧 Generate .proto files from actor interfaces
-  - 🚧 Client proxy generation with full type safety
-  - 🚧 Contract versioning and compatibility checks
-  - 🚧 Backward/forward compatibility analyzers
 
-**Status:** Enhanced analyzers complete with seven diagnostic rules (QUARK004-QUARK010) and four code fix providers. All features tested and documented in `docs/PHASE9_1_ENHANCED_GENERATORS_SUMMARY.md`. Protobuf generation deferred to future releases as it requires new IClusterClient API design.
+**Status:** Enhanced analyzers and actor proxy generation complete with seven diagnostic rules (QUARK004-QUARK009), four code fix providers, and ProxySourceGenerator for type-safe remote actor invocation using zero-reflection source generation. All features tested and documented.
 
 ### 9.2 Development Tools 🚧 PLANNED
 
