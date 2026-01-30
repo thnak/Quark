@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;
@@ -169,6 +170,19 @@ public sealed class ClusterClient : IClusterClient
         throw new InvalidOperationException(
             $"Failed to send request to actor {envelope.ActorId} after {_options.MaxRetries} retries.",
             lastException);
+    }
+
+    /// <inheritdoc />
+    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class, IQuarkActor
+    {
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actorId));
+        }
+
+        // Delegate to the generated proxy factory
+        // This will be implemented by the ProxySourceGenerator
+        return ActorProxyFactory.CreateProxy<TActorInterface>(this, actorId);
     }
 
     /// <inheritdoc />
