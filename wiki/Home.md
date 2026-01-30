@@ -21,6 +21,7 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
 
 ### Reference
 - **[API Reference](API-Reference)** - Key interfaces and classes
+- **[Migration Guides](Migration-Guides)** - Migrating from other frameworks or between versions
 - **[FAQ](FAQ)** - Frequently asked questions and troubleshooting
 - **[Contributing](Contributing)** - How to contribute to Quark
 
