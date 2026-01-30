@@ -1,0 +1,86 @@
+# Quark Pizza Dash - Docker Compose Configuration
+# Demonstrates distributed actor system with multiple silos
+# NOTE: This is a conceptual example. Paths assume repository root as context.
+
+services:
+  # Redis - Clustering and State Storage
+  redis:
+    image: redis:7-alpine
+    container_name: quark-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - quark-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Kitchen Silo - Actor Host (Scalable)
+  # Build from repository root: docker-compose -f examples/Quark.Demo.PizzaDash.Shared/docker-compose-pizzadash.yml build
+  kitchen-silo:
+    build:
+      context: ../../  # Repository root
+      dockerfile: examples/Quark.Demo.PizzaDash.Silo/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SILO_ID=${SILO_ID:-silo-1}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - quark-network
+    stdin_open: true
+    tty: true
+
+  # Customer API - REST Gateway
+  customer-api:
+    build:
+      context: ../../  # Repository root
+      dockerfile: examples/Quark.Demo.PizzaDash.Api/Dockerfile
+    container_name: quark-api
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - quark-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Kitchen Display - Stream Consumer
+  kitchen-display:
+    build:
+      context: ../../  # Repository root
+      dockerfile: examples/Quark.Demo.PizzaDash.KitchenDisplay/Dockerfile
+    container_name: quark-kitchen-display
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - quark-network
+    stdin_open: true
+    tty: true
+
+networks:
+  quark-network:
+    driver: bridge
+
+volumes:
+  redis-data:
