@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Quark.Abstractions;
+using Quark.Abstractions.Migration;
 
 namespace Quark.Core.Actors;
 
@@ -8,6 +9,7 @@ namespace Quark.Core.Actors;
 ///     Phase 8.1: Optimized high-performance mailbox using System.Threading.Channels.
 ///     - Removed hot-path Interlocked operations (use Channel's built-in count instead)
 ///     - Turn-based message processing to ensure actors process one message at a time.
+///     Phase 10.1.1: Integrated with IActorActivityTracker for automatic activity tracking.
 /// </summary>
 public sealed class ChannelMailbox : IMailbox
 {
@@ -15,6 +17,8 @@ public sealed class ChannelMailbox : IMailbox
     private readonly Channel<IActorMessage> _channel;
     private readonly CancellationTokenSource _cts;
     private readonly IDeadLetterQueue? _deadLetterQueue;
+    private readonly IActorActivityTracker? _activityTracker;
+    private readonly string? _actorType;
     private Task? _processingTask;
 
     /// <summary>
@@ -23,11 +27,20 @@ public sealed class ChannelMailbox : IMailbox
     /// <param name="actor">The actor that owns this mailbox.</param>
     /// <param name="capacity">The maximum number of messages the mailbox can hold. Default is 1000.</param>
     /// <param name="deadLetterQueue">Optional dead letter queue for capturing failed messages.</param>
-    public ChannelMailbox(IActor actor, int capacity = 1000, IDeadLetterQueue? deadLetterQueue = null)
+    /// <param name="activityTracker">Optional activity tracker for Phase 10.1.1 migration support.</param>
+    /// <param name="actorType">Optional actor type name for activity tracking.</param>
+    public ChannelMailbox(
+        IActor actor, 
+        int capacity = 1000, 
+        IDeadLetterQueue? deadLetterQueue = null,
+        IActorActivityTracker? activityTracker = null,
+        string? actorType = null)
     {
         _actor = actor ?? throw new ArgumentNullException(nameof(actor));
         _cts = new CancellationTokenSource();
         _deadLetterQueue = deadLetterQueue;
+        _activityTracker = activityTracker;
+        _actorType = actorType;
 
         var options = new BoundedChannelOptions(capacity)
         {
@@ -67,6 +80,13 @@ public sealed class ChannelMailbox : IMailbox
         {
             // Phase 8.1: Removed Interlocked.Increment - no contention on hot path
             await _channel.Writer.WriteAsync(message, cancellationToken);
+            
+            // Phase 10.1.1: Record message enqueued for activity tracking
+            if (_activityTracker != null && _actorType != null)
+            {
+                _activityTracker.RecordMessageEnqueued(ActorId, _actorType);
+            }
+            
             return true;
         }
         catch (ChannelClosedException)
@@ -124,15 +144,29 @@ public sealed class ChannelMailbox : IMailbox
 
         _cts.Cancel();
         _cts.Dispose();
+        
+        // Phase 10.1.1: Remove actor from activity tracking when mailbox is disposed
+        if (_activityTracker != null)
+        {
+            _activityTracker.RemoveActor(ActorId);
+        }
     }
 
     /// <summary>
     ///     Phase 8.1: Optimized message processing loop.
     ///     Processes messages from the channel one at a time (turn-based execution).
+    ///     Phase 10.1.1: Integrated with activity tracking for migration support.
     /// </summary>
     private async Task ProcessMessagesAsync(CancellationToken cancellationToken)
     {
         await foreach (var message in _channel.Reader.ReadAllAsync(cancellationToken))
+        {
+            // Phase 10.1.1: Record message dequeued for activity tracking
+            if (_activityTracker != null && _actorType != null)
+            {
+                _activityTracker.RecordMessageDequeued(ActorId, _actorType);
+            }
+            
             try
             {
                 await ProcessMessageAsync(message, cancellationToken);
@@ -159,31 +193,52 @@ public sealed class ChannelMailbox : IMailbox
                     }, CancellationToken.None);
                 }
             }
-            // Phase 8.1: Removed Interlocked.Decrement from finally block
+        }
+        // Phase 8.1: Removed Interlocked.Decrement from finally block
     }
 
     /// <summary>
     ///     Processes a single message by invoking the appropriate method on the actor.
+    ///     Phase 10.1.1: Tracks call start/completion for activity monitoring.
     /// </summary>
     private async Task ProcessMessageAsync(IActorMessage message, CancellationToken cancellationToken)
     {
-        // For now, we just handle the basic case
-        // In a full implementation, this would use reflection or source-generated code
-        // to dispatch to the actual method
-        if (message is IActorMethodMessage<object> methodMessage)
-            try
+        // Phase 10.1.1: Record call started
+        if (_activityTracker != null && _actorType != null)
+        {
+            _activityTracker.RecordCallStarted(ActorId, _actorType);
+        }
+        
+        try
+        {
+            // For now, we just handle the basic case
+            // In a full implementation, this would use reflection or source-generated code
+            // to dispatch to the actual method
+            if (message is IActorMethodMessage<object> methodMessage)
             {
-                // This is a placeholder - in reality, the source generator would create
-                // dispatch code for each actor method
-                var result = await InvokeMethodAsync(methodMessage, cancellationToken);
-                methodMessage.CompletionSource.SetResult(result);
+                try
+                {
+                    // This is a placeholder - in reality, the source generator would create
+                    // dispatch code for each actor method
+                    var result = await InvokeMethodAsync(methodMessage, cancellationToken);
+                    methodMessage.CompletionSource.SetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    methodMessage.CompletionSource.SetException(ex);
+                    // Rethrow so it's captured by DLQ in outer catch
+                    throw;
+                }
             }
-            catch (Exception ex)
+        }
+        finally
+        {
+            // Phase 10.1.1: Record call completed
+            if (_activityTracker != null && _actorType != null)
             {
-                methodMessage.CompletionSource.SetException(ex);
-                // Rethrow so it's captured by DLQ in outer catch
-                throw;
+                _activityTracker.RecordCallCompleted(ActorId, _actorType);
             }
+        }
     }
 
     /// <summary>
