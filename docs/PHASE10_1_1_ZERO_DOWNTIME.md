@@ -217,7 +217,7 @@ dotnet test --filter "FullyQualifiedName~VersionTrackerTests"
 ### Integration Tasks
 
 1. **Mailbox Integration**: ✅ COMPLETED - Wire up `IActorActivityTracker` with mailbox operations to automatically track message queue depth
-2. **Silo Lifecycle Integration**: Integrate migration coordinator with QuarkSilo shutdown sequence
+2. **Silo Lifecycle Integration**: ✅ COMPLETED - Integrate migration coordinator with QuarkSilo shutdown sequence
 3. **Automatic Version Detection**: ✅ COMPLETED - Auto-detect assembly versions on silo startup using source generator
 4. **Cluster Synchronization**: Sync version information via Redis cluster membership
 
@@ -359,6 +359,89 @@ The mailbox integration enables automatic population of:
 - **Activity Score**: Calculated automatically based on metrics
 
 This automation means applications don't need manual instrumentation - simply provide the tracker and actor type, and the framework handles the rest.
+
+## Silo Lifecycle Integration with Migration Coordinator ✅
+
+Phase 10.1.1 now includes graceful actor migration during silo shutdown. The `QuarkSilo` class has been enhanced to optionally integrate with `IActorMigrationCoordinator` and `IActorActivityTracker` to migrate cold actors before deactivating them.
+
+### How It Works
+
+1. **Optional Dependency Injection**: `QuarkSilo` constructor accepts optional `IActorMigrationCoordinator` and `IActorActivityTracker`
+2. **Shutdown Sequence Integration**: Migration occurs after marking silo as ShuttingDown but before actor deactivation
+3. **Cold Actor Prioritization**: Uses activity tracker to get migration priority list (cold actors first)
+4. **Target Silo Selection**: Automatically discovers active silos from cluster membership
+5. **Concurrent Migration**: Migrates multiple actors in parallel up to `MaxConcurrentMigrations` limit
+6. **Timeout Protection**: Migration has configurable timeout to prevent blocking shutdown indefinitely
+7. **Graceful Degradation**: If migration fails, shutdown continues normally
+
+### Shutdown Sequence
+
+```
+1. Mark silo as ShuttingDown
+2. Stop heartbeat  
+3. Stop accepting new activations
+3.5. [NEW] Migrate cold actors to available silos (if enabled)
+     - Get migration priority list (cold actors first)
+     - Discover available target silos
+     - Migrate actors concurrently (up to limit)
+     - Wait for completion (with timeout)
+4. Deactivate remaining actors
+5. Stop subsystems (reminders, transport, etc.)
+6. Unregister from cluster
+7. Mark as Dead
+```
+
+### Configuration
+
+Enable migration during shutdown via options:
+
+```csharp
+services.Configure<QuarkSiloOptions>(options =>
+{
+    // Enable live migration during shutdown
+    options.EnableLiveMigration = true;
+    
+    // Maximum time to wait for migrations
+    options.MigrationTimeout = TimeSpan.FromSeconds(30);
+    
+    // Maximum concurrent migrations
+    options.MaxConcurrentMigrations = 10;
+});
+```
+
+### Usage Example
+
+```csharp
+// Register all required services
+services.AddZeroDowntimeUpgrades();  // Includes activity tracking and migration
+
+// QuarkSilo will automatically use them if configured
+var quarkSilo = serviceProvider.GetRequiredService<IQuarkSilo>();
+
+// On shutdown (SIGTERM, Ctrl+C, etc.):
+// - Cold actors automatically migrated to available silos
+// - Hot actors deactivated normally (state persisted)
+// - Graceful degradation if no target silos available
+```
+
+### Key Features
+
+- **Zero Configuration**: If services are registered and option enabled, migration happens automatically
+- **Cold Actor Focus**: Only migrates cold actors to minimize disruption and transfer time
+- **Non-Blocking**: Timeout ensures shutdown completes even if migrations are slow
+- **Resilient**: Continues shutdown even if migration fails completely
+- **Observable**: Comprehensive logging at each stage for monitoring and debugging
+- **Production Ready**: Thread-safe, handles edge cases (no actors, no targets, timeouts)
+
+### Integration Points
+
+The silo lifecycle integration coordinates with:
+- **IActorActivityTracker**: Get migration priority list (cold actors first)
+- **IActorMigrationCoordinator**: Orchestrate actor drain and migration
+- **IQuarkClusterMembership**: Discover available target silos
+- **QuarkSiloOptions**: Configure migration behavior (enable, timeout, concurrency)
+
+This integration enables zero-downtime rolling upgrades - actors are gracefully moved to other silos before the old silo shuts down.
 
 
 

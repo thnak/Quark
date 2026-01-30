@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
+using Quark.Abstractions.Migration;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
 using Quark.Networking.Abstractions;
@@ -12,6 +13,7 @@ namespace Quark.Hosting;
 /// <summary>
 /// Default implementation of IQuarkSilo that manages the actor runtime lifecycle.
 /// Orchestrates subsystems including ReminderTickManager, StreamBroker, and cluster membership.
+/// Phase 10.1.1: Integrated with IActorMigrationCoordinator for graceful actor migration during shutdown.
 /// </summary>
 public sealed class QuarkSilo : IQuarkSilo, IHostedService
 {
@@ -20,6 +22,8 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     private readonly IQuarkTransport _transport;
     private readonly ReminderTickManager? _reminderTickManager;
     private readonly StreamBroker? _streamBroker;
+    private readonly IActorMigrationCoordinator? _migrationCoordinator;
+    private readonly IActorActivityTracker? _activityTracker;
     private readonly QuarkSiloOptions _options;
     private readonly ILogger<QuarkSilo> _logger;
     private readonly ConcurrentDictionary<string, IActor> _actorRegistry = new();
@@ -38,7 +42,9 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         QuarkSiloOptions options,
         ILogger<QuarkSilo> logger,
         ReminderTickManager? reminderTickManager = null,
-        StreamBroker? streamBroker = null)
+        StreamBroker? streamBroker = null,
+        IActorMigrationCoordinator? migrationCoordinator = null,
+        IActorActivityTracker? activityTracker = null)
     {
         _actorFactory = actorFactory ?? throw new ArgumentNullException(nameof(actorFactory));
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
@@ -47,6 +53,8 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _reminderTickManager = reminderTickManager;
         _streamBroker = streamBroker;
+        _migrationCoordinator = migrationCoordinator;
+        _activityTracker = activityTracker;
 
         var siloId = options.SiloId ?? Guid.NewGuid().ToString("N");
         _siloInfo = new SiloInfo(siloId, options.Address, options.Port, SiloStatus.Joining);
@@ -129,6 +137,12 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             // 3. Stop accepting new actor activations (implicit - status check would prevent this)
             _logger.LogInformation("Stopped accepting new actor activations for silo {SiloId}", SiloId);
+
+            // 3.5 Phase 10.1.1: Migrate cold actors to available silos (if migration enabled)
+            if (_migrationCoordinator != null && _activityTracker != null && _options.EnableLiveMigration)
+            {
+                await MigrateColdActorsAsync(cancellationToken);
+            }
 
             // 4. Deactivate all active actors
             await DeactivateAllActorsAsync(cancellationToken);
@@ -254,6 +268,119 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deactivating actor {ActorId}", actorId);
+        }
+    }
+
+    /// <summary>
+    /// Phase 10.1.1: Migrates cold actors to available silos during graceful shutdown.
+    /// Prioritizes cold (idle) actors for migration to minimize disruption.
+    /// </summary>
+    private async Task MigrateColdActorsAsync(CancellationToken cancellationToken)
+    {
+        if (_migrationCoordinator == null || _activityTracker == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation("Starting cold actor migration for silo {SiloId} shutdown", SiloId);
+
+            // Get migration priority list (cold actors first)
+            var actorMetrics = await _activityTracker.GetMigrationPriorityListAsync(cancellationToken);
+            
+            if (!actorMetrics.Any())
+            {
+                _logger.LogInformation("No actors to migrate for silo {SiloId}", SiloId);
+                return;
+            }
+
+            // Get available target silos from cluster
+            var availableSilos = await _clusterMembership.GetActiveSilosAsync(cancellationToken);
+            var targetSilos = availableSilos
+                .Where(s => s.SiloId != SiloId && s.Status == SiloStatus.Active)
+                .ToList();
+
+            if (!targetSilos.Any())
+            {
+                _logger.LogWarning("No available target silos for migration from silo {SiloId}", SiloId);
+                return;
+            }
+
+            var maxConcurrentMigrations = _options.MaxConcurrentMigrations;
+            var migrationTasks = new List<Task>();
+            var migratedCount = 0;
+            var failedCount = 0;
+
+            // Migrate cold actors first (up to configured limit or timeout)
+            foreach (var metrics in actorMetrics.Where(m => m.IsCold).Take(maxConcurrentMigrations))
+            {
+                // Round-robin target selection
+                var targetSilo = targetSilos[migratedCount % targetSilos.Count];
+                
+                var migrationTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        _logger.LogDebug(
+                            "Migrating cold actor {ActorId} (type: {ActorType}, score: {Score}) to silo {TargetSilo}",
+                            metrics.ActorId, metrics.ActorType, metrics.ActivityScore, targetSilo.SiloId);
+
+                        var result = await _migrationCoordinator.MigrateActorAsync(
+                            metrics.ActorId,
+                            metrics.ActorType,
+                            targetSilo.SiloId,
+                            cancellationToken);
+
+                        if (result.IsSuccessful)
+                        {
+                            Interlocked.Increment(ref migratedCount);
+                            _logger.LogInformation(
+                                "Successfully migrated actor {ActorId} to silo {TargetSilo}",
+                                metrics.ActorId, targetSilo.SiloId);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref failedCount);
+                            _logger.LogWarning(
+                                "Failed to migrate actor {ActorId}: {Error}",
+                                metrics.ActorId, result.ErrorMessage);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Interlocked.Increment(ref failedCount);
+                        _logger.LogError(ex, "Error migrating actor {ActorId}", metrics.ActorId);
+                    }
+                }, cancellationToken);
+
+                migrationTasks.Add(migrationTask);
+            }
+
+            // Wait for migrations to complete (with timeout)
+            var migrationTimeout = _options.MigrationTimeout;
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(migrationTimeout);
+
+            try
+            {
+                await Task.WhenAll(migrationTasks).WaitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    "Actor migration timed out after {Timeout} seconds for silo {SiloId}",
+                    migrationTimeout.TotalSeconds, SiloId);
+            }
+
+            _logger.LogInformation(
+                "Completed actor migration for silo {SiloId}: {Migrated} migrated, {Failed} failed",
+                SiloId, migratedCount, failedCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during cold actor migration for silo {SiloId}", SiloId);
+            // Don't throw - allow shutdown to continue even if migration fails
         }
     }
 

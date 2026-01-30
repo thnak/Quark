@@ -45,21 +45,21 @@ public sealed class QuarkSiloOptions
     /// <summary>
     /// Gets or sets whether to enable live actor migration during rolling upgrades. Defaults to false.
     /// When enabled, actors can be migrated to other silos during shutdown.
-    /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - PLANNED).
+    /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - IMPLEMENTED).
     /// </summary>
     public bool EnableLiveMigration { get; set; } = false;
 
     /// <summary>
     /// Gets or sets the timeout for actor migration operations. Defaults to 30 seconds.
     /// Only applies when EnableLiveMigration is true.
-    /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - PLANNED).
+    /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - IMPLEMENTED).
     /// </summary>
     public TimeSpan MigrationTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Gets or sets the maximum number of concurrent actor migrations. Defaults to 10.
     /// Only applies when EnableLiveMigration is true.
-    /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - PLANNED).
+    /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - IMPLEMENTED).
     /// </summary>
     public int MaxConcurrentMigrations { get; set; } = 10;
 
