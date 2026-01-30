@@ -100,25 +100,38 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
 
 Example demonstrating all features available at `examples/Quark.Examples.Profiling/`.
 
-### 7.4 Advanced Cluster Health Monitoring 🚧 PLANNED
+### 7.4 Advanced Cluster Health Monitoring ✅ COMPLETED
 
-* [ ] **Advanced Heartbeat Monitoring:** Enhanced silo health tracking
-  - Health scores per silo (CPU, memory, latency)
-  - Predictive failure detection
-  - Gradual degradation detection
-  - Customizable health score algorithms
-* [ ] **Automatic Silo Eviction:** Intelligent node removal
-  - Automatic eviction of unhealthy silos
-  - Configurable eviction policies (timeout-based, health-score-based)
-  - Graceful actor migration before eviction
-  - Split-brain detection and resolution
-* [ ] **Cluster Resilience:** Enhanced fault tolerance
-  - Quorum-based membership decisions
-  - Automatic cluster rebalancing after eviction
-  - Network partition detection
-  - Graceful degradation strategies
+* [✓] **Advanced Heartbeat Monitoring:** Enhanced silo health tracking
+  - ✅ Health scores per silo (CPU, memory, latency)
+  - ✅ Predictive failure detection
+  - ✅ Gradual degradation detection
+  - ✅ Customizable health score algorithms
+* [✓] **Automatic Silo Eviction:** Intelligent node removal
+  - ✅ Automatic eviction of unhealthy silos
+  - ✅ Configurable eviction policies (timeout-based, health-score-based)
+  - ✅ Graceful actor migration before eviction (via hash ring removal)
+  - ✅ Split-brain detection and resolution
+* [✓] **Cluster Resilience:** Enhanced fault tolerance
+  - ✅ Quorum-based membership decisions
+  - ✅ Automatic cluster rebalancing after eviction
+  - ✅ Network partition detection
+  - ✅ Graceful degradation strategies
 
-**Status:** Deferred from Phase 3. Planned for future release after core observability features.
+**Status:** Complete. Five new types added to Quark.Abstractions.Clustering:
+- `SiloHealthScore` - Health metrics (CPU, memory, latency)
+- `IHealthScoreCalculator` - Customizable health scoring algorithms
+- `EvictionPolicyOptions` - Configuration for eviction policies
+- `IClusterHealthMonitor` - Health monitoring coordination
+- `DefaultHealthScoreCalculator` - Built-in health scoring with predictive analysis
+
+Implementation in `Quark.Clustering.Redis`:
+- `ClusterHealthMonitor` - Monitors cluster health and coordinates eviction
+- `DefaultHealthScoreCalculator` - Weighted scoring with trend analysis
+
+Extensions in `Quark.Extensions.DependencyInjection`:
+- `AddClusterHealthMonitoring()` - Easy DI registration
+- Updated `QuarkSiloHealthCheck` with health score integration
 
 ---
 
