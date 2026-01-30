@@ -24,10 +24,10 @@ echo ""
 # Build all projects
 echo "🔨 Building all projects..."
 cd ../../
-dotnet build examples/Quark.Demo.PizzaDash.Shared/Quark.Demo.PizzaDash.Shared.csproj -maxcpucount
-dotnet build examples/Quark.Demo.PizzaDash.Silo/Quark.Demo.PizzaDash.Silo.csproj -maxcpucount
-dotnet build examples/Quark.Demo.PizzaDash.Api/Quark.Demo.PizzaDash.Api.csproj -maxcpucount
-dotnet build examples/Quark.Demo.PizzaDash.KitchenDisplay/Quark.Demo.PizzaDash.KitchenDisplay.csproj -maxcpucount
+dotnet build examples/Quark.Demo.PizzaDash.Shared/Quark.Demo.PizzaDash.Shared.csproj -m
+dotnet build examples/Quark.Demo.PizzaDash.Silo/Quark.Demo.PizzaDash.Silo.csproj -m
+dotnet build examples/Quark.Demo.PizzaDash.Api/Quark.Demo.PizzaDash.Api.csproj -m
+dotnet build examples/Quark.Demo.PizzaDash.KitchenDisplay/Quark.Demo.PizzaDash.KitchenDisplay.csproj -m
 
 if [ $? -ne 0 ]; then
     echo "❌ Build failed"

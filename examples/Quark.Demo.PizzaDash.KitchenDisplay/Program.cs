@@ -117,7 +117,7 @@ class Program
 
     private static async Task SimulateNewOrder(string pizzaType)
     {
-        var orderId = $"order-{Guid.NewGuid():N[..8]}";
+        var orderId = $"order-{Guid.NewGuid().ToString("N")[..8]}";
         var order = new KitchenOrder(orderId, pizzaType, DateTime.UtcNow);
         
         _orderQueue.Enqueue(order);
@@ -128,9 +128,14 @@ class Program
         Console.WriteLine($"   Time: {order.OrderTime:HH:mm:ss}");
 
         // Assign to least busy chef
-        var leastBusyChef = _chefs.Values
-            .OrderBy(async c => await c.GetWorkloadAsync())
-            .First();
+        var chefWorkloads = new List<(ChefActor Chef, int Workload)>();
+        foreach (var chef in _chefs.Values)
+        {
+            var workload = await chef.GetWorkloadAsync();
+            chefWorkloads.Add((chef, workload));
+        }
+        
+        var leastBusyChef = chefWorkloads.OrderBy(x => x.Workload).First().Chef;
 
         await leastBusyChef.ProcessOrderAsync(order);
         Console.WriteLine($"   ✅ Assigned to {leastBusyChef.ActorId}");

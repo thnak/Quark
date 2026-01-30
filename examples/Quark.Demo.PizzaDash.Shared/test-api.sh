@@ -113,6 +113,6 @@ echo ""
 
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║       Demo Complete!                                     ║"
-echo "║       Order $ORDER_ID                  ║"
+echo "║       Order: ${ORDER_ID:0:36}           ║"
 echo "║       Status: Delivered ✅                               ║"
 echo "╚══════════════════════════════════════════════════════════╝"

@@ -72,8 +72,10 @@ Manages delivery driver state:
 
 ### Prerequisites
 
-- Docker & Docker Compose
 - .NET 10 SDK (for local development)
+- Docker & Docker Compose (optional, for containerized deployment)
+
+**Note:** The Docker configuration is provided as a conceptual example. For immediate testing, use the local development approach below.
 
 ### Quick Start with Docker
 
@@ -82,17 +84,11 @@ Manages delivery driver state:
 git clone https://github.com/thnak/Quark.git
 cd Quark/examples/Quark.Demo.PizzaDash.Shared
 
-# Build and start all services
-docker-compose up --build -d
+# Note: Docker setup is conceptual - for local testing, run components directly
+# See "Local Development" section below
 
-# Scale to 3 kitchen silos
-docker-compose up --build -d --scale kitchen-silo=3
-
-# View logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
+# To run all components locally (recommended):
+./quick-start.sh
 ```
 
 ### Local Development
