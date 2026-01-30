@@ -30,4 +30,10 @@ public interface IStreamHandle<T>
     Task<IStreamSubscriptionHandle> SubscribeAsync(
         Func<T, Task> onNext,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the backpressure metrics for this stream.
+    /// Phase 8.5: Provides visibility into flow control behavior.
+    /// </summary>
+    StreamBackpressureMetrics? BackpressureMetrics { get; }
 }
