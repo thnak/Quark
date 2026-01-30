@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- NUMA optimization may use reflection and platform-specific APIs -->
+        <IsAotCompatible>false</IsAotCompatible>
+        <Description>Cross-platform NUMA-aware actor placement strategy for Quark. Provides base implementation for NUMA optimization.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Quark.Placement.Abstractions\Quark.Placement.Abstractions.csproj" />
+    </ItemGroup>
+
+</Project>

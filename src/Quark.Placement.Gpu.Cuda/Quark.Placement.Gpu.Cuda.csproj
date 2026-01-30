@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- CUDA GPU acceleration uses native libraries and P/Invoke -->
+        <IsAotCompatible>false</IsAotCompatible>
+        <Description>NVIDIA CUDA-specific GPU acceleration for Quark actors. Provides GPU placement and compute capabilities for AI/ML workloads.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Quark.Placement.Abstractions\Quark.Placement.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Placement.Gpu\Quark.Placement.Gpu.csproj" />
+    </ItemGroup>
+
+</Project>

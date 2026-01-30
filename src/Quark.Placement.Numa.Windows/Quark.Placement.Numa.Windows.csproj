@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Windows-specific NUMA optimization uses platform APIs -->
+        <IsAotCompatible>false</IsAotCompatible>
+        <Description>Windows-specific NUMA-aware actor placement for Quark. Uses Windows API for NUMA topology detection.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Quark.Placement.Abstractions\Quark.Placement.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Placement.Numa\Quark.Placement.Numa.csproj" />
+    </ItemGroup>
+
+</Project>
