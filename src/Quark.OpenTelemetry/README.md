@@ -33,9 +33,8 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(meterBuilder =>
     {
         meterBuilder
-            .AddQuarkInstrumentation("MySiloService", "1.0.0")
-            .AddPrometheusExporter()
-            .AddConsoleExporter();
+            .AddQuarkInstrumentationWithPrometheus("MySiloService", "1.0.0");
+            // This automatically adds PrometheusExporter and exposes /metrics endpoint
     });
 
 // Add Quark silo
@@ -47,10 +46,28 @@ builder.Services.AddQuarkSilo(options =>
 
 var app = builder.Build();
 
-// Enable Prometheus scraping endpoint
-app.UseOpenTelemetryPrometheusScrapingEndpoint();
+// Map Quark diagnostic endpoints (includes /quark/health)
+app.MapQuarkDiagnostics("/quark");
+
+// The /metrics endpoint is automatically available via Prometheus exporter
+// No need to call UseOpenTelemetryPrometheusScrapingEndpoint() - it's automatic
 
 await app.RunAsync();
+```
+
+### Using Standard OpenTelemetry Metrics (without Prometheus endpoint)
+
+If you prefer to use other exporters without the automatic Prometheus endpoint:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(meterBuilder =>
+    {
+        meterBuilder
+            .AddQuarkInstrumentation("MySiloService", "1.0.0")
+            .AddConsoleExporter()
+            .AddOtlpExporter();
+    });
 ```
 
 ## Activity Names
