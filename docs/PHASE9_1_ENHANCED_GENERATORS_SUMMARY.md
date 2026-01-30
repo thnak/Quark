@@ -226,15 +226,15 @@ This feature requires significant design work for the serialization strategy and
 ## Statistics
 
 - **New Files Created:** 4
-  - `ReentrancyAnalyzer.cs` (166 lines)
-  - `PerformanceAntiPatternAnalyzer.cs` (235 lines)
-  - `StatePropertyCodeFixProvider.cs` (189 lines)
-  - `SupervisionScaffoldCodeFixProvider.cs` (196 lines)
+  - `ReentrancyAnalyzer.cs` (164 lines)
+  - `PerformanceAntiPatternAnalyzer.cs` (247 lines)
+  - `StatePropertyCodeFixProvider.cs` (182 lines)
+  - `SupervisionScaffoldCodeFixProvider.cs` (222 lines)
 - **Files Modified:** 2
   - `tests/Quark.Tests/AnalyzerTestExamples.cs` - Added test examples
   - `src/Quark.Analyzers/README.md` - Updated documentation
   - `docs/ENHANCEMENTS.md` - Updated completion status
-- **Total Lines Added:** ~1,079 lines
+- **Total Lines Added:** ~815 lines (analyzers and code fixes only)
 - **Build Status:** ✅ Success (0 errors, expected analyzer warnings only)
 - **Test Status:** ✅ 281/281 tests passing (2 skipped)
 - **Diagnostic Rules Added:** 4 (QUARK007, QUARK008, QUARK009, QUARK010/QUARK011)

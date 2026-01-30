@@ -224,7 +224,7 @@ Synchronous file I/O methods block threads and reduce scalability. Use async alt
 - `File.ReadAllText` → `File.ReadAllTextAsync`
 - `File.WriteAllText` → `File.WriteAllTextAsync`
 - `File.ReadAllLines` → `File.ReadAllLinesAsync`
-- `File.WriteAllLines` → `File.WritAllLinesAsync`
+- `File.WriteAllLines` → `File.WriteAllLinesAsync`
 - `File.ReadAllBytes` → `File.ReadAllBytesAsync`
 - `File.WriteAllBytes` → `File.WriteAllBytesAsync`
 
