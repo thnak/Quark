@@ -77,7 +77,7 @@ public sealed class GrpcChannelPool : IDisposable
             throw new ObjectDisposedException(nameof(GrpcChannelPool));
         }
 
-        if (string.IsNullOrEmpty(endpoint))
+        if (string.IsNullOrWhiteSpace(endpoint))
         {
             throw new ArgumentException("Endpoint cannot be null or empty.", nameof(endpoint));
         }
