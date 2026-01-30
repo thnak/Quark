@@ -298,9 +298,12 @@ Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.Current
 
 ### 9.1 Enhanced Source Generators ✅ COMPLETED
 
-* [ ] **Protobuf Proxy Generation:** Type-safe remote calls (planned in Phase 6)
-  - 🚧 Generate .proto files from actor interfaces (future enhancement)
-  - 🚧 Client proxy generation with full type safety (future enhancement)
+* [✓] **Protobuf Proxy Generation:** Type-safe remote calls ✅ COMPLETED
+  - ✅ Generate .proto files from actor interfaces - `ProtoSourceGenerator`
+  - ✅ Client proxy generation with full type safety (IActorProxy<T> pattern)
+  - ✅ Type-safe method invocation via generated proxy classes
+  - ✅ Automatic serialization/deserialization with JSON
+  - ✅ GetActorProxy<T>(actorId) extension on IClusterClient
   - 🚧 Contract versioning and compatibility checks (future enhancement)
   - 🚧 Backward/forward compatibility analyzers (future enhancement)
 * [✓] **Actor Method Analyzers:** Enforce best practices ✅ COMPLETED
@@ -319,7 +322,7 @@ Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.Current
   - ✅ Generate state properties automatically - `StatePropertyCodeFixProvider` (string, int, custom type)
   - ✅ Scaffold supervision hierarchies - `SupervisionScaffoldCodeFixProvider` (restart, stop, custom strategies)
 
-**Status:** Enhanced analyzers complete with seven diagnostic rules (QUARK004-QUARK009) and four code fix providers. All features tested and documented. Protobuf generation planned for future releases.
+**Status:** Enhanced analyzers and protobuf proxy generation complete with seven diagnostic rules (QUARK004-QUARK009), four code fix providers, and ProtoSourceGenerator for type-safe remote actor invocation. All features tested and documented.
 
 ### 9.2 Development Tools
 
