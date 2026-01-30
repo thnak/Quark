@@ -12,8 +12,25 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
 - [Phase 8: Performance & Scalability Enhancements](#phase-8-performance--scalability-enhancements)
 - [Phase 9: Developer Experience & Tooling](#phase-9-developer-experience--tooling)
 - [Phase 10: Advanced Features & Ecosystem](#phase-10-advanced-features--ecosystem)
-  - [10.5 Predictive Activation (Cold Start Elimination)](#105-predictive-activation-cold-start-elimination)
-  - [10.6 Community-Requested Features](#106-community-requested-features)
+  - [10.1 Tier 1: Core Infrastructure & Foundation](#101-tier-1-core-infrastructure--foundation)
+    - [10.1.1 Zero Downtime & Rolling Upgrades](#1011-zero-downtime--rolling-upgrades)
+    - [10.1.2 Stateless Workers (Grainless)](#1012-stateless-workers-grainless)
+    - [10.1.3 Reactive Actors (Backpressure-Aware)](#1013-reactive-actors-backpressure-aware)
+  - [10.2 Tier 2: Specialized Actor Types](#102-tier-2-specialized-actor-types)
+    - [10.2.1 Serverless Actors](#1021-serverless-actors)
+  - [10.3 Tier 3: Advanced Actor Patterns](#103-tier-3-advanced-actor-patterns)
+    - [10.3.1 Saga Orchestration](#1031-saga-orchestration)
+    - [10.3.2 Actor Queries (LINQ-style)](#1032-actor-queries-linq-style)
+  - [10.4 Tier 4: Ecosystem Integrations](#104-tier-4-ecosystem-integrations)
+    - [10.4.1 Database Integrations](#1041-database-integrations)
+    - [10.4.2 Cloud Platform SDKs](#1042-cloud-platform-sdks)
+    - [10.4.3 Message Queue Integrations](#1043-message-queue-integrations)
+  - [10.5 Tier 5: Enterprise Features](#105-tier-5-enterprise-features)
+    - [10.5.1 Multi-Tenancy](#1051-multi-tenancy)
+    - [10.5.2 Security Enhancements](#1052-security-enhancements)
+    - [10.5.3 Disaster Recovery](#1053-disaster-recovery)
+  - [10.6 Predictive Activation (Cold Start Elimination)](#106-predictive-activation-cold-start-elimination)
+  - [10.7 Community-Requested Features](#107-community-requested-features)
 - [Performance Targets](#performance-targets-post-10)
 - [Community & Ecosystem Goals](#community--ecosystem-goals)
 - [Learning Resources](#learning-resources-planned)
@@ -389,106 +406,595 @@ Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.Current
 **Status:** 🚧 PLANNED  
 **Target:** 2027+ - Feature parity with enterprise actor frameworks, rich ecosystem.
 
-*Focus: Advanced features and ecosystem expansion.*
+*Focus: Advanced features and ecosystem expansion, prioritized by foundational dependencies.*
 
-### 10.1 Advanced Actor Patterns
+**Organization Principle:** Features are organized in priority tiers:
+- **Tier 1 (Core Infrastructure):** Foundation that other features depend on
+- **Tier 2 (Specialized Actors):** Extends core actor capabilities
+- **Tier 3 (Advanced Patterns):** Builds on specialized actors
+- **Tier 4 (Ecosystem):** External system integrations
+- **Tier 5 (Enterprise):** Top-level business concerns
 
-* [ ] **Saga Orchestration:** Long-running distributed transactions
-  - Saga coordinator actors
-  - Compensation logic support
-  - Saga state persistence
-  - Visual saga designer
-* [ ] **Actor Queries:** LINQ-style actor queries
-  - Query active actors by criteria
-  - Aggregate statistics across actor populations
-  - Real-time query results via streaming
-* [ ] **Zero Downtime & Rolling Upgrades:** Enterprise-grade deployment capabilities
-  - **Graceful Shutdown (Drain Pattern)**
-    - Stop accepting new actor activations on termination signal (SIGTERM)
-    - Configurable shutdown timeout for in-flight operations
-    - Integration with health check system for load balancer coordination
-    - Drain status reporting via `/quark/status` endpoint
-  - **Live Actor Migration**
-    - Hot actor detection (actors with active calls or recent activity)
-    - Migration orchestration via rebalancer component
-    - State transfer with optimistic concurrency (E-Tag based)
-    - Minimal disruption migration (queue pending messages during transfer)
-    - Reminder and timer migration coordination
-  - **Version-Aware Placement**
-    - Assembly version tracking per silo
-    - Placement policy: prefer silos with matching assembly version
-    - Prevent serialization mismatches during rolling deployment
-    - Version compatibility matrix for gradual rollout
-    - Side-by-side version deployment support
-  - **Configuration & Integration**
-    - `EnableGracefulShutdown` option in silo configuration
-    - `ShutdownTimeout` configuration (default: 30 seconds)
-    - `AddLiveMigration()` extension method for DI registration
-    - Integration with existing `IActorRebalancer` for migration orchestration
-    - Health check integration: mark silo as "Draining" during shutdown
-  - **Technical Dependencies**
-    - Requires Phase 8.2 (Actor Rebalancing) for migration infrastructure
-    - Requires Phase 7.2 (Health Checks) for drain status reporting
-    - Requires Phase 4 (State Persistence) for state transfer
-    - Optional: Phase 7.4 (Cluster Health Monitoring) for coordinated eviction
+---
 
-### 10.2 Ecosystem Integrations
+### 10.1 Tier 1: Core Infrastructure & Foundation
 
-* [ ] **Cloud Platform SDKs:** Native cloud integrations
-  - **Azure:** Key Vault, Storage, Service Bus, Monitor
-  - **AWS:** Secrets Manager, S3, SQS, CloudWatch
-  - **GCP:** Secret Manager, Cloud Storage, Pub/Sub
-* [ ] **Database Integrations:** Additional storage providers
-  - **SQL Server:** State and reminder storage
-  - **MongoDB:** Document-based state storage
-  - **Cassandra:** Wide-column state storage
-  - **DynamoDB:** Serverless state storage
-  - **CosmosDB:** Multi-region state replication
-* [ ] **Message Queue Integrations:** Streaming connectors
-  - **Kafka:** Event sourcing and stream processing
-  - **RabbitMQ:** Reliable message delivery
-  - **Azure Service Bus:** Enterprise messaging
-  - **AWS SQS/SNS:** Serverless messaging
-  - **NATS:** Lightweight pub/sub
+*Priority: HIGHEST - These features form the foundation for all other Phase 10 enhancements.*
 
-### 10.3 Specialized Actors
+#### 10.1.1 Zero Downtime & Rolling Upgrades
 
-* [ ] **Serverless Actors:** Pay-per-use actor hosting
-  - Auto-scaling from zero
-  - Function-as-a-Service integration
-  - Cold start optimization (< 10ms)
-  - Usage-based billing models
-* [ ] **Stateless Workers:** Compute-heavy actors
-  - No state persistence overhead
-  - High-throughput message processing
-  - Scale-to-zero support
-  - Request coalescing
-* [ ] **Reactive Actors:** Backpressure-aware actors
-  - Flow control with reactive streams
-  - Windowing and buffering strategies
-  - Time-based and count-based windows
+**Status:** 🟢 Graceful Shutdown IMPLEMENTED, 🚧 Live Migration PLANNED  
+**Dependencies:** Phase 7.2 (Health Checks ✅), Phase 8.2 (Actor Rebalancing ✅), Phase 4 (State Persistence ✅)
+
+Enterprise-grade deployment capabilities enabling production updates without service disruption.
+
+##### Graceful Shutdown (Drain Pattern) ✅ IMPLEMENTED
+
+The graceful shutdown pattern is **already implemented** in `Quark.Hosting.QuarkSilo`:
+
+- ✅ **Stop accepting new actor activations** on termination signal
+  - Silo transitions to `SiloStatus.ShuttingDown` in `StopAsync()`
+  - Status check prevents new activations (line 119-121)
+  
+- ✅ **Configurable shutdown timeout** for in-flight operations
+  - `QuarkSiloOptions.ShutdownTimeout` property (default: 30 seconds)
+  - Timeout enforced during shutdown sequence (line 145-146)
+  
+- ✅ **Actor deactivation with state persistence**
+  - All active actors deactivated via `DeactivateAllActorsAsync()` (line 134)
+  - `OnDeactivateAsync()` called for each actor (line 244)
+  
+- ✅ **ReminderTickManager graceful stop**
+  - ReminderTickManager stopped during shutdown (line 138-141)
+  
+- ✅ **Transport layer coordination**
+  - Wait for in-flight gRPC calls to complete (line 144-147)
+  - Transport stopped cleanly (line 150)
+  
+- ✅ **Cluster membership coordination**
+  - Silo marked as ShuttingDown in cluster (line 120)
+  - Heartbeat stopped to signal unavailability (line 124-128)
+  - Unregister from cluster after shutdown (line 158)
+
+**Integration with Health Checks:**
+- Status exposed via `IQuarkSilo.Status` property
+- Health check can report "Draining" status during shutdown
+- Load balancers can stop routing traffic to shutting down silos
+
+**Configuration Example:**
+```csharp
+services.Configure<QuarkSiloOptions>(options =>
+{
+    options.ShutdownTimeout = TimeSpan.FromSeconds(60); // Custom timeout
+    options.EnableReminders = true; // Ensure reminder cleanup
+});
+```
+
+##### Live Actor Migration 🚧 PLANNED
+
+Seamless actor migration during rolling deployments with minimal disruption.
+
+* [ ] **Hot Actor Detection**
+  - Identify actors with active calls or recent activity
+  - Track message queue depth per actor
+  - Detect actors with open streams or subscriptions
+  - Priority-based migration ordering (cold actors first)
+  
+* [ ] **Migration Orchestration**
+  - Integration with `IActorRebalancer` from Phase 8.2
+  - Coordinated migration across cluster
+  - Drain pattern: stop routing new messages to migrating actors
+  - Graceful handoff to target silo
+  
+* [ ] **State Transfer with Optimistic Concurrency**
+  - E-Tag based concurrency control
+  - Atomic state transfer from source to target silo
+  - Rollback on conflict or failure
+  - State versioning for consistency
+  
+* [ ] **Minimal Disruption Migration**
+  - Queue pending messages during transfer
+  - Message replay on target silo after activation
+  - Preserve message ordering guarantees
+  - Transparent to callers (automatic retry/redirect)
+  
+* [ ] **Reminder and Timer Migration**
+  - Migrate persistent reminders to target silo
+  - Re-register reminders after migration
+  - Timer state transfer and re-scheduling
+  - Ensure no duplicate or missed ticks
+
+**Configuration & Integration:**
+```csharp
+// Future: Will be added via AddLiveMigration() extension method
+// For now, configuration via QuarkSiloOptions:
+services.Configure<QuarkSiloOptions>(options =>
+{
+    options.EnableLiveMigration = true;
+    options.MigrationTimeout = TimeSpan.FromSeconds(30);
+    options.MaxConcurrentMigrations = 10;
+});
+
+// Planned future design (not yet implemented):
+// services.AddLiveMigration(options =>
+// {
+//     options.EnableAutomaticMigration = true;
+//     options.PreferColdActorsMigration = true; // Migrate cold actors first
+// });
+```
+
+##### Version-Aware Placement 🚧 PLANNED
+
+Prevent serialization mismatches and enable safe rolling deployments with version compatibility.
+
+* [ ] **Assembly Version Tracking**
+  - Track assembly versions for each actor type per silo
+  - Advertise silo capabilities based on deployed versions
+  - Version metadata in cluster membership
+  
+* [ ] **Placement Policy Integration**
+  - Prefer silos with matching assembly version for actor activation
+  - Fallback to compatible versions based on compatibility matrix
+  - Prevent activation on incompatible silos
+  
+* [ ] **Version Compatibility Matrix**
+  - Define version compatibility rules (e.g., v2.1 compatible with v2.0)
+  - Support for gradual rollout (e.g., 10% v2.1, 90% v2.0)
+  - Backward/forward compatibility declarations
+  
+* [ ] **Side-by-Side Version Deployment**
+  - Multiple actor versions active simultaneously
+  - Version-specific routing based on caller version
+  - Canary deployments with version targeting
+  
+**Configuration Example:**
+```csharp
+services.Configure<QuarkSiloOptions>(options =>
+{
+    options.EnableVersionAwarePlacement = true;
+    options.AssemblyVersion = "2.1.0"; // Specify version for this silo
+});
+
+// Planned future design (not yet implemented):
+// services.AddVersionAwarePlacement(options =>
+// {
+//     options.StrictVersionMatching = false; // Allow compatible versions
+//     options.CompatibilityMode = VersionCompatibilityMode.Minor; // v2.x compatible
+// });
+```
+
+#### 10.1.2 Stateless Workers (Grainless)
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 1 (Actor Runtime ✅), Phase 2 (Placement ✅)
+
+Lightweight compute actors for high-throughput processing without state persistence overhead.
+
+* [ ] **Stateless Actor Base Class**
+  - `StatelessActorBase` - No state persistence
+  - Multiple instances per actor ID (load balanced)
+  - No activation/deactivation lifecycle overhead
+  - Short-lived, disposable instances
+  
+* [ ] **Automatic Scale-Out**
+  - Dynamic instance count based on load
+  - Request queue depth triggers scaling
+  - Scale to zero when idle
+  - Configurable min/max instance count
+  
+* [ ] **Request Routing and Load Balancing**
+  - Round-robin distribution across instances
+  - Least-loaded instance selection
+  - Request coalescing for identical operations
+  - Integration with existing placement policies
+  
+* [ ] **High-Throughput Processing**
+  - Minimal overhead per invocation
+  - No state load/save latency
+  - Optimized for CPU-bound operations
+  - Batch processing support
+
+**Use Cases:**
+- Image processing/transformation
+- Data validation and enrichment
+- API aggregation and proxying
+- Stateless computation tasks
+
+**Configuration:**
+```csharp
+[Actor(Name = "ImageProcessor", Stateless = true)]
+[StatelessWorker(MinInstances = 2, MaxInstances = 100)]
+public class ImageProcessorActor : StatelessActorBase
+{
+    public Task<byte[]> ResizeImageAsync(byte[] image, int width, int height)
+    {
+        // Stateless image processing
+        return Task.FromResult(ResizeImage(image, width, height));
+    }
+}
+```
+
+#### 10.1.3 Reactive Actors (Backpressure-Aware)
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 5 (Streaming ✅)
+
+Actors with built-in backpressure and flow control for reliable stream processing.
+
+* [ ] **Flow Control Integration**
   - Integration with System.Threading.Channels
+  - Backpressure signals to upstream producers
+  - Dynamic buffer sizing based on processing capacity
+  - Overflow handling strategies (drop, block, spill to disk)
+  
+* [ ] **Windowing and Buffering Strategies**
+  - Time-based windows (e.g., 5-second batches)
+  - Count-based windows (e.g., 100 messages)
+  - Sliding windows for continuous aggregation
+  - Session windows for event correlation
+  
+* [ ] **Reactive Stream Patterns**
+  - `IReactiveActor<TIn, TOut>` interface
+  - Operators: Map, Filter, Reduce, GroupBy
+  - Async stream processing with `IAsyncEnumerable<T>`
+  - Integration with existing `IStreamConsumer<T>`
 
-### 10.4 Enterprise Features
+**Use Cases:**
+- Real-time analytics and aggregation
+- Event stream processing
+- Data pipeline transformations
+- Rate-limited API consumers
 
-* [ ] **Multi-Tenancy:** Tenant isolation and resource quotas
-  - Tenant-specific actor namespaces
-  - Resource limits per tenant (CPU, memory, storage)
-  - Cost attribution and chargeback
-  - Tenant-level observability
-* [ ] **Security Enhancements:** Advanced security features
-  - mTLS for silo-to-silo communication
-  - Actor-level authorization policies
-  - Encrypted state storage at rest
-  - Key rotation without downtime
-  - Audit logging for compliance
-* [ ] **Disaster Recovery:** Business continuity features
-  - Cross-region replication
-  - Automated failover orchestration
+**Configuration:**
+```csharp
+[Actor(Name = "StreamAggregator")]
+[ReactiveActor(BufferSize = 1000, BackpressureThreshold = 0.8)]
+public class StreamAggregatorActor : ReactiveActorBase<SensorData, AggregatedData>
+{
+    protected override async IAsyncEnumerable<AggregatedData> ProcessStreamAsync(
+        IAsyncEnumerable<SensorData> stream)
+    {
+        await foreach (var batch in stream.Window(TimeSpan.FromSeconds(5)))
+        {
+            yield return AggregateBatch(batch);
+        }
+    }
+}
+```
+
+---
+
+### 10.2 Tier 2: Specialized Actor Types
+
+*Priority: HIGH - Extends core actor capabilities for specific use cases.*
+
+#### 10.2.1 Serverless Actors
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** 10.1.2 (Stateless Workers), Phase 8.1 (Auto-scaling ✅)
+
+Pay-per-use actor hosting with auto-scaling from zero for serverless environments.
+
+* [ ] **Auto-Scaling from Zero**
+  - Deactivate actors when idle (no traffic)
+  - Near-instant activation on first request (< 10ms)
+  - Lazy loading of dependencies and state
+  - Integration with container orchestration (Kubernetes, AWS ECS)
+  
+* [ ] **Function-as-a-Service Integration**
+  - AWS Lambda trigger support
+  - Azure Functions integration
+  - Google Cloud Functions support
+  - Event-driven activation patterns
+  
+* [ ] **Cold Start Optimization**
+  - Pre-compiled AOT binaries for fast startup
+  - Minimal memory footprint (< 10MB)
+  - Snapshot/restore for instant warm-up
+  - Shared dependency caching across instances
+  
+* [ ] **Usage-Based Billing Models**
+  - Per-invocation metering
+  - Resource consumption tracking
+  - Cost attribution per actor type
+  - Integration with cloud billing APIs
+
+**Use Cases:**
+- Serverless APIs and webhooks
+- Event-driven workflows
+- Scheduled batch jobs
+- Occasional background tasks
+
+---
+
+### 10.3 Tier 3: Advanced Actor Patterns
+
+*Priority: MEDIUM - Builds on specialized actors for complex scenarios.*
+
+#### 10.3.1 Saga Orchestration
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** 10.1.2 (Stateless Workers), Phase 4 (State Persistence ✅)
+
+Long-running distributed transactions with compensation logic for reliable workflows.
+
+* [ ] **Saga Coordinator Actors**
+  - Orchestrate multi-step workflows across actors
+  - Track saga state and progress
+  - Handle partial failures and rollbacks
+  - Saga instance correlation and recovery
+  
+* [ ] **Compensation Logic Support**
+  - Define compensation actions for each step
+  - Automatic rollback on failure
+  - Idempotent compensation operations
+  - Saga participant registration
+  
+* [ ] **Saga State Persistence**
+  - Durable saga state across restarts
+  - Checkpoint saga progress
+  - Recovery from intermediate states
+  - Audit trail for debugging
+  
+* [ ] **Visual Saga Designer** (Optional)
+  - Graphical workflow editor
+  - Saga template library
+  - Real-time saga execution visualization
+  - Debugging and replay tools
+
+**Use Cases:**
+- Order processing workflows
+- Multi-step approval processes
+- Distributed booking systems
+- Financial transaction orchestration
+
+#### 10.3.2 Actor Queries (LINQ-style)
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 7.2 (Diagnostics ✅), Phase 8.3 (Advanced Placement ✅)
+
+Query and aggregate active actors for analytics and management.
+
+* [ ] **Query Active Actors by Criteria**
+  - LINQ-style query syntax
+  - Filter by actor type, state, metadata
+  - Predicate-based filtering
+  - Distributed query execution across silos
+  
+* [ ] **Aggregate Statistics Across Populations**
+  - Count, sum, average, min, max operations
+  - Group by actor type or custom dimensions
+  - Top-N queries (e.g., most active actors)
+  - Real-time statistics computation
+  
+* [ ] **Real-Time Query Results via Streaming**
+  - Stream query results as actors activate/deactivate
+  - Continuous queries with updates
+  - Integration with Phase 5 streaming
+  - Query result caching and invalidation
+
+**Use Cases:**
+- Cluster monitoring dashboards
+- Actor population analytics
+- Capacity planning
+- Anomaly detection
+
+---
+
+### 10.4 Tier 4: Ecosystem Integrations
+
+*Priority: MEDIUM-LOW - External system connectors and adapters.*
+
+#### 10.4.1 Database Integrations
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 4 (State Persistence ✅)
+
+Additional storage providers for state and reminder persistence.
+
+* [ ] **SQL Server:** State and reminder storage
+  - ADO.NET based provider
+  - Connection pooling and retry policies
+  - Schema migration support
+  - Query performance optimization
+  
+* [ ] **MongoDB:** Document-based state storage
+  - Native MongoDB driver integration
+  - BSON serialization for complex state
+  - Index optimization for actor lookups
+  - Change streams for state notifications
+  
+* [ ] **Cassandra:** Wide-column state storage
+  - Cassandra CQL driver
+  - Multi-datacenter replication
+  - Tunable consistency levels
+  - Time-series data optimizations
+  
+* [ ] **DynamoDB:** Serverless state storage
+  - AWS SDK integration
+  - On-demand capacity mode
+  - Global tables for multi-region
   - Point-in-time recovery
-  - Backup and restore tooling
+  
+* [ ] **CosmosDB:** Multi-region state replication
+  - Azure Cosmos DB SDK
+  - Multi-model support (SQL, MongoDB, Cassandra APIs)
+  - Global distribution and consistency
+  - Change feed integration
 
-### 10.5 Predictive Activation (Cold Start Elimination)
+#### 10.4.2 Cloud Platform SDKs
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** None (standalone integrations)
+
+Native cloud platform integrations for common services.
+
+* [ ] **Azure Integrations**
+  - Key Vault for secrets management
+  - Storage (Blob, Queue, Table) for state
+  - Service Bus for messaging
+  - Monitor for telemetry export
+  
+* [ ] **AWS Integrations**
+  - Secrets Manager for secrets
+  - S3 for blob storage
+  - SQS/SNS for messaging
+  - CloudWatch for logs and metrics
+  
+* [ ] **GCP Integrations**
+  - Secret Manager for secrets
+  - Cloud Storage for blobs
+  - Pub/Sub for messaging
+  - Cloud Logging for logs
+
+#### 10.4.3 Message Queue Integrations
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 5 (Streaming ✅)
+
+Streaming connectors for enterprise message brokers.
+
+* [ ] **Kafka:** Event sourcing and stream processing
+  - Producer/consumer integration
+  - Consumer group management
+  - Transactional writes
+  - Kafka Connect compatibility
+  
+* [ ] **RabbitMQ:** Reliable message delivery
+  - AMQP protocol support
+  - Exchange and queue bindings
+  - Message acknowledgments
+  - Dead letter exchange integration
+  
+* [ ] **Azure Service Bus:** Enterprise messaging
+  - Topics and subscriptions
+  - Message sessions for ordering
+  - Duplicate detection
+  - Scheduled messages
+  
+* [ ] **AWS SQS/SNS:** Serverless messaging
+  - SQS queue integration
+  - SNS topic subscriptions
+  - FIFO queue support
+  - Message attributes and filtering
+  
+* [ ] **NATS:** Lightweight pub/sub
+  - NATS JetStream for persistence
+  - Subject-based routing
+  - Request-reply patterns
+  - Key-value store integration
+
+---
+
+### 10.5 Tier 5: Enterprise Features
+
+*Priority: LOW - Top-level business and operational concerns.*
+
+#### 10.5.1 Multi-Tenancy
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 7 (Observability ✅), Phase 8 (Scalability ✅)
+
+Tenant isolation and resource quotas for SaaS deployments.
+
+* [ ] **Tenant-Specific Actor Namespaces**
+  - Logical isolation per tenant
+  - Tenant ID in actor identity
+  - Cross-tenant access prevention
+  - Tenant-aware routing
+  
+* [ ] **Resource Limits per Tenant**
+  - CPU quotas per tenant
+  - Memory limits per tenant
+  - Storage quotas per tenant
+  - Rate limiting per tenant
+  
+* [ ] **Cost Attribution and Chargeback**
+  - Resource consumption tracking per tenant
+  - Usage reports for billing
+  - Cost allocation models
+  - Integration with billing systems
+  
+* [ ] **Tenant-Level Observability**
+  - Per-tenant metrics and logs
+  - Tenant-specific dashboards
+  - Isolated tracing per tenant
+  - Tenant health monitoring
+
+#### 10.5.2 Security Enhancements
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** Phase 6 (Transport ✅)
+
+Advanced security features for compliance and zero-trust environments.
+
+* [ ] **mTLS for Silo-to-Silo Communication**
+  - Mutual TLS authentication
+  - Certificate rotation
+  - Certificate authority integration
+  - TLS 1.3 support
+  
+* [ ] **Actor-Level Authorization Policies**
+  - Role-based access control (RBAC)
+  - Attribute-based access control (ABAC)
+  - Policy enforcement per actor type
+  - Integration with identity providers (OAuth, OIDC)
+  
+* [ ] **Encrypted State Storage at Rest**
+  - Transparent encryption layer
+  - Key management service integration
+  - Field-level encryption for sensitive data
+  - Encryption algorithm selection
+  
+* [ ] **Key Rotation Without Downtime**
+  - Automated key rotation
+  - Multi-key support during transition
+  - Re-encryption of existing state
+  - Audit logging for key usage
+  
+* [ ] **Audit Logging for Compliance**
+  - Immutable audit log
+  - Actor invocation audit trail
+  - State modification tracking
+  - Compliance reporting (SOC2, GDPR)
+
+#### 10.5.3 Disaster Recovery
+
+**Status:** 🚧 PLANNED  
+**Dependencies:** 10.4.1 (Database Integrations), Phase 8 (Scalability ✅)
+
+Business continuity features for mission-critical deployments.
+
+* [ ] **Cross-Region Replication**
+  - Active-active multi-region deployment
+  - State replication across regions
+  - Conflict resolution strategies
+  - Regional failover support
+  
+* [ ] **Automated Failover Orchestration**
+  - Health-based failover triggers
+  - DNS-based traffic routing
+  - Automatic cluster reformation
+  - Failback procedures
+  
+* [ ] **Point-in-Time Recovery**
+  - State snapshots at intervals
+  - Transaction log replay
+  - Recovery to specific timestamp
+  - Consistency guarantees
+  
+* [ ] **Backup and Restore Tooling**
+  - Automated backup scheduling
+  - Incremental backups
+  - Backup verification and testing
+  - CLI tools for restore operations
+
+---
+
+### 10.6 Predictive Activation (Cold Start Elimination)
+
+**Tier:** 3 (Advanced Patterns)  
+**Note:** Moved from 10.5 to 10.6 to align with priority ordering.
 
 **Status:** 🚧 PLANNED  
 **Priority:** High - Killer feature for real-time systems  
@@ -949,7 +1455,12 @@ services.AddPredictiveActivation(options =>
 
 ---
 
-### 10.6 Community-Requested Features
+---
+
+### 10.7 Community-Requested Features
+
+**Tier:** 3 (Advanced Patterns)  
+**Note:** Moved from 10.6 to 10.7 to align with priority ordering.
 
 *Features requested by the community and from the Microsoft Orleans wish list.*
 
@@ -977,12 +1488,8 @@ services.AddPredictiveActivation(options =>
   - Progress tracking and cancellation support
   - Automatic retry with exponential backoff
   - Job dependencies and workflow coordination
-* [ ] **Grainless (Stateless Workers):** Lightweight compute actors
-  - Stateless actor pattern for high-throughput processing
-  - No state persistence overhead
-  - Automatic scale-out based on load
-  - Request routing and load balancing
-  - Integration with existing actor model
+* [ ] **Stateless Workers (see 10.1.2):** Lightweight compute actors - *Note: Detailed in Tier 1 Core Infrastructure*
+  - Cross-reference: See section 10.1.2 for full details
 * [ ] **Durable Tasks:** Reliable asynchronous workflows
   - Task continuations with persistence
   - Automatic retry and error handling
@@ -1103,15 +1610,24 @@ services.AddPredictiveActivation(options =>
 
 *Last Updated: 2026-01-30*  
 *Status: Phases 1-9 Complete (379/382 tests passing), Phase 10 Planned*
-## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan
+
+---
+
+## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan (Future Design)
+
+**Note:** This section contains a detailed future design proposal for Phase 10.1.1. The current implementation already provides graceful shutdown via `QuarkSiloOptions.ShutdownTimeout`. The live migration and drain state management features described below are planned for future implementation.
 
 ### Overview
 
 For enterprise production deployments, cluster updates must not drop active actor calls or lose in-flight messages. This feature provides comprehensive support for zero-downtime deployments through graceful shutdown, live actor migration, and version-aware placement.
 
-### 1. Graceful Shutdown (Drain Pattern)
+### 1. Graceful Shutdown (Drain Pattern) - Future Enhancement
 
 **Goal:** Cleanly shut down a silo without dropping active operations.
+
+**Current Status:** Basic graceful shutdown is already implemented in `QuarkSilo.StopAsync()` with configurable timeout via `QuarkSiloOptions.ShutdownTimeout`.
+
+**Future Enhancement:** Add explicit drain state management and hot actor migration.
 
 #### 1.1 Drain State Management
 
@@ -1151,16 +1667,19 @@ public record DrainStatus(
 - Coordinate with `IActorRebalancer` to migrate hot actors
 - Signal drain completion to health check system
 
-**Configuration:**
+**Configuration (Future Design Proposal):**
 ```csharp
-public class SiloOptions
+// Note: This is a future design proposal. Current implementation uses QuarkSiloOptions.
+// See QuarkSiloOptions.ShutdownTimeout for the current graceful shutdown configuration.
+
+public class SiloOptions // Future enhancement to QuarkSiloOptions
 {
     // Existing properties...
     
-    public bool EnableGracefulShutdown { get; set; } = false;
-    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    public bool MigrateHotActorsOnShutdown { get; set; } = true;
-    public TimeSpan HotActorThreshold { get; set; } = TimeSpan.FromMinutes(5);
+    public bool EnableGracefulShutdown { get; set; } = true; // Currently always enabled
+    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(30); // Already exists
+    public bool MigrateHotActorsOnShutdown { get; set; } = true; // Planned
+    public TimeSpan HotActorThreshold { get; set; } = TimeSpan.FromMinutes(5); // Planned
 }
 ```
 
@@ -1307,7 +1826,10 @@ public enum PlacementPreference
 
 #### 4.1 Extension Methods
 
-**New extension in `Quark.Extensions.DependencyInjection`:**
+**New extension in `Quark.Extensions.DependencyInjection` (Future Design Proposal):**
+
+**Note:** This shows a future API design. Current configuration is done via `QuarkSiloOptions`.
+
 ```csharp
 public static class LiveMigrationExtensions
 {
@@ -1329,37 +1851,44 @@ public class LiveMigrationOptions
 {
     public bool EnableVersionAwarePlacement { get; set; } = true;
     public PlacementPreference VersionPreference { get; set; } = PlacementPreference.PreferSameVersion;
-    public TimeSpan MigrationTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan MigrationTimeout { get; set; } = TimeSpan.FromSeconds(30); // Aligned with QuarkSiloOptions
     public int MaxConcurrentMigrations { get; set; } = 10;
 }
 ```
 
-#### 4.2 Usage Example
+#### 4.2 Usage Example (Future Design Proposal)
+
+**Note:** This example shows a future design. Current implementation uses `QuarkSiloOptions` directly.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Quark Silo with graceful shutdown
-builder.Services.AddQuarkSilo(options =>
+// Current implementation - Add Quark Silo with graceful shutdown
+builder.Services.Configure<QuarkSiloOptions>(options =>
 {
     options.SiloId = "silo-1";
-    options.AdvertisedAddress = "localhost";
-    options.SiloPort = 5000;
+    options.Address = "localhost";
+    options.Port = 5000;
     
-    // Enable graceful shutdown
-    options.EnableGracefulShutdown = true;
+    // Graceful shutdown (already implemented)
     options.ShutdownTimeout = TimeSpan.FromSeconds(30);
-    options.MigrateHotActorsOnShutdown = true;
+    
+    // Live migration (planned - configuration options added in Phase 10.1.1)
+    options.EnableLiveMigration = true;
+    options.MigrationTimeout = TimeSpan.FromSeconds(30);
+    options.MaxConcurrentMigrations = 10;
+    
+    // Version-aware placement (planned)
+    options.EnableVersionAwarePlacement = true;
+    options.AssemblyVersion = "2.1.0";
 });
 
-// Add Live Migration support
-builder.Services.AddLiveMigration(options =>
-{
-    options.EnableVersionAwarePlacement = true;
-    options.VersionPreference = PlacementPreference.PreferSameVersion;
-    options.MigrationTimeout = TimeSpan.FromSeconds(10);
-    options.MaxConcurrentMigrations = 10;
-});
+// Future design - separate extension method (not yet implemented):
+// builder.Services.AddLiveMigration(options =>
+// {
+//     options.EnableVersionAwarePlacement = true;
+//     options.VersionPreference = PlacementPreference.PreferSameVersion;
+// });
 
 // Add Actor Rebalancing (required for migration)
 builder.Services.AddActorRebalancing(options =>
