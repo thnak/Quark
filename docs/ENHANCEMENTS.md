@@ -245,23 +245,45 @@ Comprehensive testing: 24 new unit tests (14 hierarchical hashing + 10 adaptive 
   - Connection failover for Redis clusters
   - gRPC channel state management
 
-### 8.5 Backpressure & Flow Control 🚧 PLANNED
+### 8.5 Backpressure & Flow Control ✅ IMPLEMENTED
 
-* [ ] **Adaptive Backpressure:** Smart flow control for slow consumers (deferred from Phase 5)
-  - Per-stream backpressure policies
-  - Consumer-driven flow control
-  - Adaptive buffer sizing based on consumer rate
-  - Pressure propagation across actor chains
-* [ ] **Flow Control Strategies:**
-  - Drop oldest/newest message strategies
-  - Sampling for high-frequency streams
-  - Time-based windowing with aggregation
-  - Rate limiting at stream source
-* [ ] **Backpressure Metrics:**
-  - Track buffer utilization per stream
-  - Monitor consumer lag metrics
-  - Alert on persistent backpressure conditions
-  - Dashboard integration for flow control visualization
+* [x] **Adaptive Backpressure:** Smart flow control for slow consumers (implemented in Phase 8.5)
+  - Per-stream backpressure policies configured via `StreamBackpressureOptions`
+  - Multiple flow control modes: None, DropOldest, DropNewest, Block, Throttle
+  - Configurable buffer sizing per namespace
+  - Channel-based buffering with configurable capacity (10 to 10,000 messages)
+* [x] **Flow Control Strategies:**
+  - DropOldest: Drops oldest messages when buffer full (preserves new data)
+  - DropNewest: Drops newest messages when buffer full (preserves old data)
+  - Block: Blocks publishers until space available (guaranteed delivery)
+  - Throttle: Rate limits publishing based on time windows
+  - Configurable via `QuarkStreamProvider.ConfigureBackpressure()`
+* [x] **Backpressure Metrics:**
+  - Track total messages published and dropped via `StreamBackpressureMetrics`
+  - Monitor current and peak buffer depth
+  - Track throttle/block events
+  - Metrics exposed per stream via `IStreamHandle<T>.BackpressureMetrics`
+  - Real-time visibility into flow control effectiveness
+
+**Usage Example:**
+```csharp
+// Configure backpressure for a namespace
+var provider = new QuarkStreamProvider();
+provider.ConfigureBackpressure("orders", new StreamBackpressureOptions
+{
+    Mode = BackpressureMode.DropOldest,
+    BufferSize = 1000,
+    EnableMetrics = true
+});
+
+// Get stream and check metrics
+var stream = provider.GetStream<Order>("orders", "key");
+await stream.PublishAsync(order);
+
+// Monitor backpressure
+var metrics = stream.BackpressureMetrics;
+Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.CurrentBufferDepth}");
+```
 
 ---
 
