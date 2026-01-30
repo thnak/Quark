@@ -21,4 +21,12 @@ public sealed class ActorAttribute : Attribute
     /// Default is false for safety.
     /// </summary>
     public bool Reentrant { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this is a stateless worker actor.
+    /// If true, multiple instances can be created for the same actor ID for load balancing.
+    /// Stateless actors have no state persistence overhead.
+    /// Default is false.
+    /// </summary>
+    public bool Stateless { get; set; }
 }
