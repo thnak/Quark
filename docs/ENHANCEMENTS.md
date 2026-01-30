@@ -262,7 +262,7 @@ Comprehensive testing: 13 new unit tests covering both features (6 rebalancing +
 
 *Focus: Make Quark the most developer-friendly actor framework.*
 
-### 9.1 Enhanced Source Generators ✅ PARTIALLY COMPLETED
+### 9.1 Enhanced Source Generators ✅ COMPLETED
 
 * [ ] **Protobuf Proxy Generation:** Type-safe remote calls (planned in Phase 6)
   - 🚧 Generate .proto files from actor interfaces (future enhancement)
@@ -275,15 +275,17 @@ Comprehensive testing: 13 new unit tests covering both features (6 rebalancing +
   - ✅ Works with [Actor] attribute and ActorBase-derived classes
   - ✅ Parameter serializability checks - `ActorParameterSerializabilityAnalyzer` (QUARK006)
   - ✅ Missing [Actor] attribute detection - `MissingActorAttributeAnalyzer` (QUARK005)
-  - 🚧 Reentrancy detection (circular call warnings) (future enhancement)
-  - 🚧 Performance anti-pattern detection (future enhancement)
-* [✓] **Smart Code Fixes:** IDE-integrated quick fixes ✅ PARTIALLY COMPLETED
+  - ✅ Reentrancy detection (circular call warnings) - `ReentrancyAnalyzer` (QUARK007)
+  - ✅ Performance anti-pattern detection - `PerformanceAntiPatternAnalyzer` (QUARK008, QUARK009)
+    - ✅ Detects blocking calls (Thread.Sleep, Task.Wait, Task.Result)
+    - ✅ Detects synchronous file I/O operations
+* [✓] **Smart Code Fixes:** IDE-integrated quick fixes ✅ COMPLETED
   - ✅ Convert sync methods to async - `ActorMethodSignatureCodeFixProvider` (Task/ValueTask options)
   - ✅ Add missing [Actor] attributes - `MissingActorAttributeCodeFixProvider`
-  - 🚧 Generate state properties automatically (future enhancement)
-  - 🚧 Scaffold supervision hierarchies (future enhancement)
+  - ✅ Generate state properties automatically - `StatePropertyCodeFixProvider` (string, int, custom type)
+  - ✅ Scaffold supervision hierarchies - `SupervisionScaffoldCodeFixProvider` (restart, stop, custom strategies)
 
-**Status:** Enhanced analyzers with three new diagnostic rules (QUARK004, QUARK005, QUARK006) and two code fix providers. Protobuf generation and additional code fixes planned for future releases.
+**Status:** Enhanced analyzers complete with seven diagnostic rules (QUARK004-QUARK009) and four code fix providers. All features tested and documented. Protobuf generation planned for future releases.
 
 ### 9.2 Development Tools
 
