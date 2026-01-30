@@ -131,8 +131,16 @@ public sealed class RedisClusterMembership : IQuarkClusterMembership
 
         if (_silos.TryGetValue(CurrentSiloId, out var silo))
         {
-            // Create new instance with updated heartbeat
-            var updated = new SiloInfo(silo.SiloId, silo.Address, silo.Port, silo.Status);
+            // Create new instance with updated heartbeat (preserving all properties including versions)
+            var updated = new SiloInfo(
+                silo.SiloId,
+                silo.Address,
+                silo.Port,
+                silo.Status,
+                silo.RegionId,
+                silo.ZoneId,
+                silo.ShardGroupId,
+                silo.ActorTypeVersions);
             _silos[CurrentSiloId] = updated;
 
             // Use source-generated serialization (zero reflection)

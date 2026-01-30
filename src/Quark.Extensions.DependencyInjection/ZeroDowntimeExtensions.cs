@@ -42,12 +42,32 @@ public static class ZeroDowntimeExtensions
     /// <summary>
     /// Adds version tracking and compatibility checking for version-aware placement.
     /// Enables silos to track actor assembly versions and prefer compatible versions during placement.
+    /// If cluster membership is available, uses cluster-synchronized version tracking.
+    /// Otherwise, uses local-only version tracking.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddVersionAwarePlacement(this IServiceCollection services)
     {
-        services.TryAddSingleton<IVersionTracker, VersionTracker>();
+        // Register version tracker with factory that chooses between local and cluster-aware implementations
+        services.TryAddSingleton<IVersionTracker>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<VersionTracker>>();
+            var clusterMembership = sp.GetService<Quark.Abstractions.Clustering.IClusterMembership>();
+            
+            if (clusterMembership != null)
+            {
+                // Cluster membership is available - use cluster-synchronized version tracking
+                var clusterLogger = sp.GetRequiredService<ILogger<ClusterVersionTracker>>();
+                return new ClusterVersionTracker(clusterLogger, clusterMembership);
+            }
+            else
+            {
+                // No cluster membership - use local-only version tracking
+                return new VersionTracker(logger);
+            }
+        });
+        
         services.TryAddSingleton<IVersionCompatibilityChecker, VersionCompatibilityChecker>();
         return services;
     }
