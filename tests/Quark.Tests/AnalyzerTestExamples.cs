@@ -1,7 +1,7 @@
 using Quark.Abstractions;
 using Quark.Core.Actors;
 
-namespace Quark.Tests.AnalyzerTests;
+namespace Quark.Tests;
 
 /// <summary>
 /// Test actor to verify analyzer behavior.
