@@ -55,12 +55,12 @@ class Program
         };
 
         // Simulate stream consumer (in real system, this would subscribe to actual stream)
-        var streamTask = Task.Run(() => StreamConsumerLoop(cts.Token));
+        var streamTask = Task.Run(() => StreamConsumerLoop(cts.Token), cts.Token);
 
         // Command loop
         await CommandLoop(cts.Token);
 
-        cts.Cancel();
+        await cts.CancelAsync();
         await streamTask;
 
         Console.WriteLine("👋 Kitchen Display shutdown complete");

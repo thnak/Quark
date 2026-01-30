@@ -2,6 +2,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# install requirements for Native AOT
+RUN apt-get update && apt-get install -y clang zlib1g-dev
+
 # Copy solution and project files
 COPY Quark.slnx .
 COPY Directory.Build.props .
@@ -12,7 +15,7 @@ COPY examples/Quark.Demo.PizzaDash.Silo/ examples/Quark.Demo.PizzaDash.Silo/
 # Restore and build
 WORKDIR /src/examples/Quark.Demo.PizzaDash.Silo
 RUN dotnet restore
-RUN dotnet publish -c Release -o /app/publish
+RUN dotnet publish -c Release -o /app/publish -r linux-x64
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine
