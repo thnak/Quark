@@ -216,7 +216,7 @@ dotnet test --filter "FullyQualifiedName~VersionTrackerTests"
 
 ### Integration Tasks
 
-1. **Mailbox Integration**: Wire up `IActorActivityTracker` with mailbox operations to automatically track message queue depth
+1. **Mailbox Integration**: ✅ COMPLETED - Wire up `IActorActivityTracker` with mailbox operations to automatically track message queue depth
 2. **Silo Lifecycle Integration**: Integrate migration coordinator with QuarkSilo shutdown sequence
 3. **Automatic Version Detection**: ✅ COMPLETED - Auto-detect assembly versions on silo startup using source generator
 4. **Cluster Synchronization**: Sync version information via Redis cluster membership
@@ -307,6 +307,58 @@ namespace Quark.Generated
 - **Zero Configuration**: Versions extracted from assembly metadata automatically
 - **Efficient Lookup**: Uses FrozenDictionary for optimal read performance
 - **No Manual Maintenance**: Actor versions stay in sync with assembly version
+
+## Mailbox Activity Tracking Integration ✅
+
+Phase 10.1.1 now includes automatic activity tracking at the mailbox level. The `ChannelMailbox` class has been enhanced to optionally integrate with `IActorActivityTracker` for real-time monitoring of actor activity.
+
+### How It Works
+
+1. **Optional Dependency Injection**: `ChannelMailbox` constructor accepts optional `IActorActivityTracker` and actor type name
+2. **Message Enqueue Tracking**: When a message is posted to the mailbox, `RecordMessageEnqueued` is called
+3. **Message Dequeue Tracking**: When a message begins processing, `RecordMessageDequeued` is called
+4. **Call Lifecycle Tracking**: 
+   - `RecordCallStarted` when processing begins
+   - `RecordCallCompleted` when processing finishes (in finally block)
+5. **Cleanup**: When mailbox is disposed, actor is automatically removed from tracker
+
+### Usage
+
+```csharp
+// Create mailbox with activity tracking enabled
+var activityTracker = serviceProvider.GetRequiredService<IActorActivityTracker>();
+var mailbox = new ChannelMailbox(
+    actor,
+    capacity: 1000,
+    deadLetterQueue: deadLetterQueue,
+    activityTracker: activityTracker,  // Optional
+    actorType: "OrderActor");           // Optional
+
+// Mailbox automatically tracks:
+// - Message enqueue (when PostAsync is called)
+// - Message dequeue (when processing starts)
+// - Call start (when method invocation begins)
+// - Call completion (when method invocation ends)
+// - Actor removal (when mailbox is disposed)
+```
+
+### Key Features
+
+- **Zero Overhead When Disabled**: If `activityTracker` is null, no tracking code executes
+- **Non-Invasive**: Existing mailbox functionality unchanged, tracking is additive
+- **Thread-Safe**: All tracking operations use thread-safe `IActorActivityTracker` methods
+- **Automatic Cleanup**: Actors automatically removed from tracker on disposal
+- **Real-Time Metrics**: Activity data available immediately for migration decisions
+
+### Integration Points
+
+The mailbox integration enables automatic population of:
+- **Queue Depth**: Tracked via enqueue/dequeue calls
+- **Active Call Count**: Tracked via call start/completion
+- **Last Activity Time**: Updated on every tracking call
+- **Activity Score**: Calculated automatically based on metrics
+
+This automation means applications don't need manual instrumentation - simply provide the tracker and actor type, and the framework handles the rest.
 
 
 
