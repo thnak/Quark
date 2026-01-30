@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <IsAotCompatible>true</IsAotCompatible>
+        <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
+        <Description>Dashboard API data providers for Quark performance profiling and cluster visualization.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Quark.Profiling.Abstractions\Quark.Profiling.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Profiling.Linux\Quark.Profiling.Linux.csproj" />
+        <ProjectReference Include="..\Quark.Profiling.Windows\Quark.Profiling.Windows.csproj" />
+        <ProjectReference Include="..\Quark.Abstractions\Quark.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Hosting\Quark.Hosting.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+    </ItemGroup>
+
+</Project>
