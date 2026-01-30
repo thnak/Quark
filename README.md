@@ -15,6 +15,11 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
   - High-performance logging (LoggerMessage)
 - 🏗️ **Orleans-inspired**: Familiar actor model with modern AOT support
 - 🌐 **Distributed**: Redis clustering with consistent hashing
+- 🔌 **Connection Optimization**: Intelligent connection pooling and sharing
+  - Shared Redis connections across components
+  - gRPC channel pooling with automatic lifecycle management
+  - Health monitoring and automatic recovery
+  - Zero-copy for co-hosted scenarios
 - ⚡ **Parallel Build**: Multi-project structure optimized for parallel compilation
 - 🎯 **.NET 10 Target**: Built for the latest .NET platform
 
