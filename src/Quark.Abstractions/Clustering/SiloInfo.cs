@@ -43,6 +43,12 @@ public sealed class SiloInfo
     public DateTimeOffset LastHeartbeat { get; internal set; }
 
     /// <summary>
+    ///     Gets or sets the current health score for this silo.
+    ///     Null if health monitoring is not enabled.
+    /// </summary>
+    public SiloHealthScore? HealthScore { get; set; }
+
+    /// <summary>
     ///     Gets the endpoint string in the format "address:port".
     /// </summary>
     public string Endpoint => $"{Address}:{Port}";

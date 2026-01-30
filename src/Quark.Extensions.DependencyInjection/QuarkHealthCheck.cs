@@ -12,14 +12,19 @@ public sealed class QuarkSiloHealthCheck : IHealthCheck
 {
     private readonly IQuarkSilo _silo;
     private readonly IQuarkClusterMembership _clusterMembership;
+    private readonly IClusterHealthMonitor? _healthMonitor;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="QuarkSiloHealthCheck"/> class.
     /// </summary>
-    public QuarkSiloHealthCheck(IQuarkSilo silo, IQuarkClusterMembership clusterMembership)
+    public QuarkSiloHealthCheck(
+        IQuarkSilo silo, 
+        IQuarkClusterMembership clusterMembership,
+        IClusterHealthMonitor? healthMonitor = null)
     {
         _silo = silo ?? throw new ArgumentNullException(nameof(silo));
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
+        _healthMonitor = healthMonitor;
     }
 
     /// <inheritdoc />
@@ -45,6 +50,34 @@ public sealed class QuarkSiloHealthCheck : IHealthCheck
                 ["ActiveActors"] = _silo.GetActiveActors().Count,
                 ["ClusterSize"] = silos.Count
             };
+
+            // Include health score if monitoring is enabled
+            if (_healthMonitor != null)
+            {
+                var healthScore = await _healthMonitor.GetHealthScoreAsync(_silo.SiloId, cancellationToken);
+                if (healthScore != null)
+                {
+                    data["HealthScore"] = healthScore.OverallScore;
+                    data["CpuUsage"] = healthScore.CpuUsagePercent;
+                    data["MemoryUsage"] = healthScore.MemoryUsagePercent;
+                    data["NetworkLatency"] = healthScore.NetworkLatencyMs;
+                    
+                    // Return degraded if health score is low but not critical
+                    if (healthScore.OverallScore < 50 && healthScore.OverallScore >= 30)
+                    {
+                        return HealthCheckResult.Degraded(
+                            $"Silo {_silo.SiloId} health is degraded (score: {healthScore.OverallScore:F1})",
+                            data: data);
+                    }
+                    
+                    if (healthScore.OverallScore < 30)
+                    {
+                        return HealthCheckResult.Unhealthy(
+                            $"Silo {_silo.SiloId} health is critical (score: {healthScore.OverallScore:F1})",
+                            data: data);
+                    }
+                }
+            }
 
             return HealthCheckResult.Healthy(
                 $"Silo {_silo.SiloId} is active with {data["ActiveActors"]} actors",
