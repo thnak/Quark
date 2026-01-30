@@ -224,7 +224,7 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ Missing [Actor] attribute detection - `MissingActorAttributeAnalyzer` (QUARK005)
   - 🚧 Reentrancy detection (circular call warnings) (future enhancement)
   - 🚧 Performance anti-pattern detection (future enhancement)
-* [~] **Smart Code Fixes:** IDE-integrated quick fixes ✅ PARTIALLY COMPLETED
+* [✓] **Smart Code Fixes:** IDE-integrated quick fixes ✅ PARTIALLY COMPLETED
   - ✅ Convert sync methods to async - `ActorMethodSignatureCodeFixProvider` (Task/ValueTask options)
   - ✅ Add missing [Actor] attributes - `MissingActorAttributeCodeFixProvider`
   - 🚧 Generate state properties automatically (future enhancement)

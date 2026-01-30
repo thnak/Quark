@@ -53,16 +53,18 @@ public class MyActor : ActorBase
     }
 }
 
-// ✅ Correct
+// ✅ Correct (after applying code fix, method name should be updated manually)
 [Actor]
 public class MyActor : ActorBase
 {
-    public async Task ProcessDataAsync()
+    public async Task ProcessData() // Code fix adds async and Task, developer should rename to ProcessDataAsync
     {
         await Task.CompletedTask;
     }
 }
 ```
+
+**Note:** The code fix converts the return type and adds the `async` modifier but does not rename the method. Developers should manually rename methods to follow the `Async` suffix convention (e.g., `ProcessData` → `ProcessDataAsync`).
 
 ### QUARK005: Actor class missing [Actor] attribute
 **Severity:** Warning  
@@ -96,7 +98,7 @@ public class MyActor : ActorBase
 
 Actor method parameters should use types that can be JSON serialized for distributed calls. Avoid:
 - Delegates (Action, Func)
-- Interfaces (except common collections)
+- Interfaces (except `System.Collections.Generic` interfaces like `IList<T>`, `IDictionary<K,V>`)
 - Complex types without proper serialization support
 
 **Example:**

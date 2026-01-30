@@ -26,7 +26,7 @@ public class TestActorWithoutAttribute : ActorBase
     }
 
     // This should trigger QUARK006 (non-serializable parameter)
-    public async Task MethodWithDelegateParameter(Action callback)
+    public async Task MethodWithDelegateParameterAsync(Action callback)
     {
         await Task.CompletedTask;
         callback?.Invoke();

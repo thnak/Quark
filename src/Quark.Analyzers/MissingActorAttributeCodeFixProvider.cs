@@ -75,7 +75,7 @@ public class MissingActorAttributeCodeFixProvider : CodeFixProvider
         if (compilationUnit != null)
         {
             var hasQuarkUsing = compilationUnit.Usings
-                .Any(u => u.Name?.ToString() == "Quark.Abstractions");
+                .Any(u => u.Name?.ToFullString().Trim() == "Quark.Abstractions");
 
             if (!hasQuarkUsing)
             {
@@ -83,7 +83,9 @@ public class MissingActorAttributeCodeFixProvider : CodeFixProvider
                     SyntaxFactory.IdentifierName("Quark.Abstractions"))
                     .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
 
-                newRoot = compilationUnit.AddUsings(usingDirective);
+                // Insert at the beginning to maintain alphabetical order
+                newRoot = compilationUnit.WithUsings(
+                    compilationUnit.Usings.Insert(0, usingDirective));
             }
         }
 
