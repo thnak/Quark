@@ -11,6 +11,7 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
 - 🚀 **High Performance**: Lock-free messaging, persistent gRPC streams
 - 🔧 **Source Generation**: Compile-time code generation for AOT compatibility
   - Actor factories
+  - **Type-safe client proxies with Protobuf contracts** 🆕
   - JSON serialization (JsonSerializerContext)
   - High-performance logging (LoggerMessage)
 - 🏗️ **Orleans-inspired**: Familiar actor model with modern AOT support
@@ -136,6 +137,116 @@ public class CounterActor : ActorBase
 }
 ```
 
+## Type-Safe Client Proxies
+
+Quark supports type-safe client proxies for remote actor invocation with full AOT compatibility. Define an actor interface inheriting from `IQuarkActor`, and Quark will automatically generate Protobuf message contracts and client-side proxy implementations at compile-time.
+
+### Defining an Actor Interface
+
+```csharp
+using Quark.Abstractions;
+
+// Define your actor interface
+public interface ICounterActor : IQuarkActor
+{
+    Task IncrementAsync(int amount);
+    Task<int> GetCountAsync();
+    Task ResetAsync();
+}
+```
+
+### Using Type-Safe Proxies
+
+```csharp
+using Quark.Client;
+
+// Connect to the cluster
+var client = serviceProvider.GetRequiredService<IClusterClient>();
+await client.ConnectAsync();
+
+// Get a type-safe proxy for the actor
+var counter = client.GetActor<ICounterActor>("counter-1");
+
+// Make strongly-typed calls - no manual envelope construction!
+await counter.IncrementAsync(5);
+var count = await counter.GetCountAsync();
+Console.WriteLine($"Counter value: {count}");
+await counter.ResetAsync();
+```
+
+### What Gets Generated
+
+For each `IQuarkActor` interface, the source generator creates:
+
+1. **Protobuf Message Contracts** - Request/response messages for each method:
+   ```csharp
+   [ProtoContract]
+   public struct IncrementAsyncRequest
+   {
+       [ProtoMember(1)] public int Amount { get; set; }
+   }
+   
+   [ProtoContract]
+   public struct GetCountAsyncResponse
+   {
+       [ProtoMember(1)] public int Result { get; set; }
+   }
+   ```
+
+2. **Client-Side Proxy** - A proxy class that implements your interface:
+   ```csharp
+   internal sealed class ICounterActorProxy : ICounterActor
+   {
+       // Serializes parameters to Protobuf, creates QuarkEnvelope,
+       // sends via IClusterClient, and deserializes the response
+   }
+   ```
+
+3. **Factory Registration** - Automatic registration in `ActorProxyFactory`:
+   ```csharp
+   if (typeof(TActorInterface) == typeof(ICounterActor))
+       return (TActorInterface)(object)new ICounterActorProxy(client, actorId);
+   ```
+
+### Benefits
+
+- **Type Safety**: Full compile-time type checking and IntelliSense support
+- **Zero Reflection**: All code generated at compile-time for Native AOT compatibility
+- **Efficient Serialization**: Protobuf binary serialization for optimal network performance
+- **Developer Experience**: Clean, strongly-typed API - no manual envelope construction
+- **Backward Compatible**: Uses existing QuarkEnvelope transport protocol
+
+### Actor Implementation
+
+The server-side actor implementation is straightforward:
+
+```csharp
+[Actor(Name = "Counter")]
+public class CounterActor : ActorBase, ICounterActor
+{
+    private int _count;
+
+    public CounterActor(string actorId) : base(actorId) { }
+
+    public Task IncrementAsync(int amount)
+    {
+        _count += amount;
+        return Task.CompletedTask;
+    }
+
+    public Task<int> GetCountAsync()
+    {
+        return Task.FromResult(_count);
+    }
+
+    public Task ResetAsync()
+    {
+        _count = 0;
+        return Task.CompletedTask;
+    }
+}
+```
+
 ## Architecture
 
 ### Core Components
@@ -179,12 +290,28 @@ public override Task<SupervisionDirective> OnChildFailureAsync(
 
 See the `examples/Quark.Examples.Supervision` project for a complete example.
 
-### Source Generator
+### Source Generators
 
-The `Quark.SourceGenerator` project contains a Roslyn incremental source generator that:
-- Detects classes marked with `[Actor]` attribute
-- Generates AOT-friendly factory methods at compile-time
-- Eliminates runtime reflection for Native AOT compatibility
+The `Quark.Generators` project contains Roslyn incremental source generators that provide compile-time code generation:
+
+1. **ActorSourceGenerator**: 
+   - Detects classes marked with `[Actor]` attribute
+   - Generates AOT-friendly factory methods at compile-time
+   - Eliminates runtime reflection for Native AOT compatibility
+
+2. **ProxySourceGenerator**: 🆕
+   - Detects interfaces inheriting from `IQuarkActor`
+   - Generates Protobuf message contracts for method parameters and return values
+   - Generates type-safe client proxy implementations
+   - Registers proxies in `ActorProxyFactory` for `IClusterClient.GetActor<T>()`
+
+3. **StateSourceGenerator**:
+   - Generates state persistence code for properties marked with `[QuarkState]`
+   - Provides AOT-compatible serialization/deserialization
+
+4. **StreamSourceGenerator**:
+   - Generates reactive stream dispatchers for actors with `[QuarkStream]` attributes
+   - Enables publish-subscribe messaging patterns
 
 ## Configuration
 
