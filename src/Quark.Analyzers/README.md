@@ -392,6 +392,23 @@ dotnet_diagnostic.QUARK004.severity = suggestion
 
 All analyzers are fully compatible with Native AOT compilation and use zero reflection at runtime.
 
+## Release Tracking
+
+This project uses analyzer release tracking as required by RS2008. The following files track diagnostic rule changes:
+
+- **`AnalyzerReleases.Shipped.md`**: Tracks rules in shipped releases
+- **`AnalyzerReleases.Unshipped.md`**: Tracks rules for the upcoming release
+
+### Maintaining Release Files
+
+When releasing a new version:
+
+1. Move all entries from `AnalyzerReleases.Unshipped.md` to `AnalyzerReleases.Shipped.md`
+2. Create a new release section in the shipped file with the version number (e.g., `## Release 1.0`)
+3. Clear the unshipped file (keep only the header comments)
+
+For more details, see the [Microsoft Roslyn Release Tracking Documentation](https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md).
+
 ## See Also
 
 - [Quark Framework Documentation](../../README.md)
