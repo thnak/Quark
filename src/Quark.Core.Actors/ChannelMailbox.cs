@@ -12,6 +12,7 @@ public sealed class ChannelMailbox : IMailbox
     private readonly IActor _actor;
     private readonly Channel<IActorMessage> _channel;
     private readonly CancellationTokenSource _cts;
+    private readonly IDeadLetterQueue? _deadLetterQueue;
     private int _messageCount;
     private Task? _processingTask;
 
@@ -20,10 +21,12 @@ public sealed class ChannelMailbox : IMailbox
     /// </summary>
     /// <param name="actor">The actor that owns this mailbox.</param>
     /// <param name="capacity">The maximum number of messages the mailbox can hold. Default is 1000.</param>
-    public ChannelMailbox(IActor actor, int capacity = 1000)
+    /// <param name="deadLetterQueue">Optional dead letter queue for capturing failed messages.</param>
+    public ChannelMailbox(IActor actor, int capacity = 1000, IDeadLetterQueue? deadLetterQueue = null)
     {
         _actor = actor ?? throw new ArgumentNullException(nameof(actor));
         _cts = new CancellationTokenSource();
+        _deadLetterQueue = deadLetterQueue;
 
         var options = new BoundedChannelOptions(capacity)
         {
@@ -127,6 +130,20 @@ public sealed class ChannelMailbox : IMailbox
             {
                 // Log error but continue processing
                 Console.WriteLine($"Error processing message {message.MessageId} for actor {ActorId}: {ex}");
+
+                // Send to dead letter queue if configured
+                if (_deadLetterQueue != null)
+                {
+                    try
+                    {
+                        await _deadLetterQueue.EnqueueAsync(message, ActorId, ex, cancellationToken);
+                    }
+                    catch (Exception dlqEx)
+                    {
+                        // Log DLQ failure but don't crash the mailbox
+                        Console.WriteLine($"Failed to enqueue message to DLQ: {dlqEx}");
+                    }
+                }
             }
             finally
             {
@@ -153,6 +170,8 @@ public sealed class ChannelMailbox : IMailbox
             catch (Exception ex)
             {
                 methodMessage.CompletionSource.SetException(ex);
+                // Rethrow so it's captured by DLQ in outer catch
+                throw;
             }
     }
 
