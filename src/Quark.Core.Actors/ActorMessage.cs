@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.Core.Actors.Pooling;
 
 namespace Quark.Core.Actors;
 
@@ -12,7 +13,8 @@ public abstract class ActorMessageBase : IActorMessage
     /// </summary>
     protected ActorMessageBase()
     {
-        MessageId = Guid.NewGuid().ToString();
+        // Phase 8.1: Zero-allocation messaging - use incrementing ID instead of GUID
+        MessageId = MessageIdGenerator.Generate();
         Timestamp = DateTimeOffset.UtcNow;
     }
 
