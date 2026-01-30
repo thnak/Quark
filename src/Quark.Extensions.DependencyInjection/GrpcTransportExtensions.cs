@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Quark.Client;
+using Quark.Hosting;
 using Quark.Networking.Abstractions;
 using Quark.Transport.Grpc;
 

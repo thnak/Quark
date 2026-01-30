@@ -13,6 +13,8 @@
         <ProjectReference Include="..\Quark.Client\Quark.Client.csproj" />
         <ProjectReference Include="..\Quark.Networking.Abstractions\Quark.Networking.Abstractions.csproj" />
         <ProjectReference Include="..\Quark.Clustering.Redis\Quark.Clustering.Redis.csproj" />
+        <ProjectReference Include="..\Quark.Transport.Grpc\Quark.Transport.Grpc.csproj" />
+        <ProjectReference Include="..\Quark.Storage.Redis\Quark.Storage.Redis.csproj" />
         <ProjectReference Include="..\Quark.Placement.Abstractions\Quark.Placement.Abstractions.csproj" />
     </ItemGroup>
 

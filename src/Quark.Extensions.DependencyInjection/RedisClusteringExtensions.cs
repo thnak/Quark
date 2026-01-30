@@ -3,7 +3,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Abstractions.Clustering;
 using Quark.Abstractions.Persistence;
 using Quark.Abstractions.Reminders;
+using Quark.Client;
 using Quark.Clustering.Redis;
+using Quark.Hosting;
+using Quark.Networking.Abstractions;
 using Quark.Storage.Redis;
 using StackExchange.Redis;
 
@@ -22,12 +25,16 @@ public static class RedisClusteringExtensions
     /// <param name="connectionMultiplexer">Optional shared Redis connection. If null, a new connection will be created using the connectionString.</param>
     /// <param name="connectionString">Connection string for Redis. Required if connectionMultiplexer is null.</param>
     /// <param name="options">Optional configuration options for Redis connection.</param>
+    /// <param name="enableHealthMonitoring">Whether to enable connection health monitoring. Defaults to true.</param>
+    /// <param name="configureHealthOptions">Optional action to configure health monitoring options.</param>
     /// <returns>The builder for chaining.</returns>
     public static IQuarkSiloBuilder WithRedisClustering(
         this IQuarkSiloBuilder builder,
         IConnectionMultiplexer? connectionMultiplexer = null,
         string? connectionString = null,
-        ConfigurationOptions? options = null)
+        ConfigurationOptions? options = null,
+        bool enableHealthMonitoring = true,
+        Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
     {
         if (builder == null)
         {
@@ -58,7 +65,7 @@ public static class RedisClusteringExtensions
         });
 
         // Register Redis cluster membership
-        builder.Services.TryAddSingleton<IQuarkClusterMembership>(sp =>
+        builder.Services.TryAddSingleton<IClusterMembership>(sp =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var siloOptions = sp.GetRequiredService<QuarkSiloOptions>();
@@ -66,6 +73,20 @@ public static class RedisClusteringExtensions
             
             return new RedisClusterMembership(redis, siloId);
         });
+
+        // Register health monitor if enabled
+        if (enableHealthMonitoring)
+        {
+            builder.Services.TryAddSingleton(sp =>
+            {
+                var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+                var healthOptions = new RedisConnectionHealthOptions();
+                configureHealthOptions?.Invoke(healthOptions);
+                var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<RedisConnectionHealthMonitor>>();
+                
+                return new RedisConnectionHealthMonitor(redis, healthOptions, logger);
+            });
+        }
 
         return builder;
     }
@@ -112,8 +133,13 @@ public static class RedisClusteringExtensions
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var db = redis.GetDatabase();
-            var membership = sp.GetService<IQuarkClusterMembership>();
-            var hashRing = membership?.HashRing;
+            
+            // Try to get the Redis membership to access hash ring
+            IConsistentHashRing? hashRing = null;
+            if (sp.GetService<IClusterMembership>() is RedisClusterMembership redisMembership)
+            {
+                hashRing = redisMembership.HashRing;
+            }
             
             return new RedisReminderTable(db, hashRing);
         });
@@ -129,12 +155,16 @@ public static class RedisClusteringExtensions
     /// <param name="connectionMultiplexer">Optional shared Redis connection. If null, a new connection will be created using the connectionString.</param>
     /// <param name="connectionString">Connection string for Redis. Required if connectionMultiplexer is null.</param>
     /// <param name="options">Optional configuration options for Redis connection.</param>
+    /// <param name="enableHealthMonitoring">Whether to enable connection health monitoring. Defaults to true.</param>
+    /// <param name="configureHealthOptions">Optional action to configure health monitoring options.</param>
     /// <returns>The builder for chaining.</returns>
     public static IClusterClientBuilder WithRedisClustering(
         this IClusterClientBuilder builder,
         IConnectionMultiplexer? connectionMultiplexer = null,
         string? connectionString = null,
-        ConfigurationOptions? options = null)
+        ConfigurationOptions? options = null,
+        bool enableHealthMonitoring = true,
+        Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
     {
         if (builder == null)
         {
@@ -173,6 +203,20 @@ public static class RedisClusteringExtensions
             
             return new RedisClusterMembership(redis, clientId);
         });
+
+        // Register health monitor if enabled
+        if (enableHealthMonitoring)
+        {
+            builder.Services.TryAddSingleton(sp =>
+            {
+                var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+                var healthOptions = new RedisConnectionHealthOptions();
+                configureHealthOptions?.Invoke(healthOptions);
+                var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<RedisConnectionHealthMonitor>>();
+                
+                return new RedisConnectionHealthMonitor(redis, healthOptions, logger);
+            });
+        }
 
         return builder;
     }

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Grpc.Net.Client;
+using ConnectivityState = Grpc.Core.ConnectivityState;
 
 namespace Quark.Transport.Grpc;
 
@@ -124,7 +125,7 @@ public sealed class GrpcChannelPool : IDisposable
     /// </summary>
     /// <param name="endpoint">The endpoint address.</param>
     /// <returns>The channel state, or null if the channel is not in the pool.</returns>
-    public Grpc.Core.ChannelState? GetChannelState(string endpoint)
+    public ConnectivityState? GetChannelState(string endpoint)
     {
         if (_channels.TryGetValue(endpoint, out var entry))
         {
@@ -223,9 +224,9 @@ public sealed class GrpcChannelPool : IDisposable
             }
 
             // Check channel state
-            var state = entry.Channel.State;
-            if (state == Grpc.Core.ChannelState.TransientFailure || 
-                state == Grpc.Core.ChannelState.Shutdown)
+            var channelState = entry.Channel.State;
+            if (channelState == ConnectivityState.TransientFailure || 
+                channelState == ConnectivityState.Shutdown)
             {
                 endpointsToRemove.Add(endpoint);
             }
