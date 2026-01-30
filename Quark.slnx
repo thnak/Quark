@@ -14,6 +14,7 @@
     </Folder>
     <Folder Name="/src/">
         <Project Path="src/Quark.Analyzers/Quark.Analyzers.csproj" />
+        <Project Path="src/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" />
         <Project Path="src/Quark.Client/Quark.Client.csproj" />
         <Project Path="src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
         <Project Path="src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />

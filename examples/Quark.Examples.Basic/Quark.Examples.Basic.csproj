@@ -17,6 +17,9 @@
     <ProjectReference Include="../../src/Quark.Analyzers/Quark.Analyzers.csproj" 
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" 
+                      OutputItemType="Analyzer" 
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

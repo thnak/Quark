@@ -1,10 +1,19 @@
 # Quark.Analyzers
 
-Roslyn analyzers and code fix providers for Quark actor framework development.
+Roslyn analyzers for Quark actor framework development.
+
+## Project Structure
+
+This project is split into two assemblies to comply with **RS1038** (compiler extensions should not reference assemblies unavailable in all compilation scenarios):
+
+- **Quark.Analyzers**: Contains diagnostic analyzers only (no Workspaces dependency)
+- **Quark.Analyzers.CodeFixes**: Contains code fix providers (separate project with Workspaces dependency)
+
+See [Quark.Analyzers.CodeFixes README](../Quark.Analyzers.CodeFixes/README.md) for details on code fix providers.
 
 ## Overview
 
-This package provides compile-time diagnostics and automatic code fixes to help developers follow best practices when building Quark actor systems. The analyzers ensure:
+This package provides compile-time diagnostics to help developers follow best practices when building Quark actor systems. The analyzers ensure:
 
 - Proper async/await patterns in actor methods
 - Correct use of attributes for actor registration
@@ -339,11 +348,14 @@ public class MyActor : ActorBase, ISupervisor
 
 ## Usage
 
-The analyzers are automatically enabled when you reference the `Quark.Analyzers` project:
+The analyzers are automatically enabled when you reference both projects:
 
 ```xml
 <ItemGroup>
   <ProjectReference Include="path/to/Quark.Analyzers/Quark.Analyzers.csproj" 
+                    OutputItemType="Analyzer" 
+                    ReferenceOutputAssembly="false" />
+  <ProjectReference Include="path/to/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" 
                     OutputItemType="Analyzer" 
                     ReferenceOutputAssembly="false" />
 </ItemGroup>
