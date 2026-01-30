@@ -10,21 +10,25 @@ namespace Quark.Transport.Grpc;
 /// <summary>
 ///     gRPC-based implementation of IQuarkTransport using bi-directional streaming.
 ///     Maintains one persistent stream per silo connection.
+///     Supports optional channel pooling for efficient connection management.
 /// </summary>
 public sealed class GrpcQuarkTransport : IQuarkTransport
 {
     private readonly ConcurrentDictionary<string, SiloConnection> _connections = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<QuarkEnvelope>> _pendingRequests = new();
+    private readonly GrpcChannelPool? _channelPool;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="GrpcQuarkTransport" /> class.
     /// </summary>
     /// <param name="localSiloId">The local silo ID.</param>
     /// <param name="localEndpoint">The local endpoint (host:port).</param>
-    public GrpcQuarkTransport(string localSiloId, string localEndpoint)
+    /// <param name="channelPool">Optional channel pool for connection reuse and lifecycle management.</param>
+    public GrpcQuarkTransport(string localSiloId, string localEndpoint, GrpcChannelPool? channelPool = null)
     {
         LocalSiloId = localSiloId ?? throw new ArgumentNullException(nameof(localSiloId));
         LocalEndpoint = localEndpoint ?? throw new ArgumentNullException(nameof(localEndpoint));
+        _channelPool = channelPool;
     }
 
     /// <inheritdoc />
@@ -76,13 +80,15 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         if (_connections.ContainsKey(siloInfo.SiloId))
             return; // Already connected
 
-        var channel = GrpcChannel.ForAddress($"http://{siloInfo.Endpoint}");
+        // Use channel pool if available, otherwise create a new channel
+        var endpoint = $"http://{siloInfo.Endpoint}";
+        var channel = _channelPool?.GetOrCreateChannel(endpoint) ?? GrpcChannel.ForAddress(endpoint);
         var client = new QuarkTransport.QuarkTransportClient(channel);
 
         // Start bi-directional stream
         var call = client.ActorStream(cancellationToken: cancellationToken);
 
-        var connection = new SiloConnection(siloInfo.SiloId, channel, call);
+        var connection = new SiloConnection(siloInfo.SiloId, channel, call, _channelPool != null);
         _connections[siloInfo.SiloId] = connection;
 
         // Start reading responses in background
@@ -95,7 +101,12 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         if (_connections.TryRemove(siloId, out var connection))
         {
             await connection.Call.RequestStream.CompleteAsync();
-            connection.Channel.Dispose();
+            
+            // Only dispose channel if not managed by pool
+            if (!connection.IsPooled)
+            {
+                connection.Channel.Dispose();
+            }
         }
     }
 
@@ -114,7 +125,12 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         foreach (var connection in _connections.Values)
         {
             await connection.Call.RequestStream.CompleteAsync();
-            connection.Channel.Dispose();
+            
+            // Only dispose channel if not managed by pool
+            if (!connection.IsPooled)
+            {
+                connection.Channel.Dispose();
+            }
         }
 
         _connections.Clear();
@@ -186,16 +202,18 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     private sealed class SiloConnection
     {
         public SiloConnection(string siloId, GrpcChannel channel,
-            AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> call)
+            AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> call, bool isPooled)
         {
             SiloId = siloId;
             Channel = channel;
             Call = call;
+            IsPooled = isPooled;
         }
 
         public string SiloId { get; }
         public GrpcChannel Channel { get; }
         public AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> Call { get; }
+        public bool IsPooled { get; }
         public IClientStreamWriter<EnvelopeMessage> RequestStream => Call.RequestStream;
     }
 }
