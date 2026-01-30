@@ -12,6 +12,7 @@ namespace Quark.Clustering.Redis;
     WriteIndented = false,
     DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(SiloInfo))]
+[JsonSerializable(typeof(SiloHealthScore))]
 internal partial class QuarkJsonSerializerContext : JsonSerializerContext
 {
 }
