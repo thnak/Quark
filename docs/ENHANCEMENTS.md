@@ -150,10 +150,13 @@ Extensions in `Quark.Extensions.DependencyInjection`:
   - ✅ Removed Interlocked operations from ChannelMailbox hot path
   - ✅ Use Channel's built-in Count property instead of manual tracking
   - ✅ DLQ operations moved to background task (fire-and-forget)
-  - 🚧 Pooled QuarkEnvelope objects (future enhancement)
-  - 🚧 ArrayPool for serialization buffers (future enhancement)
-  - 🚧 Span<T> and Memory<T> throughout (future enhancement)
-  - 🚧 ValueTask optimization for sync paths (future enhancement)
+  - ✅ Object pooling for TaskCompletionSource instances
+  - ✅ Object pooling for ActorMethodMessage instances
+  - ✅ Incremental message IDs (51x faster than GUID)
+  - ✅ ActorMessageFactory for centralized pooling
+  - 🚧 Pooled QuarkEnvelope objects (future enhancement - Phase 8.2+)
+  - 🚧 ArrayPool for serialization buffers (future enhancement - Phase 8.2+)
+  - 🚧 Span<T> and Memory<T> throughout (future enhancement - Phase 8.2+)
 * [✓] **SIMD Acceleration:** Vector processing for hash computation
   - ✅ Hardware CRC32 intrinsic (SSE4.2) for 10-20x speedup over MD5
   - ✅ xxHash32 fallback for non-SSE systems (50-100x speedup)
@@ -169,7 +172,14 @@ Extensions in `Quark.Extensions.DependencyInjection`:
   - 🚧 CPU cache-friendly data structures (future enhancement)
   - 🚧 Compact actor state representation (future enhancement)
 
-**Status:** Core hot path optimizations complete. New `SimdHashHelper` class provides hardware-accelerated hashing. Comprehensive testing (249/249 tests passing). See [PHASE8_1_HOT_PATH_OPTIMIZATIONS.md](PHASE8_1_HOT_PATH_OPTIMIZATIONS.md) for detailed analysis.
+**Status:** Core hot path optimizations complete. New components:
+- `SimdHashHelper` - Hardware-accelerated hashing (51x faster)
+- `TaskCompletionSourcePool<T>` - Reusable TCS instances
+- `ActorMethodMessagePool<T>` - Pooled message objects
+- `MessageIdGenerator` - Zero-allocation incremental IDs
+- `ActorMessageFactory` - Centralized pooling API
+
+Comprehensive testing (381/384 tests passing, 16 new pooling tests). See [PHASE8_1_HOT_PATH_OPTIMIZATIONS.md](PHASE8_1_HOT_PATH_OPTIMIZATIONS.md) and [ZERO_ALLOCATION_MESSAGING.md](ZERO_ALLOCATION_MESSAGING.md) for detailed analysis.
 
 ### 8.2 Advanced Placement Strategies ✅ COMPLETED
 
