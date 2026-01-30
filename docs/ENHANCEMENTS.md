@@ -354,11 +354,35 @@ Comprehensive testing: 24 new unit tests (14 hierarchical hashing + 10 adaptive 
   - Query active actors by criteria
   - Aggregate statistics across actor populations
   - Real-time query results via streaming
-* [ ] **Actor Versioning:** Zero-downtime upgrades
-  - Side-by-side version deployment
-  - Automatic state migration
-  - Gradual rollout (canary, blue-green)
-  - Version compatibility matrix
+* [ ] **Zero Downtime & Rolling Upgrades:** Enterprise-grade deployment capabilities
+  - **Graceful Shutdown (Drain Pattern)**
+    - Stop accepting new actor activations on termination signal (SIGTERM)
+    - Configurable shutdown timeout for in-flight operations
+    - Integration with health check system for load balancer coordination
+    - Drain status reporting via `/quark/status` endpoint
+  - **Live Actor Migration**
+    - Hot actor detection (actors with active calls or recent activity)
+    - Migration orchestration via rebalancer component
+    - State transfer with optimistic concurrency (E-Tag based)
+    - Minimal disruption migration (queue pending messages during transfer)
+    - Reminder and timer migration coordination
+  - **Version-Aware Placement**
+    - Assembly version tracking per silo
+    - Placement policy: prefer silos with matching assembly version
+    - Prevent serialization mismatches during rolling deployment
+    - Version compatibility matrix for gradual rollout
+    - Side-by-side version deployment support
+  - **Configuration & Integration**
+    - `EnableGracefulShutdown` option in silo configuration
+    - `ShutdownTimeout` configuration (default: 30 seconds)
+    - `AddLiveMigration()` extension method for DI registration
+    - Integration with existing `IActorRebalancer` for migration orchestration
+    - Health check integration: mark silo as "Draining" during shutdown
+  - **Technical Dependencies**
+    - Requires Phase 8.2 (Actor Rebalancing) for migration infrastructure
+    - Requires Phase 7.2 (Health Checks) for drain status reporting
+    - Requires Phase 4 (State Persistence) for state transfer
+    - Optional: Phase 7.4 (Cluster Health Monitoring) for coordinated eviction
 
 ### 10.2 Ecosystem Integrations
 
@@ -568,5 +592,415 @@ Comprehensive testing: 24 new unit tests (14 hierarchical hashing + 10 adaptive 
 
 ---
 
-*Last Updated: 2026-01-29*  
-*Status: Phases 1-6 Complete (182/182 tests), Phases 7-10 Planned*
+## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan
+
+### Overview
+
+For enterprise production deployments, cluster updates must not drop active actor calls or lose in-flight messages. This feature provides comprehensive support for zero-downtime deployments through graceful shutdown, live actor migration, and version-aware placement.
+
+### 1. Graceful Shutdown (Drain Pattern)
+
+**Goal:** Cleanly shut down a silo without dropping active operations.
+
+#### 1.1 Drain State Management
+
+**New Types:**
+```csharp
+namespace Quark.Abstractions.Hosting;
+
+public enum SiloDrainState
+{
+    Active,        // Normal operation
+    Draining,      // Shutting down, no new activations
+    Drained        // All actors migrated or deactivated
+}
+
+public interface ISiloDrainManager
+{
+    SiloDrainState CurrentState { get; }
+    Task BeginDrainAsync(CancellationToken cancellationToken = default);
+    Task WaitForDrainCompletionAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+    Task<DrainStatus> GetDrainStatusAsync();
+}
+
+public record DrainStatus(
+    int ActiveActorCount,
+    int InFlightCallCount,
+    int PendingMigrationCount,
+    TimeSpan ElapsedTime,
+    TimeSpan RemainingTime);
+```
+
+#### 1.2 Shutdown Orchestration
+
+**Implementation in `Quark.Hosting`:**
+- Hook `IHostApplicationLifetime.ApplicationStopping` to trigger drain
+- Stop accepting new actor activations (mark silo as "Draining" in cluster)
+- Wait for in-flight calls to complete (configurable timeout)
+- Coordinate with `IActorRebalancer` to migrate hot actors
+- Signal drain completion to health check system
+
+**Configuration:**
+```csharp
+public class SiloOptions
+{
+    // Existing properties...
+    
+    public bool EnableGracefulShutdown { get; set; } = false;
+    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    public bool MigrateHotActorsOnShutdown { get; set; } = true;
+    public TimeSpan HotActorThreshold { get; set; } = TimeSpan.FromMinutes(5);
+}
+```
+
+#### 1.3 Health Check Integration
+
+**Extension to `QuarkSiloHealthCheck`:**
+- Report status as "Degraded" when in "Draining" state
+- Report status as "Unhealthy" after drain timeout expires
+- Add drain metrics to health check response
+
+### 2. Live Actor Migration
+
+**Goal:** Move actors from one silo to another with minimal disruption.
+
+#### 2.1 Migration Coordination
+
+**New Types:**
+```csharp
+namespace Quark.Abstractions.Migration;
+
+public interface IActorMigrationCoordinator
+{
+    Task<MigrationResult> MigrateActorAsync(
+        string actorId,
+        string targetSiloId,
+        CancellationToken cancellationToken = default);
+    
+    Task<IReadOnlyList<MigrationResult>> MigrateActorBatchAsync(
+        IEnumerable<string> actorIds,
+        string targetSiloId,
+        CancellationToken cancellationToken = default);
+    
+    Task<IReadOnlyList<string>> IdentifyHotActorsAsync(
+        TimeSpan activityThreshold);
+}
+
+public enum MigrationStatus
+{
+    Success,
+    Failed,
+    TimedOut,
+    ActorNotFound,
+    TargetSiloUnavailable
+}
+
+public record MigrationResult(
+    string ActorId,
+    MigrationStatus Status,
+    TimeSpan Duration,
+    long StateSize,
+    string? ErrorMessage);
+```
+
+#### 2.2 Migration Process
+
+**Migration Steps:**
+1. **Identify Hot Actors:** Query actors with recent activity (last N minutes)
+2. **Select Target Silo:** Use placement policy to choose destination
+3. **Transfer State:**
+   - Load state from storage (E-Tag for consistency)
+   - Transfer to target silo
+   - Save state on target silo with updated E-Tag
+4. **Migrate Reminders/Timers:**
+   - Transfer reminder registrations
+   - Re-register timers on target silo
+5. **Update Directory:**
+   - Update `IActorDirectory` with new location
+   - Route new calls to target silo
+6. **Drain Source:**
+   - Wait for in-flight calls to complete
+   - Deactivate actor on source silo
+
+**Integration with Existing Components:**
+- Use `IActorRebalancer` (Phase 8.2) for rebalancing logic
+- Use `IStateStorage` (Phase 4) for state transfer
+- Use `IReminderTable` (Phase 4) for reminder migration
+- Use `IActorDirectory` (Phase 2) for location updates
+
+### 3. Version-Aware Placement
+
+**Goal:** Prevent serialization mismatches during rolling deployments.
+
+#### 3.1 Version Tracking
+
+**New Types:**
+```csharp
+namespace Quark.Abstractions.Clustering;
+
+public record AssemblyVersionInfo(
+    string AssemblyName,
+    Version Version,
+    string? CommitHash);
+
+public interface IVersionTracker
+{
+    AssemblyVersionInfo CurrentVersion { get; }
+    Task<IReadOnlyDictionary<string, AssemblyVersionInfo>> GetClusterVersionsAsync();
+    Task<bool> IsVersionCompatibleAsync(AssemblyVersionInfo targetVersion);
+}
+```
+
+**Extension to `SiloInfo`:**
+```csharp
+public record SiloInfo
+{
+    // Existing properties...
+    
+    public AssemblyVersionInfo? AssemblyVersion { get; init; }
+}
+```
+
+#### 3.2 Version-Aware Placement Policy
+
+**New Placement Policy:**
+```csharp
+namespace Quark.Abstractions.Placement;
+
+public class VersionAffinityPlacementPolicy : IPlacementPolicy
+{
+    public PlacementPreference Preference { get; init; } = PlacementPreference.PreferSameVersion;
+    
+    public Task<string> PlaceActorAsync(
+        string actorType,
+        string actorId,
+        IReadOnlyList<SiloInfo> availableSilos,
+        CancellationToken cancellationToken = default);
+}
+
+public enum PlacementPreference
+{
+    PreferSameVersion,     // Prefer silos with same assembly version
+    RequireSameVersion,    // Only place on silos with same version
+    AllowAnyVersion        // Ignore version (legacy behavior)
+}
+```
+
+**Behavior:**
+- When placing actor, filter silos by assembly version
+- Fallback to different version if no same-version silos available (PreferSameVersion)
+- Fail placement if no same-version silos available (RequireSameVersion)
+- Track version mismatches in metrics for monitoring
+
+### 4. Configuration & DI Integration
+
+#### 4.1 Extension Methods
+
+**New extension in `Quark.Extensions.DependencyInjection`:**
+```csharp
+public static class LiveMigrationExtensions
+{
+    public static IServiceCollection AddLiveMigration(
+        this IServiceCollection services,
+        Action<LiveMigrationOptions>? configure = null)
+    {
+        services.AddSingleton<ISiloDrainManager, SiloDrainManager>();
+        services.AddSingleton<IActorMigrationCoordinator, ActorMigrationCoordinator>();
+        services.AddSingleton<IVersionTracker, AssemblyVersionTracker>();
+        
+        services.Configure(configure ?? (_ => { }));
+        
+        return services;
+    }
+}
+
+public class LiveMigrationOptions
+{
+    public bool EnableVersionAwarePlacement { get; set; } = true;
+    public PlacementPreference VersionPreference { get; set; } = PlacementPreference.PreferSameVersion;
+    public TimeSpan MigrationTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    public int MaxConcurrentMigrations { get; set; } = 10;
+}
+```
+
+#### 4.2 Usage Example
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Add Quark Silo with graceful shutdown
+builder.Services.AddQuarkSilo(options =>
+{
+    options.SiloId = "silo-1";
+    options.AdvertisedAddress = "localhost";
+    options.SiloPort = 5000;
+    
+    // Enable graceful shutdown
+    options.EnableGracefulShutdown = true;
+    options.ShutdownTimeout = TimeSpan.FromSeconds(30);
+    options.MigrateHotActorsOnShutdown = true;
+});
+
+// Add Live Migration support
+builder.Services.AddLiveMigration(options =>
+{
+    options.EnableVersionAwarePlacement = true;
+    options.VersionPreference = PlacementPreference.PreferSameVersion;
+    options.MigrationTimeout = TimeSpan.FromSeconds(10);
+    options.MaxConcurrentMigrations = 10;
+});
+
+// Add Actor Rebalancing (required for migration)
+builder.Services.AddActorRebalancing(options =>
+{
+    options.Enabled = true;
+    options.RebalanceIntervalSeconds = 60;
+});
+
+var app = builder.Build();
+app.Run();
+```
+
+### 5. Implementation Phases
+
+#### Phase 1: Graceful Shutdown Foundation (Week 1)
+- [ ] Implement `ISiloDrainManager` interface and `SiloDrainManager` implementation
+- [ ] Add `SiloDrainState` tracking to silo lifecycle
+- [ ] Hook `IHostApplicationLifetime.ApplicationStopping` for drain trigger
+- [ ] Update `QuarkSiloHealthCheck` to report drain state
+- [ ] Add drain status endpoint to diagnostics (`/quark/drain`)
+- [ ] Unit tests for drain state transitions
+
+#### Phase 2: Actor Migration Core (Week 2)
+- [ ] Implement `IActorMigrationCoordinator` interface
+- [ ] Implement hot actor detection logic (query recent activity)
+- [ ] Implement state transfer with E-Tag consistency
+- [ ] Implement reminder/timer migration
+- [ ] Update `IActorDirectory` during migration
+- [ ] Unit tests for migration scenarios (success, failure, timeout)
+
+#### Phase 3: Version Tracking (Week 3)
+- [ ] Implement `IVersionTracker` interface
+- [ ] Extract assembly version information at startup
+- [ ] Add version to `SiloInfo` in cluster membership
+- [ ] Store version in Redis membership table
+- [ ] Unit tests for version tracking and comparison
+
+#### Phase 4: Version-Aware Placement (Week 4)
+- [ ] Implement `VersionAffinityPlacementPolicy`
+- [ ] Add version filtering to placement decisions
+- [ ] Implement fallback logic for version mismatches
+- [ ] Add version mismatch metrics
+- [ ] Integration tests with multi-version clusters
+
+#### Phase 5: Integration & Testing (Week 5)
+- [ ] Integrate all components with `AddLiveMigration()`
+- [ ] End-to-end testing with rolling deployment
+- [ ] Performance testing (migration latency, throughput)
+- [ ] Chaos testing (network partitions, slow migrations)
+- [ ] Documentation and usage examples
+
+### 6. Testing Strategy
+
+#### Unit Tests
+- Drain state machine transitions
+- Hot actor identification logic
+- Migration coordinator success/failure paths
+- Version compatibility checks
+- Placement policy with version filtering
+
+#### Integration Tests
+- Full silo shutdown with actor migration
+- Multi-silo migration scenarios
+- Version-aware placement with mixed versions
+- Health check integration during drain
+- Rebalancer coordination with migration
+
+#### Stress Tests
+- High actor count migration (10K+ actors)
+- Concurrent migrations (100+ simultaneous)
+- Large state transfers (1MB+ per actor)
+- Network failures during migration
+- Timeout handling under load
+
+### 7. Metrics & Observability
+
+**New Metrics:**
+```csharp
+// Drain metrics
+quark_silo_drain_state{silo_id, state}
+quark_silo_drain_duration_seconds{silo_id}
+quark_silo_active_actors_during_drain{silo_id}
+
+// Migration metrics
+quark_actor_migrations_total{status, reason}
+quark_actor_migration_duration_seconds{percentile}
+quark_actor_migration_state_size_bytes{percentile}
+quark_actor_migrations_in_flight{silo_id}
+
+// Version metrics
+quark_cluster_version_distribution{version}
+quark_placement_version_mismatches_total{from_version, to_version}
+```
+
+**Tracing:**
+- Activity spans for drain operations
+- Activity spans for each actor migration
+- Baggage propagation for correlation during migration
+
+### 8. Success Metrics
+
+#### Functional Goals
+- ✅ Zero dropped calls during rolling deployment
+- ✅ Zero lost messages during actor migration
+- ✅ Zero serialization errors due to version mismatches
+- ✅ Graceful handling of drain timeouts
+
+#### Performance Goals
+- Migration latency: < 100ms (p99) for actors with < 100KB state
+- Drain time: < 30s for silo with 10K actors
+- Zero message loss during migration
+- < 5% latency increase during rolling deployment
+
+#### Reliability Goals
+- 99.9% migration success rate
+- Automatic retry for failed migrations
+- Graceful degradation when migration unavailable
+- No data corruption during state transfer
+
+### 9. Dependencies & Prerequisites
+
+**Required Components (Must be Complete):**
+- ✅ Phase 2: Cluster Membership (`IClusterMembership`, `SiloInfo`)
+- ✅ Phase 2: Actor Directory (`IActorDirectory`)
+- ✅ Phase 4: State Persistence (`IStateStorage` with E-Tag)
+- ✅ Phase 4: Reminders (`IReminderTable`)
+- ✅ Phase 7.2: Health Checks (`QuarkSiloHealthCheck`)
+- ✅ Phase 8.2: Actor Rebalancing (`IActorRebalancer`)
+
+**Optional Enhancements:**
+- Phase 7.1: Distributed Tracing (for migration observability)
+- Phase 7.4: Cluster Health Monitoring (for coordinated eviction)
+- Phase 8.1: Hot Path Optimizations (for faster migration)
+
+### 10. Future Enhancements
+
+**Phase 2 (Post-Initial Release):**
+- [ ] **Blue-Green Deployment:** Two-cluster deployments with traffic switching
+- [ ] **Canary Deployments:** Gradual rollout with traffic percentage control
+- [ ] **Automatic Rollback:** Detect failures and automatically revert
+- [ ] **Migration Prioritization:** Migrate critical actors first
+- [ ] **State Delta Transfer:** Only transfer changed state (not full state)
+- [ ] **Cross-Region Migration:** Support for geo-distributed migrations
+
+**Phase 3 (Advanced Features):**
+- [ ] **Live State Replication:** Replicate state changes during migration
+- [ ] **Actor Versioning:** Support multiple actor versions simultaneously
+- [ ] **State Schema Migration:** Automatic state transformation between versions
+- [ ] **Migration Checkpoints:** Resume interrupted migrations
+- [ ] **Predictive Migration:** Migrate actors before silo failure
+
+---
+
+*Last Updated: 2026-01-30*  
+*Status: Phases 1-7 Complete (309/309 tests), Phase 8 In Progress, Phases 9-10 Planned*
