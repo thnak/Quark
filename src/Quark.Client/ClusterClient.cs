@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Logging;
+using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;
 
 /// <summary>
 /// Default implementation of IClusterClient with smart routing and retry logic.
+/// Supports local call optimization when co-located with a silo.
 /// </summary>
 public sealed class ClusterClient : IClusterClient
 {
@@ -18,6 +20,10 @@ public sealed class ClusterClient : IClusterClient
     /// <summary>
     /// Initializes a new instance of the <see cref="ClusterClient"/> class.
     /// </summary>
+    /// <param name="clusterMembership">The cluster membership provider.</param>
+    /// <param name="transport">The transport layer.</param>
+    /// <param name="options">Configuration options.</param>
+    /// <param name="logger">Logger instance.</param>
     public ClusterClient(
         IQuarkClusterMembership clusterMembership,
         IQuarkTransport transport,
@@ -30,6 +36,9 @@ public sealed class ClusterClient : IClusterClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _clientId = options.ClientId ?? Guid.NewGuid().ToString("N");
     }
+
+    /// <inheritdoc />
+    public string? LocalSiloId => _transport.LocalSiloId;
 
     /// <inheritdoc />
     public IQuarkClusterMembership ClusterMembership => _clusterMembership;
@@ -123,11 +132,24 @@ public sealed class ClusterClient : IClusterClient
             throw new InvalidOperationException("No silos available to handle the request.");
         }
 
-        _logger.LogDebug(
-            "Routing envelope for actor {ActorId} ({ActorType}) to silo {SiloId}",
-            envelope.ActorId,
-            envelope.ActorType,
-            targetSiloId);
+        // OPTIMIZATION: If target is the local silo, the transport can optimize the call
+        // to use in-memory dispatch instead of network serialization/gRPC
+        if (LocalSiloId != null && targetSiloId == LocalSiloId)
+        {
+            _logger.LogDebug(
+                "Local call detected for actor {ActorId} ({ActorType}) on silo {SiloId} - transport will optimize",
+                envelope.ActorId,
+                envelope.ActorType,
+                targetSiloId);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Routing envelope for actor {ActorId} ({ActorType}) to silo {SiloId}",
+                envelope.ActorId,
+                envelope.ActorType,
+                targetSiloId);
+        }
 
         // Send with retry logic
         var retries = 0;
@@ -172,6 +194,9 @@ public sealed class ClusterClient : IClusterClient
     }
 
     /// <inheritdoc />
+    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class, IQuarkActor
+    {
+        if (string.IsNullOrWhiteSpace(actorId))
     public TProxy GetActorProxy<TProxy>(string actorId) where TProxy : class
     {
         if (string.IsNullOrEmpty(actorId))
@@ -179,6 +204,9 @@ public sealed class ClusterClient : IClusterClient
             throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actorId));
         }
 
+        // Delegate to the generated proxy factory
+        // This will be implemented by the ProxySourceGenerator
+        return ActorProxyFactory.CreateProxy<TActorInterface>(this, actorId);
         if (!_isConnected)
         {
             throw new InvalidOperationException("Client is not connected. Call ConnectAsync first.");

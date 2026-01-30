@@ -1,3 +1,4 @@
+using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;
@@ -8,6 +9,12 @@ namespace Quark.Client;
 /// </summary>
 public interface IClusterClient : IDisposable
 {
+    /// <summary>
+    /// Gets the local silo ID if this client is co-located with a silo, null otherwise.
+    /// When non-null, calls to actors on this silo can be optimized to avoid network overhead.
+    /// </summary>
+    string? LocalSiloId { get; }
+
     /// <summary>
     /// Gets the cluster membership provider.
     /// </summary>
@@ -40,6 +47,18 @@ public interface IClusterClient : IDisposable
     Task<QuarkEnvelope> SendAsync(QuarkEnvelope envelope, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets a type-safe proxy for an actor in the cluster.
+    /// The proxy provides strongly-typed method calls that are routed to the appropriate silo.
+    /// </summary>
+    /// <typeparam name="TActorInterface">The actor interface type. Must inherit from IQuarkActor.</typeparam>
+    /// <param name="actorId">The unique identifier of the actor instance.</param>
+    /// <returns>A proxy instance implementing the actor interface.</returns>
+    /// <remarks>
+    /// This method returns a generated proxy that implements the specified actor interface.
+    /// Method calls on the proxy are automatically serialized to Protobuf messages and
+    /// sent to the cluster using SendAsync.
+    /// </remarks>
+    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class, IQuarkActor;
     /// Gets a type-safe proxy for invoking methods on a remote actor.
     /// The proxy provides compile-time type checking and IntelliSense support.
     /// </summary>
