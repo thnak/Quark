@@ -1,6 +1,6 @@
 # Quark.Examples.Placement
 
-This example demonstrates advanced placement strategies in Quark, including NUMA (Non-Uniform Memory Access) optimization and GPU acceleration.
+This example demonstrates advanced placement strategies in Quark, including NUMA (Non-Uniform Memory Access) optimization and GPU acceleration with improved type-safe configuration.
 
 ## What This Example Shows
 
@@ -10,9 +10,10 @@ This example demonstrates advanced placement strategies in Quark, including NUMA
    - Setting CPU and memory utilization thresholds
    - Detecting NUMA topology on multi-socket systems
 
-2. **GPU Acceleration Configuration**
-   - Enabling GPU-accelerated actor placement
-   - Selecting GPU backend (CUDA)
+2. **GPU Acceleration Configuration (Improved)**
+   - **Enum-based configuration** for type safety
+   - Using `[GpuBound]` attribute for actor marking
+   - **Source-generated actor type lists** (zero reflection!)
    - Configuring device selection strategies
    - Enabling CPU fallback when GPU unavailable
 
@@ -32,75 +33,90 @@ dotnet run
 
 The example will:
 1. Configure NUMA optimization with affinity groups
-2. Configure GPU acceleration for specific actor types
+2. Configure GPU acceleration for GPU-bound actors
 3. Detect available NUMA nodes (or create a virtual node)
 4. Detect available GPU devices (if present)
 5. Display topology information
+6. Show that 1 GPU-bound actor was discovered via source generation
 
-## Key Concepts
+## Improvements in This Version
 
-### NUMA Optimization
+### 1. Enum-Based Configuration (Type-Safe)
+**Before (string-based):**
+```csharp
+options.PreferredBackend = "cuda";  // Typo-prone
+options.DeviceSelectionStrategy = "LeastUtilized";  // No IntelliSense
+```
 
-NUMA (Non-Uniform Memory Access) is a computer memory design where memory access time depends on the memory location relative to the processor. On multi-socket systems:
-- Each socket has local memory with fast access
-- Remote memory (on other sockets) has higher latency
-- Proper actor placement reduces cross-socket memory traffic
+**After (enum-based):**
+```csharp
+options.PreferredBackend = GpuBackend.Cuda;  // Type-safe
+options.DeviceSelectionStrategy = GpuDeviceSelectionStrategy.LeastUtilized;  // IntelliSense
+```
 
-**Benefits:**
-- 20-40% reduction in memory latency
-- 10-30% improvement in throughput
-- Better CPU cache utilization
+### 2. Source-Generated Actor Lists (Zero Reflection)
+**Before (string-based):**
+```csharp
+options.AcceleratedActorTypes = new List<string>
+{
+    "InferenceActor",  // Manual maintenance, error-prone
+};
+```
 
-### GPU Acceleration
+**After (attribute + source generator):**
+```csharp
+[Actor]
+[GpuBound]  // Mark actors that need GPU
+public class InferenceActor : ActorBase { }
 
-GPU acceleration allows compute-intensive actors to leverage GPU hardware:
-- AI/ML inference and training
-- Scientific computing
-- Image/video processing
-- Large-scale data transformations
-
-**Benefits:**
-- 10-100x speedup for AI workloads
-- Efficient parallel processing
-- Reduced CPU load
+// In configuration:
+options.AcceleratedActorTypes = Quark_Examples_PlacementAcceleratedActorTypes.All;
+// Automatically discovered at compile-time, zero reflection!
+```
 
 ## Production Usage
 
-In production environments, you would:
+```csharp
+// Mark actors with [GpuBound]
+[Actor]
+[GpuBound]
+public class InferenceActor : ActorBase { }
 
-1. **For NUMA Optimization:**
-   ```csharp
-   services.AddNumaOptimization(options =>
-   {
-       options.Enabled = true;
-       options.BalancedPlacement = true;
-       
-       // Define affinity groups based on your actor communication patterns
-       options.AffinityGroups["PaymentProcessing"] = new List<string>
-       {
-           "PaymentActor",
-           "FraudDetectionActor",
-           "NotificationActor"
-       };
-   });
-   
-   services.AddSingleton<INumaPlacementStrategy, LinuxNumaPlacementStrategy>();
-   ```
+// Configure with enums and generated types
+services.AddGpuAcceleration(options =>
+{
+    options.Enabled = true;
+    options.PreferredBackend = GpuBackend.Cuda;
+    options.DeviceSelectionStrategy = GpuDeviceSelectionStrategy.LeastUtilized;
+    
+    // Use source-generated list (compile-time discovery, zero reflection)
+    options.AcceleratedActorTypes = MyAssemblyAcceleratedActorTypes.All;
+});
 
-2. **For GPU Acceleration:**
-   ```csharp
-   services.AddGpuAcceleration(options =>
-   {
-       options.Enabled = true;
-       options.AcceleratedActorTypes = new List<string>
-       {
-           "InferenceActor",
-           "ImageProcessingActor"
-       };
-   });
-   
-   services.AddSingleton<IGpuPlacementStrategy, CudaGpuPlacementStrategy>();
-   ```
+services.AddSingleton<IGpuPlacementStrategy, CudaGpuPlacementStrategy>();
+```
+
+## Source Generator Benefits
+
+The `[GpuBound]` attribute works with Quark's source generator to:
+
+1. **Discover GPU-bound actors at compile time** - No reflection needed
+2. **Generate type-safe collections** - Uses `IReadOnlySet<Type>` for fast lookups
+3. **Provide easy configuration** - Just use `{Assembly}AcceleratedActorTypes.All`
+4. **Enable IntelliSense** - Fully discoverable in IDE
+
+Generated code example:
+```csharp
+// Auto-generated in Quark.Generated namespace
+public static class Quark_Examples_PlacementAcceleratedActorTypes
+{
+    public static IReadOnlySet<Type> All { get; } = new HashSet<Type>
+    {
+        typeof(Quark.Examples.Placement.InferenceActor),
+        // ... all [GpuBound] actors
+    };
+}
+```
 
 ## Platform Support
 
@@ -118,3 +134,4 @@ In production environments, you would:
 - They are **NOT AOT-compatible** due to platform-specific APIs
 - Designed for production workloads on specialized hardware
 - Gracefully degrade when hardware features are unavailable
+- **Zero reflection** - All type discovery happens at compile time
