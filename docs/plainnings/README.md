@@ -122,15 +122,20 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
    * \[✓\] **WithReminders():** Fluent configuration for ReminderTickManager
    * \[✓\] **WithStreaming():** Fluent configuration for StreamBroker
 
-4. **Actor Method Signature Analyzer** - Enforce async return types:
-   * \[🚧\] **Allowed Types:** Task, ValueTask, Task&lt;T&gt;, ValueTask&lt;T&gt; (future enhancement)
-   * \[🚧\] **Analyzer Rule:** Warn/Error on synchronous method signatures (future enhancement)
-   * \[🚧\] **Code Fix Provider:** Suggest converting void methods to Task (future enhancement)
+4. **Actor Method Signature Analyzer** ✅ COMPLETED - Enforce async return types:
+   * \[✓\] **Allowed Types:** Task, ValueTask, Task&lt;T&gt;, ValueTask&lt;T&gt;
+   * \[✓\] **Analyzer Rule:** QUARK004 warning on synchronous method signatures
+   * \[✓\] **Code Fix Provider:** Converts void methods to Task or ValueTask
+   * \[✓\] **Implementation:** `Quark.Analyzers/ActorMethodSignatureAnalyzer.cs`
+   * \[✓\] **Code Fixes:** `Quark.Analyzers.CodeFixes/ActorMethodSignatureCodeFixProvider.cs`
 
-5. **Protobuf Proxy Type Generation** - Type-safe remote calls:
-   * \[🚧\] **Source Generator:** Generate protobuf message types from actor interfaces (future enhancement)
-   * \[🚧\] **Proxy Generation:** Create client proxies that serialize to protobuf (future enhancement)
-   * \[🚧\] **Type Safety:** Compile-time verification of actor contracts (future enhancement)
+5. **Protobuf Proxy Type Generation** 🚧 PLANNED - Type-safe remote calls:
+   * \[🚧\] **Source Generator:** Generate protobuf message types from actor interfaces
+   * \[🚧\] **Proxy Generation:** Create client proxies that serialize to protobuf
+   * \[🚧\] **Type Safety:** Compile-time verification of actor contracts
+   * \[🚧\] **IClusterClient Enhancement:** Add strongly-typed `GetActor<T>(actorId)` method
+   * **Note:** Currently, IClusterClient only supports low-level `SendAsync(QuarkEnvelope)`. 
+     Type-safe proxy generation requires new API design for client-side actor access patterns.
 
 **Architecture Overview:**
 
@@ -186,7 +191,7 @@ Inspired by Microsoft Orleans and Akka.NET, Quark aims to bridge the gap between
 * **Connection Reuse:** Direct IConnectionMultiplexer support to avoid multiple Redis connections
 * **Smart Routing:** Direct local invocation when IClusterClient runs inside a Silo host
 
-**Status:** Core features complete. **182/182 tests passing**. Advanced optimizations (smart routing, connection reuse, enhanced analyzers, protobuf generation) deferred to Phase 8 and Phase 9.
+**Status:** Core features complete. **182/182 tests passing**. Actor Method Signature Analyzer (QUARK004) completed in Phase 9. Advanced optimizations (smart routing, connection reuse, protobuf proxy generation) deferred to Phase 8 and Phase 9.
 
 ---
 
@@ -234,10 +239,16 @@ Now that Quark has achieved production-readiness with all 6 phases complete and 
 *Focus: Make Quark the most developer-friendly actor framework.*
 
 **Completed:**
-- ✅ Actor method signature analyzer (async validation)
+- ✅ Actor method signature analyzer (QUARK004 - async validation)
+  - Enforces async return types (Task, ValueTask, Task&lt;T&gt;, ValueTask&lt;T&gt;)
+  - Provides code fixes to convert synchronous methods to async
+  - Integrated with IDE for real-time feedback
 
 **Planned:**
 - 🚧 Protobuf proxy generation with type safety
+  - **Current Gap:** IClusterClient only supports low-level `SendAsync(QuarkEnvelope)`
+  - **Needed:** Strongly-typed `GetActor<T>(actorId)` API for type-safe remote calls
+  - **Requires:** New source generator + client API design
 - 🚧 CLI toolkit (`quark new`, `quark add actor`, `quark cluster start`)
 - 🚧 Visual Studio extension for IDE integration
 - 🚧 In-memory test harness and chaos engineering tools
@@ -422,13 +433,16 @@ spec:
 * **Phase 8:** Smart routing optimization for direct local invocation
 * **Phase 8:** Connection reuse optimization for shared Redis connections
 * **Phase 8:** Adaptive backpressure and flow control for streams
-* **Phase 9:** Enhanced analyzers with code fix providers
-* **Phase 9:** Protobuf proxy generation for type-safe remote calls
+* **Phase 9:** Protobuf proxy generation for type-safe remote calls (requires new IClusterClient API design)
 
 **Completed (Phase 6):**
 * **Quark.Hosting:** IQuarkSilo host with lifecycle orchestration.
 * **Quark.Client:** IClusterClient lightweight gateway.
 * **Quark.Extensions.DependencyInjection:** IServiceCollection extensions for clean setup.
+
+**Completed (Phase 9):**
+* **Quark.Analyzers:** Actor method signature analyzer with QUARK004 diagnostic rule.
+* **Quark.Analyzers.CodeFixes:** Code fix providers for converting synchronous methods to async.
 
 ## **🛠️ Requirements**
 
@@ -438,11 +452,10 @@ spec:
 
 ## **🤝 Contributing**
 
-Quark has successfully completed **Phases 1-6** with 182/182 tests passing. The framework now includes production-ready Silo hosting and Client gateway components.
+Quark has successfully completed **Phases 1-6** with 182/182 tests passing. The framework now includes production-ready Silo hosting and Client gateway components. **Phase 9** includes completed actor method signature analyzer with code fix providers.
 
 We welcome contributions in the following areas:
-* Advanced analyzers for enforcing actor method signatures
-* Protobuf proxy generation for type-safe remote calls
+* Protobuf proxy generation for type-safe remote calls (requires new IClusterClient API design)
 * Smart routing optimizations for co-located clients
 * Performance optimizations and benchmarking
 * Documentation and examples
