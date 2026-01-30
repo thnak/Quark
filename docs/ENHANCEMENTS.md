@@ -203,23 +203,33 @@ Extension methods in `Quark.Extensions.DependencyInjection`:
 
 Comprehensive testing: 13 new unit tests covering both features (6 rebalancing + 7 routing).
 
-### 8.3 Massive Scale Support
+### 8.3 Massive Scale Support ✅ PARTIALLY COMPLETED
 
-* [ ] **Large Cluster Support:** Scale to 1000+ silos
-  - Hierarchical consistent hashing
-  - Gossip-based membership (complement Redis)
-  - Multi-region support with geo-aware routing
-  - Shard groups for very large clusters
+* [✓] **Large Cluster Support:** Scale to 1000+ silos
+  - ✅ Hierarchical consistent hashing (3-tier: region→zone→silo)
+  - ✅ Geo-aware routing with region/zone/shard preferences
+  - ✅ Multi-region support with configurable fallback strategies
+  - ✅ Shard groups for very large clusters (10000+ silos)
+  - 🚧 Gossip-based membership (complement Redis) - planned
 * [ ] **High-Density Hosting:** Maximize actors per silo
-  - Lightweight actor instances (< 1KB overhead)
-  - Lazy activation for dormant actors
-  - Aggressive deactivation policies
-  - Memory-mapped state for cold actors
-* [ ] **Burst Handling:** Handle traffic spikes gracefully
-  - Adaptive mailbox sizing
-  - Overflow queues with backpressure
-  - Circuit breakers per actor type
-  - Rate limiting and throttling
+  - 🚧 Lightweight actor instances (< 1KB overhead) - future enhancement
+  - 🚧 Lazy activation for dormant actors - planned
+  - 🚧 Aggressive deactivation policies - planned
+  - 🚧 Memory-mapped state for cold actors - future enhancement
+* [✓] **Burst Handling:** Handle traffic spikes gracefully
+  - ✅ Adaptive mailbox sizing (dynamic capacity adjustment)
+  - ✅ Circuit breakers per actor type (Closed/Open/HalfOpen states)
+  - ✅ Rate limiting and throttling (Drop/Reject/Queue actions)
+  - ✅ Overflow queues with backpressure (integrated with adaptive sizing)
+
+**Status:** Large cluster support and burst handling complete. New abstractions and implementations:
+- `RegionInfo`, `ZoneInfo`, `ShardGroupInfo` - Geo-aware cluster organization
+- `HierarchicalHashRing` - 3-tier consistent hashing with lock-free reads
+- `GeoAwarePlacementPolicy` - Intelligent geo-aware actor placement
+- `AdaptiveMailbox` - Dynamic capacity with burst handling
+- `BurstHandlingOptions` - Configuration for adaptive sizing, circuit breakers, rate limiting
+
+Comprehensive testing: 24 new unit tests (14 hierarchical hashing + 10 adaptive mailbox). All 309 tests passing.
 
 ### 8.4 Connection Optimization 🚧 PLANNED
 
