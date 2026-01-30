@@ -62,8 +62,8 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ `/quark/actors` - List of active actors with types
   - ✅ `/quark/cluster` - Cluster membership view with silo details
   - ✅ `/quark/config` - Current configuration (sanitized, no secrets)
-  - 🚧 `/metrics` - Prometheus-formatted metrics (use OpenTelemetry exporter)
-  - 🚧 `/health` - Detailed health report (use ASP.NET health checks)
+  - ✅ `/metrics` - Prometheus-formatted metrics (OpenTelemetry Prometheus exporter at standard endpoint)
+  - ✅ `/quark/health` - Detailed health report (ASP.NET health checks integration)
 * [✓] **Dead Letter Queue:** Capture failed messages for analysis ✅ COMPLETED
   - ✅ Core DLQ infrastructure (`IDeadLetterQueue`, `DeadLetterMessage`)
   - ✅ In-memory implementation (`InMemoryDeadLetterQueue`)
@@ -74,7 +74,7 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ Retry policies with exponential backoff (implemented - RetryPolicy, RetryHandler)
   - ✅ DLQ message replay functionality (implemented - ReplayAsync, ReplayBatchAsync, ReplayByActorAsync)
 
-**Status:** Core health checks, diagnostic endpoints, and Dead Letter Queue complete including all enhancement features. Advanced cluster health monitoring planned for future release.
+**Status:** All diagnostic endpoints complete, including Prometheus metrics at `/metrics` and ASP.NET health checks at `/quark/health`. Dead Letter Queue fully implemented with all enhancement features. Advanced cluster health monitoring planned for future release.
 
 ### 7.3 Performance Profiling & Analysis ✅ COMPLETED
 

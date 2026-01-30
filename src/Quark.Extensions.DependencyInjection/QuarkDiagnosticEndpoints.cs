@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Quark.Hosting;
 using System.Text.Json;
 
@@ -268,6 +270,66 @@ public static class QuarkDiagnosticEndpoints
             }
         })
         .WithName("RemoveDeadLetterMessage")
+        .WithTags("Quark Diagnostics");
+
+        // GET /quark/health - Detailed health report using ASP.NET health checks
+        endpoints.MapGet($"{basePath}/health", async (HttpContext context) =>
+        {
+            var healthCheckService = context.RequestServices.GetService<HealthCheckService>();
+            if (healthCheckService == null)
+            {
+                context.Response.StatusCode = 501; // Not Implemented
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Health check service not configured. Call AddHealthChecks() on the service collection."
+                });
+                return;
+            }
+
+            try
+            {
+                var healthReport = await healthCheckService.CheckHealthAsync(context.RequestAborted);
+                
+                var response = new
+                {
+                    status = healthReport.Status.ToString().ToLowerInvariant(),
+                    totalDuration = healthReport.TotalDuration.TotalMilliseconds,
+                    entries = healthReport.Entries.Select(entry => new
+                    {
+                        name = entry.Key,
+                        status = entry.Value.Status.ToString().ToLowerInvariant(),
+                        description = entry.Value.Description,
+                        duration = entry.Value.Duration.TotalMilliseconds,
+                        exception = entry.Value.Exception?.Message,
+                        data = entry.Value.Data.Count > 0 
+                            ? entry.Value.Data.ToDictionary(d => d.Key, d => d.Value?.ToString())
+                            : null,
+                        tags = entry.Value.Tags.ToList()
+                    }).ToList()
+                };
+
+                // Set status code based on health status
+                context.Response.StatusCode = healthReport.Status switch
+                {
+                    HealthStatus.Healthy => 200,
+                    HealthStatus.Degraded => 200,
+                    HealthStatus.Unhealthy => 503,
+                    _ => 200
+                };
+
+                await context.Response.WriteAsJsonAsync(response, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch (Exception ex)
+            {
+                context.Response.StatusCode = 500;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Failed to check health",
+                    message = ex.Message
+                });
+            }
+        })
+        .WithName("GetHealthReport")
         .WithTags("Quark Diagnostics");
 
         return endpoints;
