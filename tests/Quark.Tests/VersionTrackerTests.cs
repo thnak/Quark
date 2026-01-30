@@ -204,7 +204,7 @@ public class VersionTrackerTests
     }
 
     [Fact]
-    public void SetCurrentSiloId_SetsId()
+    public async Task SetCurrentSiloId_SetsId()
     {
         // Arrange
         var logger = NullLogger<VersionTracker>.Instance;
