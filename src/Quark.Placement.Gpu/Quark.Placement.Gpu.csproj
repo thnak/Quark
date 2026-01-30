@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- GPU acceleration may use reflection and platform-specific APIs -->
+        <IsAotCompatible>false</IsAotCompatible>
+        <Description>Cross-platform GPU-accelerated actor placement strategy for Quark. Provides base implementation for GPU optimization.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Quark.Placement.Abstractions\Quark.Placement.Abstractions.csproj" />
+    </ItemGroup>
+
+</Project>

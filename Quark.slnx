@@ -6,6 +6,7 @@
         <Project Path="examples/Quark.Examples.PizzaTracker.Shared/Quark.Examples.PizzaTracker.Shared.csproj" />
         <Project Path="examples/Quark.Examples.Streaming/Quark.Examples.Streaming.csproj" />
         <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
+        <Project Path="examples/Quark.Examples.Placement/Quark.Examples.Placement.csproj" />
         <Project Path="examples/Quark.Demo.PizzaDash.Shared/Quark.Demo.PizzaDash.Shared.csproj" />
         <Project Path="examples/Quark.Demo.PizzaDash.Silo/Quark.Demo.PizzaDash.Silo.csproj" />
         <Project Path="examples/Quark.Demo.PizzaDash.Api/Quark.Demo.PizzaDash.Api.csproj" />
@@ -20,6 +21,14 @@
         <Project Path="src/Quark.OpenTelemetry/Quark.OpenTelemetry.csproj" />
         <Project Path="src/Quark.Storage.Postgres/Quark.Storage.Postgres.csproj" />
         <Project Path="src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
+    </Folder>
+    <Folder Name="/src/Placement/">
+        <Project Path="src/Quark.Placement.Abstractions/Quark.Placement.Abstractions.csproj" />
+        <Project Path="src/Quark.Placement.Numa/Quark.Placement.Numa.csproj" />
+        <Project Path="src/Quark.Placement.Numa.Linux/Quark.Placement.Numa.Linux.csproj" />
+        <Project Path="src/Quark.Placement.Numa.Windows/Quark.Placement.Numa.Windows.csproj" />
+        <Project Path="src/Quark.Placement.Gpu/Quark.Placement.Gpu.csproj" />
+        <Project Path="src/Quark.Placement.Gpu.Cuda/Quark.Placement.Gpu.Cuda.csproj" />
     </Folder>
     <Folder Name="/src/Abstractions/">
         <Project Path="src/Quark.Abstractions/Quark.Abstractions.csproj" />
