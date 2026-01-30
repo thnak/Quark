@@ -200,9 +200,9 @@ All implementations include comprehensive unit tests:
 - **VersionCompatibilityCheckerTests**: 19 tests covering all compatibility modes and edge cases
 - **ActorMigrationCoordinatorTests**: 13 tests covering migration lifecycle, status tracking, reminder migration
 - **VersionTrackerTests**: 17 tests covering version registration, capability tracking, silo discovery
-- **ClusterVersionTrackerTests**: 8 tests covering cluster-synchronized version tracking and Redis integration
+- **ClusterVersionTrackerTests**: 14 tests covering cluster-synchronized version tracking, Redis integration, and input validation
 
-**Total: 69 new tests, all passing ✅**
+**Total: 75 new tests, all passing ✅**
 
 Run tests:
 
@@ -527,18 +527,19 @@ services.RegisterActorVersions(Quark.Generated.ActorVersionRegistry.VersionMap);
 
 Comprehensive unit tests covering cluster-synchronized version tracking:
 
-- **ClusterVersionTrackerTests**: 8 tests covering:
+- **ClusterVersionTrackerTests**: 14 tests covering:
   - Version registration with cluster membership updates
   - Silo capability queries
   - Compatible silo discovery
   - Version synchronization across cluster
+  - Input validation (null/empty parameter handling)
 
 **Run tests:**
 ```bash
 dotnet test --filter "FullyQualifiedName~ClusterVersionTrackerTests"
 ```
 
-All 8 tests passing ✅
+All 14 tests passing ✅
 
 
 ## Architecture Notes

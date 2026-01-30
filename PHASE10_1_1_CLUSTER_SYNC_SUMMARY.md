@@ -86,7 +86,7 @@ services.TryAddSingleton<IVersionTracker>(sp =>
 
 ### 5. Comprehensive Testing
 
-Created 8 new unit tests for cluster version tracking:
+Created 14 new unit tests for cluster version tracking:
 
 **File:** `tests/Quark.Tests/ClusterVersionTrackerTests.cs`
 
@@ -99,8 +99,14 @@ Created 8 new unit tests for cluster version tracking:
 6. `FindCompatibleSilosAsync_NoVersion_ReturnsAllSilosWithActorType` - Type-based discovery
 7. `GetActorTypeVersionAsync_AfterRegistration_ReturnsVersion` - Local version queries
 8. `RegisterSiloVersionsAsync_WithNullVersions_ThrowsArgumentNullException` - Error handling
+9. `GetSiloCapabilitiesAsync_WithNullSiloId_ThrowsArgumentNullException` - Null validation
+10. `GetSiloCapabilitiesAsync_WithEmptySiloId_ThrowsArgumentException` - Empty validation
+11. `GetActorTypeVersionAsync_WithNullActorType_ThrowsArgumentNullException` - Null validation
+12. `GetActorTypeVersionAsync_WithEmptyActorType_ThrowsArgumentException` - Empty validation
+13. `FindCompatibleSilosAsync_WithNullActorType_ThrowsArgumentNullException` - Null validation
+14. `FindCompatibleSilosAsync_WithEmptyActorType_ThrowsArgumentException` - Empty validation
 
-**All 8 tests passing ✅**
+**All 14 tests passing ✅**
 
 ### 6. Documentation Updates
 
@@ -145,8 +151,8 @@ Updated `docs/PHASE10_1_1_ZERO_DOWNTIME.md`:
 
 ## Testing Results
 
-- **New Tests**: 8 (all passing)
-- **Total Phase 10.1.1 Tests**: 69 (all passing)
+- **New Tests**: 14 (all passing, including 6 input validation tests)
+- **Total Phase 10.1.1 Tests**: 75 (all passing)
 - **Total Repository Tests**: 456 passing, 2 skipped, 1 flaky (unrelated to changes)
 - **Build Status**: ✅ Success (0 errors, 157 warnings - all pre-existing)
 
