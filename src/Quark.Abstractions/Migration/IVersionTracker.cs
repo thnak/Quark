@@ -48,12 +48,12 @@ public enum VersionCompatibilityMode
     Strict,
 
     /// <summary>
-    /// Patch version compatibility - e.g., v2.1.x compatible with v2.1.0.
+    /// Patch version compatibility - versions with the same major and minor versions are compatible (e.g., v2.1.3 compatible with v2.1.0).
     /// </summary>
     Patch,
 
     /// <summary>
-    /// Minor version compatibility - e.g., v2.x compatible with v2.0.
+    /// Minor version compatibility - any version with the same major version is compatible (e.g., v2.0.0 compatible with v2.5.0).
     /// </summary>
     Minor,
 

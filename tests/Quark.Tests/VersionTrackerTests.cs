@@ -21,9 +21,11 @@ public class VersionTrackerTests
 
         // Act
         await tracker.RegisterSiloVersionsAsync(versions);
+        var retrievedVersion = await tracker.GetActorTypeVersionAsync("TestActor");
 
-        // Assert - No exception means success
-        Assert.True(true);
+        // Assert
+        Assert.NotNull(retrievedVersion);
+        Assert.Equal("1.0.0", retrievedVersion.Version);
     }
 
     [Fact]
@@ -210,9 +212,17 @@ public class VersionTrackerTests
 
         // Act
         tracker.SetCurrentSiloId("my-silo");
+        
+        // Register versions to verify the silo ID is working
+        var versions = new Dictionary<string, AssemblyVersionInfo>
+        {
+            ["TestActor"] = new AssemblyVersionInfo("1.0.0")
+        };
+        await tracker.RegisterSiloVersionsAsync(versions);
+        var compatibleSilos = await tracker.FindCompatibleSilosAsync("TestActor");
 
-        // Assert - No exception means success
-        Assert.True(true);
+        // Assert
+        Assert.Contains("my-silo", compatibleSilos);
     }
 
     [Fact]

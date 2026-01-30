@@ -62,9 +62,12 @@ public class ActorMigrationCoordinatorTests
 
         // Act
         await coordinator.BeginDrainAsync("actor-1");
+        
+        // Verify drain completed (uses a short timeout)
+        var drained = await coordinator.WaitForDrainCompletionAsync("actor-1", TimeSpan.FromSeconds(1));
 
-        // Assert - No exception means success
-        Assert.True(true);
+        // Assert
+        Assert.True(drained, "Drain should complete successfully");
     }
 
     [Fact]
@@ -176,13 +179,13 @@ public class ActorMigrationCoordinatorTests
 
         // Act - Check count while migration is in progress
         await Task.Delay(10); // Give it a moment to start
-
-        // Assert - Count could be 0 or 1 depending on timing
-        Assert.True(coordinator.ActiveMigrationCount >= 0);
+        var countDuringMigration = coordinator.ActiveMigrationCount;
 
         // Wait for migration to complete
         await migrationTask;
 
+        // Assert
+        Assert.True(countDuringMigration >= 0, "Active migration count should be non-negative");
         // After completion, count should be 0
         Assert.Equal(0, coordinator.ActiveMigrationCount);
     }

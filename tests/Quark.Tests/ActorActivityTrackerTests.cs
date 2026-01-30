@@ -137,7 +137,7 @@ public class ActorActivityTrackerTests
     }
 
     [Fact]
-    public void IsCold_TrueWhenNoActivity()
+    public async Task IsCold_TrueWhenNoActivity()
     {
         // Arrange
         var tracker = new ActorActivityTracker();
@@ -147,8 +147,8 @@ public class ActorActivityTrackerTests
         // Act - Record minimal activity and let it age
         tracker.RecordMessageEnqueued(actorId, actorType);
         tracker.RecordMessageDequeued(actorId, actorType);
-        Thread.Sleep(100); // Allow time to pass
-        var metrics = tracker.GetActivityMetricsAsync(actorId).Result;
+        await Task.Delay(100); // Allow time to pass
+        var metrics = await tracker.GetActivityMetricsAsync(actorId);
 
         // Assert
         Assert.NotNull(metrics);

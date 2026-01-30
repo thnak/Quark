@@ -67,11 +67,12 @@ public sealed class VersionCompatibilityChecker : IVersionCompatibilityChecker
             return null;
         }
 
-        // Sort by version (newest first) and return the best match
+        // Sort by closeness to requested version (closest first) and return the best match
+        // Note: Returns negative distances so OrderByDescending gives us the closest version
         var requested = ParseVersion(requestedVersion);
         return compatibleVersions
             .Select(v => (Version: v, Parsed: ParseVersion(v)))
-            .OrderByDescending(v => CalculateVersionDistance(requested, v.Parsed))
+            .OrderByDescending(v => CalculateVersionProximity(requested, v.Parsed))
             .Select(v => v.Version)
             .FirstOrDefault();
     }
@@ -85,12 +86,12 @@ public sealed class VersionCompatibilityChecker : IVersionCompatibilityChecker
         return (major, minor, patch);
     }
 
-    private static double CalculateVersionDistance(
+    private static double CalculateVersionProximity(
         (int Major, int Minor, int Patch) requested,
         (int Major, int Minor, int Patch) available)
     {
-        // Calculate "closeness" - prefer versions closer to requested
-        // Use negative distance so OrderByDescending gives us the closest version
+        // Calculate "closeness" score - prefer versions closer to requested
+        // Returns negative distance so OrderByDescending gives us the closest version
         var majorDiff = Math.Abs(requested.Major - available.Major);
         var minorDiff = Math.Abs(requested.Minor - available.Minor);
         var patchDiff = Math.Abs(requested.Patch - available.Patch);
