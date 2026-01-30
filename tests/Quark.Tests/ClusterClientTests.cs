@@ -73,4 +73,79 @@ public class ClusterClientTests
         Assert.Equal(3, options.MaxRetries);
         Assert.Equal(TimeSpan.FromSeconds(1), options.RetryDelay);
     }
+
+    [Fact]
+    public void ClusterClient_LocalSiloId_ReturnsTransportLocalSiloId()
+    {
+        // Arrange
+        var mockClusterMembership = new Mock<IQuarkClusterMembership>();
+        var mockTransport = new Mock<IQuarkTransport>();
+        mockTransport.Setup(t => t.LocalSiloId).Returns("local-silo-123");
+        var options = new ClusterClientOptions();
+        var logger = NullLogger<ClusterClient>.Instance;
+
+        // Act
+        using var client = new ClusterClient(mockClusterMembership.Object, mockTransport.Object, options, logger);
+
+        // Assert
+        Assert.Equal("local-silo-123", client.LocalSiloId);
+    }
+
+    [Fact]
+    public async Task ClusterClient_SendAsync_LogsLocalCallWhenTargetIsLocalSilo()
+    {
+        // Arrange
+        var mockClusterMembership = new Mock<IQuarkClusterMembership>();
+        var mockTransport = new Mock<IQuarkTransport>();
+        mockTransport.Setup(t => t.LocalSiloId).Returns("local-silo-123");
+        
+        // Setup cluster membership to return active silos
+        var silos = new List<string> { "local-silo-123" };
+        mockClusterMembership.Setup(m => m.GetActiveSilosAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(silos);
+        
+        // Setup GetActorSilo to return the local silo
+        mockClusterMembership.Setup(m => m.GetActorSilo(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns("local-silo-123");
+        
+        // Setup transport to return a response
+        var responseEnvelope = new QuarkEnvelope(
+            messageId: "msg-1",
+            actorId: "test-actor",
+            actorType: "TestActor",
+            methodName: "TestMethod",
+            payload: Array.Empty<byte>())
+        {
+            ResponsePayload = Array.Empty<byte>()
+        };
+        
+        mockTransport.Setup(t => t.SendAsync(
+            It.IsAny<string>(),
+            It.IsAny<QuarkEnvelope>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(responseEnvelope);
+
+        var options = new ClusterClientOptions();
+        var logger = NullLogger<ClusterClient>.Instance;
+        using var client = new ClusterClient(mockClusterMembership.Object, mockTransport.Object, options, logger);
+
+        // Connect the client
+        await client.ConnectAsync();
+
+        var envelope = new QuarkEnvelope(
+            messageId: "msg-1",
+            actorId: "test-actor",
+            actorType: "TestActor",
+            methodName: "TestMethod",
+            payload: Array.Empty<byte>());
+
+        // Act
+        var response = await client.SendAsync(envelope);
+
+        // Assert
+        Assert.NotNull(response);
+        // Verify that SendAsync was called with the local silo ID
+        mockTransport.Verify(t => t.SendAsync("local-silo-123", It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
+

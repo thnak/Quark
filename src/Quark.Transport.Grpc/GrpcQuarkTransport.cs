@@ -11,6 +11,7 @@ namespace Quark.Transport.Grpc;
 ///     gRPC-based implementation of IQuarkTransport using bi-directional streaming.
 ///     Maintains one persistent stream per silo connection.
 ///     Supports optional channel pooling for efficient connection management.
+///     Optimizes local calls to avoid network overhead when target is the local silo.
 /// </summary>
 public sealed class GrpcQuarkTransport : IQuarkTransport
 {
@@ -46,12 +47,39 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         QuarkEnvelope envelope,
         CancellationToken cancellationToken = default)
     {
+        // OPTIMIZATION: Local call detection - avoid network serialization/deserialization
+        // If target is the local silo, use in-memory dispatch via EnvelopeReceived event
+        if (targetSiloId == LocalSiloId)
+        {
+            // Create TCS for response before dispatching to avoid race condition
+            var tcs = new TaskCompletionSource<QuarkEnvelope>();
+            _pendingRequests[envelope.MessageId] = tcs;
+
+            try
+            {
+                // Dispatch locally via event - this triggers local actor invocation
+                // The response will come back through the same mechanism
+                EnvelopeReceived?.Invoke(this, envelope);
+
+                // Wait for response with timeout
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                return await tcs.Task.WaitAsync(cts.Token);
+            }
+            finally
+            {
+                _pendingRequests.TryRemove(envelope.MessageId, out _);
+            }
+        }
+
+        // Remote call - use gRPC
         if (!_connections.TryGetValue(targetSiloId, out var connection))
             throw new InvalidOperationException($"No connection to silo {targetSiloId}. Call ConnectAsync first.");
 
         // Create TCS for response
-        var tcs = new TaskCompletionSource<QuarkEnvelope>();
-        _pendingRequests[envelope.MessageId] = tcs;
+        var remoteTcs = new TaskCompletionSource<QuarkEnvelope>();
+        _pendingRequests[envelope.MessageId] = remoteTcs;
 
         try
         {
@@ -62,10 +90,10 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             await connection.RequestStream.WriteAsync(protoMessage, cancellationToken);
 
             // Wait for response (30s timeout)
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            return await tcs.Task.WaitAsync(cts.Token);
+            return await remoteTcs.Task.WaitAsync(timeoutCts.Token);
         }
         finally
         {
@@ -140,6 +168,16 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     public void Dispose()
     {
         StopAsync().GetAwaiter().GetResult();
+    }
+
+    /// <inheritdoc />
+    public void SendResponse(QuarkEnvelope responseEnvelope)
+    {
+        // Complete the pending request with the response
+        if (_pendingRequests.TryRemove(responseEnvelope.MessageId, out var tcs))
+        {
+            tcs.SetResult(responseEnvelope);
+        }
     }
 
     private async Task ReadResponsesAsync(SiloConnection connection, CancellationToken cancellationToken)

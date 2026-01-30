@@ -15,3 +15,5 @@ QUARK006 | Quark.Actors | Warning | Actor method parameter may not be serializab
 QUARK007 | Quark.Actors | Warning | Potential reentrancy issue detected
 QUARK008 | Quark.Performance | Warning | Blocking call detected in actor method
 QUARK009 | Quark.Performance | Warning | Synchronous I/O detected in actor method
+QUARK010 | Quark.Actors | Warning | Multiple classes implement the same IQuarkActor interface
+QUARK011 | Quark.Actors | Info | Deep inheritance chain detected for IQuarkActor implementation
