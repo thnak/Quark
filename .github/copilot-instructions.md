@@ -45,6 +45,7 @@ Quark/
 │   ├── Quark.Examples.Supervision/ # Supervision hierarchy example
 │   └── Quark.Examples.Streaming/   # Reactive streaming example
 ├── docs/                           # Documentation
+├── wiki/
 ├── Directory.Build.props           # Shared MSBuild properties
 └── Quark.slnx                     # Solution file (XML-based .slnx format introduced in VS 2022)
 ```
