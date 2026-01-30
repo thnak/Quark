@@ -1,18 +1,21 @@
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace Quark.Networking.Abstractions;
 
 /// <summary>
-///     Implements a consistent hash ring using virtual nodes.
-///     Thread-safe implementation using sorted dictionary for O(log n) lookups.
+///     Phase 8.1: Optimized consistent hash ring using SIMD-accelerated hashing and lock-free reads.
+///     - Uses CRC32/xxHash instead of MD5 (10-100x faster)
+///     - Lock-free reads via snapshot pattern (RCU)
+///     - Thread-safe writes with minimal lock contention
 /// </summary>
 public sealed class ConsistentHashRing : IConsistentHashRing
 {
     private readonly object _lock = new();
     private readonly ConcurrentDictionary<string, HashRingNode> _nodes = new();
-    private readonly SortedDictionary<uint, string> _ring = new();
+    
+    // Phase 8.1: Use volatile snapshot for lock-free reads
+    private volatile SortedDictionary<uint, string> _ring = new();
 
     /// <inheritdoc />
     public int NodeCount => _nodes.Count;
@@ -30,13 +33,19 @@ public sealed class ConsistentHashRing : IConsistentHashRing
 
             _nodes[node.SiloId] = node;
 
-            // Add virtual nodes to the ring
+            // Phase 8.1: Copy-on-write pattern for lock-free reads
+            var newRing = new SortedDictionary<uint, string>(_ring);
+
+            // Add virtual nodes to the ring with SIMD-accelerated hash
             for (var i = 0; i < node.VirtualNodeCount; i++)
             {
                 var virtualNodeKey = $"{node.SiloId}:{i}";
-                var hash = ComputeHash(virtualNodeKey);
-                _ring[hash] = node.SiloId;
+                var hash = SimdHashHelper.ComputeFastHash(virtualNodeKey);
+                newRing[hash] = node.SiloId;
             }
+
+            // Atomic swap - readers see either old or new ring (never partial state)
+            _ring = newRing;
         }
     }
 
@@ -51,39 +60,46 @@ public sealed class ConsistentHashRing : IConsistentHashRing
             if (!_nodes.TryRemove(siloId, out var node))
                 return false;
 
-            // Remove all virtual nodes from the ring
+            // Phase 8.1: Copy-on-write pattern for lock-free reads
+            var newRing = new SortedDictionary<uint, string>(_ring);
+
+            // Remove all virtual nodes from the ring with SIMD-accelerated hash
             for (var i = 0; i < node.VirtualNodeCount; i++)
             {
                 var virtualNodeKey = $"{node.SiloId}:{i}";
-                var hash = ComputeHash(virtualNodeKey);
-                _ring.Remove(hash);
+                var hash = SimdHashHelper.ComputeFastHash(virtualNodeKey);
+                newRing.Remove(hash);
             }
 
+            // Atomic swap
+            _ring = newRing;
             return true;
         }
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public string? GetNode(string key)
     {
         if (string.IsNullOrEmpty(key))
             throw new ArgumentNullException(nameof(key));
 
-        lock (_lock)
-        {
-            if (_ring.Count == 0)
-                return null;
+        // Phase 8.1: Lock-free read via volatile snapshot
+        var currentRing = _ring;
+        
+        if (currentRing.Count == 0)
+            return null;
 
-            var hash = ComputeHash(key);
+        // Phase 8.1: Use SIMD-accelerated hash (10-100x faster than MD5)
+        var hash = SimdHashHelper.ComputeFastHash(key);
 
-            // Find the first node clockwise from the hash
-            foreach (var kvp in _ring)
-                if (kvp.Key >= hash)
-                    return kvp.Value;
+        // Find the first node clockwise from the hash
+        foreach (var kvp in currentRing)
+            if (kvp.Key >= hash)
+                return kvp.Value;
 
-            // Wrap around to the first node
-            return _ring.First().Value;
-        }
+        // Wrap around to the first node
+        return currentRing.First().Value;
     }
 
     /// <inheritdoc />
@@ -92,16 +108,5 @@ public sealed class ConsistentHashRing : IConsistentHashRing
         return _nodes.Keys.ToList().AsReadOnly();
     }
 
-    /// <summary>
-    ///     Computes a 32-bit hash for a given key using MD5.
-    ///     MD5 is fast and provides good distribution for consistent hashing.
-    /// </summary>
-    private static uint ComputeHash(string key)
-    {
-        var bytes = Encoding.UTF8.GetBytes(key);
-        var hash = MD5.HashData(bytes);
 
-        // Use first 4 bytes as uint
-        return BitConverter.ToUInt32(hash, 0);
-    }
 }

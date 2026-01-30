@@ -1,11 +1,13 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Quark.Abstractions;
 
 namespace Quark.Core.Actors;
 
 /// <summary>
-///     High-performance mailbox implementation using System.Threading.Channels.
-///     Provides turn-based message processing to ensure actors process one message at a time.
+///     Phase 8.1: Optimized high-performance mailbox using System.Threading.Channels.
+///     - Removed hot-path Interlocked operations (use Channel's built-in count instead)
+///     - Turn-based message processing to ensure actors process one message at a time.
 /// </summary>
 public sealed class ChannelMailbox : IMailbox
 {
@@ -13,7 +15,6 @@ public sealed class ChannelMailbox : IMailbox
     private readonly Channel<IActorMessage> _channel;
     private readonly CancellationTokenSource _cts;
     private readonly IDeadLetterQueue? _deadLetterQueue;
-    private int _messageCount;
     private Task? _processingTask;
 
     /// <summary>
@@ -42,12 +43,21 @@ public sealed class ChannelMailbox : IMailbox
     public string ActorId => _actor.ActorId;
 
     /// <inheritdoc />
-    public int MessageCount => _messageCount;
+    public int MessageCount
+    {
+        get
+        {
+            // Phase 8.1: Use Channel's built-in Count property instead of Interlocked tracking
+            // This avoids contention on hot path (PostAsync/ProcessMessagesAsync)
+            return _channel.Reader.Count;
+        }
+    }
 
     /// <inheritdoc />
     public bool IsProcessing => _processingTask != null && !_processingTask.IsCompleted;
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public async ValueTask<bool> PostAsync(IActorMessage message, CancellationToken cancellationToken = default)
     {
         if (message == null)
@@ -55,8 +65,8 @@ public sealed class ChannelMailbox : IMailbox
 
         try
         {
+            // Phase 8.1: Removed Interlocked.Increment - no contention on hot path
             await _channel.Writer.WriteAsync(message, cancellationToken);
-            Interlocked.Increment(ref _messageCount);
             return true;
         }
         catch (ChannelClosedException)
@@ -117,6 +127,7 @@ public sealed class ChannelMailbox : IMailbox
     }
 
     /// <summary>
+    ///     Phase 8.1: Optimized message processing loop.
     ///     Processes messages from the channel one at a time (turn-based execution).
     /// </summary>
     private async Task ProcessMessagesAsync(CancellationToken cancellationToken)
@@ -131,24 +142,24 @@ public sealed class ChannelMailbox : IMailbox
                 // Log error but continue processing
                 Console.WriteLine($"Error processing message {message.MessageId} for actor {ActorId}: {ex}");
 
-                // Send to dead letter queue if configured
+                // Phase 8.1: DLQ enqueue moved out of hot path - don't await inline
+                // Queue DLQ operations asynchronously to avoid blocking message processing
                 if (_deadLetterQueue != null)
                 {
-                    try
+                    _ = Task.Run(async () =>
                     {
-                        await _deadLetterQueue.EnqueueAsync(message, ActorId, ex, cancellationToken);
-                    }
-                    catch (Exception dlqEx)
-                    {
-                        // Log DLQ failure but don't crash the mailbox
-                        Console.WriteLine($"Failed to enqueue message to DLQ: {dlqEx}");
-                    }
+                        try
+                        {
+                            await _deadLetterQueue.EnqueueAsync(message, ActorId, ex, CancellationToken.None);
+                        }
+                        catch (Exception dlqEx)
+                        {
+                            Console.WriteLine($"Failed to enqueue message to DLQ: {dlqEx}");
+                        }
+                    }, CancellationToken.None);
                 }
             }
-            finally
-            {
-                Interlocked.Decrement(ref _messageCount);
-            }
+            // Phase 8.1: Removed Interlocked.Decrement from finally block
     }
 
     /// <summary>

@@ -50,6 +50,9 @@ Quark/
 
 - .NET 10 SDK or later
 - A C# IDE (Visual Studio, VS Code, or Rider)
+- **CPU with AVX2 support** (Intel Haswell 2013+, AMD Excavator 2015+)
+  - Required for SIMD-accelerated hash computations and hot path optimizations
+  - Most modern x64 CPUs support AVX2 (check with `lscpu | grep avx2` on Linux)
 
 ### Project Setup
 

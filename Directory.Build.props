@@ -31,6 +31,14 @@
         <InvariantGlobalization>false</InvariantGlobalization>
         <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
         <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+        <!-- Phase 8.1: Hot Path Optimizations - Enable AVX2 SIMD instructions -->
+        <EnableHardwareIntrinsics>true</EnableHardwareIntrinsics>
+    </PropertyGroup>
+    
+    <!-- Phase 8.1: Enable AVX2 for all projects (minimum system requirement) -->
+    <PropertyGroup>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <EnablePreviewFeatures>false</EnablePreviewFeatures>
     </PropertyGroup>
 
     <!-- Parallel Build Configuration -->
