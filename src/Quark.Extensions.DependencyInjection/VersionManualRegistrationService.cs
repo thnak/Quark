@@ -6,6 +6,8 @@ namespace Quark.Extensions.DependencyInjection;
 
 /// <summary>
 /// Background service that registers actor versions provided by the application on startup.
+/// The term "Manual" refers to the application explicitly passing the generated registry,
+/// as opposed to automatic runtime discovery which would require reflection.
 /// Part of Phase 10.1.1 (Zero Downtime & Rolling Upgrades - Automatic Version Detection).
 /// </summary>
 internal sealed class VersionManualRegistrationService : IHostedService

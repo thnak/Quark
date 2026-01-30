@@ -113,26 +113,20 @@ public class AssemblyVersionSourceGenerator : IIncrementalGenerator
                            /// </summary>
                            public static class ActorVersionRegistry
                            {
-                               private static FrozenDictionary<string, AssemblyVersionInfo>? _versionMap;
+                               private static readonly System.Lazy<FrozenDictionary<string, AssemblyVersionInfo>> _lazyVersionMap =
+                                   new System.Lazy<FrozenDictionary<string, AssemblyVersionInfo>>(() =>
+                                   {
+                                       return new Dictionary<string, AssemblyVersionInfo>
+                                       {
+                       {{versionEntries}}
+                                       }.ToFrozenDictionary();
+                                   }, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
                        
                                /// <summary>
                                /// Gets the frozen dictionary mapping actor type names to their assembly versions.
                                /// This is populated at compile-time and includes all actor types in this assembly.
                                /// </summary>
-                               public static FrozenDictionary<string, AssemblyVersionInfo> VersionMap
-                               {
-                                   get
-                                   {
-                                       if (_versionMap == null)
-                                       {
-                                           _versionMap = new Dictionary<string, AssemblyVersionInfo>
-                                           {
-                       {{versionEntries}}
-                                           }.ToFrozenDictionary();
-                                       }
-                                       return _versionMap;
-                                   }
-                               }
+                               public static FrozenDictionary<string, AssemblyVersionInfo> VersionMap => _lazyVersionMap.Value;
                        
                                /// <summary>
                                /// Gets the version information for a specific actor type.
@@ -171,7 +165,9 @@ public class AssemblyVersionSourceGenerator : IIncrementalGenerator
             {
                 // Parse version and return in semver format (Major.Minor.Patch)
                 var version = System.Version.Parse(versionString);
-                return $"{version.Major}.{version.Minor}.{version.Build}";
+                // Build can be -1 if not specified, use 0 as default
+                var build = version.Build >= 0 ? version.Build : 0;
+                return $"{version.Major}.{version.Minor}.{build}";
             }
         }
 
@@ -186,7 +182,17 @@ public class AssemblyVersionSourceGenerator : IIncrementalGenerator
             {
                 // Remove any suffix like "-alpha", "-beta" for version comparison
                 var parts = versionString!.Split('-');
-                return parts[0];
+                var cleanVersion = parts[0];
+                
+                // Normalize to Major.Minor.Patch format
+                if (System.Version.TryParse(cleanVersion, out var version))
+                {
+                    var build = version.Build >= 0 ? version.Build : 0;
+                    return $"{version.Major}.{version.Minor}.{build}";
+                }
+                
+                // If parsing fails, return the clean version as-is
+                return cleanVersion;
             }
         }
 
