@@ -246,23 +246,40 @@ public class ProtoSourceGenerator : IIncrementalGenerator
             var returnType = GetReturnTypeString(method);
             var parameters = string.Join(", ", method.Parameters.Select(p => 
                 $"{p.Type.ToDisplayString()} {p.Name}"));
-            var paramNames = string.Join(", ", method.Parameters.Select(p => p.Name));
+            var paramArray = method.Parameters.Length > 0 
+                ? string.Join(", ", method.Parameters.Select(p => p.Name))
+                : "";
 
-            proxyBuilder.AppendLine($"    public {returnType} {method.Name}({parameters})");
+            // Determine the actual result type (unwrap Task<T>)
+            var resultType = GetTaskResultType(method);
+            var hasResult = resultType != null;
+
+            proxyBuilder.AppendLine($"    public async {returnType} {method.Name}({parameters})");
             proxyBuilder.AppendLine("    {");
             
             if (IsAsyncMethod(method))
             {
-                proxyBuilder.AppendLine($"        var envelope = CreateEnvelope(\"{method.Name}\", {paramNames});");
-                proxyBuilder.AppendLine("        var response = await _client.SendAsync(envelope);");
-                
-                if (method.ReturnsVoid || IsTaskWithoutResult(method))
+                if (method.Parameters.Length > 0)
                 {
-                    proxyBuilder.AppendLine("        return;");
+                    proxyBuilder.AppendLine($"        var envelope = CreateEnvelope(\"{method.Name}\", new object[] {{ {paramArray} }});");
                 }
                 else
                 {
-                    proxyBuilder.AppendLine("        return DeserializeResponse<TResult>(response);");
+                    proxyBuilder.AppendLine($"        var envelope = CreateEnvelope(\"{method.Name}\", Array.Empty<object>());");
+                }
+                proxyBuilder.AppendLine("        var response = await _client.SendAsync(envelope);");
+                
+                if (hasResult)
+                {
+                    proxyBuilder.AppendLine($"        return DeserializeResponse<{resultType}>(response);");
+                }
+                else
+                {
+                    proxyBuilder.AppendLine("        // Task without result - just check for errors");
+                    proxyBuilder.AppendLine("        if (response.IsError)");
+                    proxyBuilder.AppendLine("        {");
+                    proxyBuilder.AppendLine("            throw new InvalidOperationException($\"Actor method failed: {response.ErrorMessage}\");");
+                    proxyBuilder.AppendLine("        }");
                 }
             }
             else
@@ -312,20 +329,19 @@ namespace {{namespaceName}}.Generated
 
 {{proxyBuilder}}
 
-        private QuarkEnvelope CreateEnvelope(string methodName, params object[] parameters)
+        private QuarkEnvelope CreateEnvelope(string methodName, object[] parameters)
         {
-            var payload = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(parameters);
+            var payload = parameters.Length > 0
+                ? System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(parameters)
+                : Array.Empty<byte>();
+            
             return new QuarkEnvelope(
                 messageId: Guid.NewGuid().ToString(),
                 actorId: _actorId,
                 actorType: _actorType,
                 methodName: methodName,
                 payload: payload,
-                correlationId: null,
-                timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                responsePayload: null,
-                isError: false,
-                errorMessage: null
+                correlationId: null
             );
         }
 

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Quark.Core/Quark.Core.csproj" />
+    <ProjectReference Include="../../src/Quark.Client/Quark.Client.csproj" />
+    <ProjectReference Include="../../src/Quark.Networking.Abstractions/Quark.Networking.Abstractions.csproj" />
+    <ProjectReference Include="../../src/Quark.Generators/Quark.Generators.csproj" 
+                      OutputItemType="Analyzer" 
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
