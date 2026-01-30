@@ -168,10 +168,10 @@ public static class QuarkDiagnosticEndpoints
             var dlq = context.RequestServices.GetService<Quark.Abstractions.IDeadLetterQueue>();
             if (dlq == null)
             {
-                context.Response.StatusCode = 503;
+                context.Response.StatusCode = 501; // Not Implemented
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    error = "Dead Letter Queue not available"
+                    error = "Dead Letter Queue not configured"
                 });
                 return;
             }
@@ -206,10 +206,10 @@ public static class QuarkDiagnosticEndpoints
             var dlq = context.RequestServices.GetService<Quark.Abstractions.IDeadLetterQueue>();
             if (dlq == null)
             {
-                context.Response.StatusCode = 503;
+                context.Response.StatusCode = 501; // Not Implemented
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    error = "Dead Letter Queue not available"
+                    error = "Dead Letter Queue not configured"
                 });
                 return;
             }
@@ -230,10 +230,21 @@ public static class QuarkDiagnosticEndpoints
             var dlq = context.RequestServices.GetService<Quark.Abstractions.IDeadLetterQueue>();
             if (dlq == null)
             {
-                context.Response.StatusCode = 503;
+                context.Response.StatusCode = 501; // Not Implemented
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    error = "Dead Letter Queue not available"
+                    error = "Dead Letter Queue not configured"
+                });
+                return;
+            }
+
+            // Validate messageId
+            if (string.IsNullOrWhiteSpace(messageId))
+            {
+                context.Response.StatusCode = 400; // Bad Request
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Message ID cannot be empty"
                 });
                 return;
             }

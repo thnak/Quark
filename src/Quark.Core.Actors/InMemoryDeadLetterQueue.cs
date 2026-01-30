@@ -11,6 +11,7 @@ public sealed class InMemoryDeadLetterQueue : IDeadLetterQueue
 {
     private readonly ConcurrentDictionary<string, DeadLetterMessage> _messages = new();
     private readonly int _maxMessages;
+    private readonly object _capacityLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryDeadLetterQueue"/> class.
@@ -37,27 +38,33 @@ public sealed class InMemoryDeadLetterQueue : IDeadLetterQueue
         if (exception == null)
             throw new ArgumentNullException(nameof(exception));
 
-        // If at capacity, remove oldest message (FIFO)
-        if (_messages.Count >= _maxMessages)
+        lock (_capacityLock)
         {
-            var oldestKey = _messages
-                .OrderBy(kvp => kvp.Value.EnqueuedAt)
-                .FirstOrDefault().Key;
+            // If at capacity, remove oldest message (FIFO)
+            while (_messages.Count >= _maxMessages)
+            {
+                var oldestKey = _messages
+                    .OrderBy(kvp => kvp.Value.EnqueuedAt)
+                    .FirstOrDefault().Key;
 
-            if (oldestKey != null)
-                _messages.TryRemove(oldestKey, out _);
+                if (oldestKey != null)
+                    _messages.TryRemove(oldestKey, out _);
+                else
+                    break; // Dictionary is empty
+            }
+
+            var deadLetterMessage = new DeadLetterMessage
+            {
+                Message = message,
+                ActorId = actorId,
+                Exception = exception,
+                EnqueuedAt = DateTimeOffset.UtcNow,
+                RetryCount = 0
+            };
+
+            // TryAdd might fail if duplicate MessageId exists, which is ok
+            _messages.TryAdd(message.MessageId, deadLetterMessage);
         }
-
-        var deadLetterMessage = new DeadLetterMessage
-        {
-            Message = message,
-            ActorId = actorId,
-            Exception = exception,
-            EnqueuedAt = DateTimeOffset.UtcNow,
-            RetryCount = 0
-        };
-
-        _messages.TryAdd(message.MessageId, deadLetterMessage);
 
         return Task.CompletedTask;
     }
