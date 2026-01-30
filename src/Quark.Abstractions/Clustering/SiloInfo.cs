@@ -8,13 +8,23 @@ public sealed class SiloInfo
     /// <summary>
     ///     Initializes a new instance of the <see cref="SiloInfo" /> class.
     /// </summary>
-    public SiloInfo(string siloId, string address, int port, SiloStatus status = SiloStatus.Active)
+    public SiloInfo(
+        string siloId,
+        string address,
+        int port,
+        SiloStatus status = SiloStatus.Active,
+        string? regionId = null,
+        string? zoneId = null,
+        string? shardGroupId = null)
     {
         SiloId = siloId ?? throw new ArgumentNullException(nameof(siloId));
         Address = address ?? throw new ArgumentNullException(nameof(address));
         Port = port;
         Status = status;
         LastHeartbeat = DateTimeOffset.UtcNow;
+        RegionId = regionId;
+        ZoneId = zoneId;
+        ShardGroupId = shardGroupId;
     }
 
     /// <summary>
@@ -47,6 +57,24 @@ public sealed class SiloInfo
     ///     Null if health monitoring is not enabled.
     /// </summary>
     public SiloHealthScore? HealthScore { get; set; }
+
+    /// <summary>
+    ///     Phase 8.3: Gets the region this silo belongs to (for geo-aware routing).
+    ///     Null if not in a multi-region deployment.
+    /// </summary>
+    public string? RegionId { get; }
+
+    /// <summary>
+    ///     Phase 8.3: Gets the availability zone this silo belongs to (for zone-aware placement).
+    ///     Null if not in a multi-zone deployment.
+    /// </summary>
+    public string? ZoneId { get; }
+
+    /// <summary>
+    ///     Phase 8.3: Gets the shard group this silo belongs to (for very large clusters).
+    ///     Null if not using shard groups.
+    /// </summary>
+    public string? ShardGroupId { get; }
 
     /// <summary>
     ///     Gets the endpoint string in the format "address:port".
