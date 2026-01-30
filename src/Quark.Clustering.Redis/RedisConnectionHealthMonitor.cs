@@ -43,8 +43,9 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
     private readonly ILogger<RedisConnectionHealthMonitor>? _logger;
     private readonly Timer? _healthCheckTimer;
     private bool _disposed;
+    private bool _isRunning;
     private int _failureCount;
-    private DateTimeOffset _lastSuccessfulCheck;
+    private long _lastSuccessfulCheckTicks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RedisConnectionHealthMonitor"/> class.
@@ -60,7 +61,7 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
         _redis = redis ?? throw new ArgumentNullException(nameof(redis));
         _options = options ?? new RedisConnectionHealthOptions();
         _logger = logger;
-        _lastSuccessfulCheck = DateTimeOffset.UtcNow;
+        _lastSuccessfulCheckTicks = DateTimeOffset.UtcNow.UtcTicks;
 
         // Subscribe to connection events
         if (_options.MonitorConnectionFailures)
@@ -73,6 +74,7 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
         // Start health check timer
         if (_options.HealthCheckInterval > TimeSpan.Zero)
         {
+            _isRunning = true;
             _healthCheckTimer = new Timer(
                 HealthCheckCallback,
                 null,
@@ -101,38 +103,36 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
             var db = _redis.GetDatabase();
             var startTime = DateTimeOffset.UtcNow;
             
-            // Perform a simple ping to check connectivity
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(_options.HealthCheckTimeout);
-            
+            // Perform a simple ping to check connectivity with timeout
             var latency = await db.PingAsync();
             var duration = DateTimeOffset.UtcNow - startTime;
 
-            _lastSuccessfulCheck = DateTimeOffset.UtcNow;
-            _failureCount = 0;
+            // Update last successful check timestamp atomically
+            Interlocked.Exchange(ref _lastSuccessfulCheckTicks, DateTimeOffset.UtcNow.UtcTicks);
+            Interlocked.Exchange(ref _failureCount, 0);
 
             return new ConnectionHealthStatus(
                 IsHealthy: true,
                 IsConnected: _redis.IsConnected,
                 LatencyMs: latency.TotalMilliseconds,
-                FailureCount: _failureCount,
-                LastSuccessfulCheck: _lastSuccessfulCheck,
+                FailureCount: 0,
+                LastSuccessfulCheck: new DateTimeOffset(_lastSuccessfulCheckTicks, TimeSpan.Zero),
                 ErrorMessage: null);
         }
         catch (Exception ex)
         {
-            _failureCount++;
+            var currentFailureCount = Interlocked.Increment(ref _failureCount);
             
             _logger?.LogWarning(ex, 
                 "Redis connection health check failed (failure #{FailureCount})", 
-                _failureCount);
+                currentFailureCount);
 
             return new ConnectionHealthStatus(
                 IsHealthy: false,
                 IsConnected: _redis.IsConnected,
                 LatencyMs: null,
-                FailureCount: _failureCount,
-                LastSuccessfulCheck: _lastSuccessfulCheck,
+                FailureCount: currentFailureCount,
+                LastSuccessfulCheck: new DateTimeOffset(_lastSuccessfulCheckTicks, TimeSpan.Zero),
                 ErrorMessage: ex.Message);
         }
     }
@@ -160,13 +160,8 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
                 return true;
             }
 
-            // If not connected, try to reconnect by accessing a database
-            // StackExchange.Redis will automatically attempt to reconnect
-            var db = _redis.GetDatabase();
-            await db.PingAsync();
-
-            _logger?.LogInformation("Redis connection recovery successful");
-            return true;
+            _logger?.LogWarning("Redis connection recovery failed, connection still unhealthy");
+            return false;
         }
         catch (Exception ex)
         {
@@ -177,30 +172,37 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
 
     private void HealthCheckCallback(object? state)
     {
-        if (_disposed)
+        if (!_isRunning)
         {
             return;
         }
 
         _ = Task.Run(async () =>
         {
-            var status = await GetHealthStatusAsync();
-            
-            if (!status.IsHealthy && _failureCount > 0)
+            try
             {
-                ConnectionHealthDegraded?.Invoke(this, new ConnectionHealthDegradedEventArgs(status));
-
-                if (_options.EnableAutoReconnect)
+                var status = await GetHealthStatusAsync();
+            
+                if (!status.IsHealthy && status.FailureCount > 0)
                 {
-                    await TryRecoverAsync();
+                    ConnectionHealthDegraded?.Invoke(this, new ConnectionHealthDegradedEventArgs(status));
+
+                    if (_options.EnableAutoReconnect)
+                    {
+                        await TryRecoverAsync();
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error during health check callback");
             }
         });
     }
 
     private void OnConnectionFailed(object? sender, ConnectionFailedEventArgs e)
     {
-        _failureCount++;
+        Interlocked.Increment(ref _failureCount);
         _logger?.LogWarning(
             "Redis connection failed: {FailureType} on {EndPoint}. Message: {Message}",
             e.FailureType,
@@ -210,9 +212,8 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
 
     private void OnConnectionRestored(object? sender, ConnectionFailedEventArgs e)
     {
-        var previousFailureCount = _failureCount;
-        _failureCount = 0;
-        _lastSuccessfulCheck = DateTimeOffset.UtcNow;
+        var previousFailureCount = Interlocked.Exchange(ref _failureCount, 0);
+        Interlocked.Exchange(ref _lastSuccessfulCheckTicks, DateTimeOffset.UtcNow.UtcTicks);
         
         _logger?.LogInformation(
             "Redis connection restored on {EndPoint} after {FailureCount} failures",
@@ -238,6 +239,7 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
         }
 
         _disposed = true;
+        _isRunning = false;
         _healthCheckTimer?.Dispose();
 
         if (_options.MonitorConnectionFailures)

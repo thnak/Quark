@@ -207,9 +207,6 @@ public sealed class RedisConnectionReuseTests : IAsyncLifetime
         // Arrange
         var services = new ServiceCollection();
         
-        // Register shared Redis connection
-        services.AddSingleton<IConnectionMultiplexer>(_sharedRedis!);
-
         // Add both Silo and Client using the shared connection
         var builder = services.AddQuarkSilo(options =>
         {

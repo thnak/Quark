@@ -82,30 +82,40 @@ public sealed class GrpcChannelPool : IDisposable
             throw new ArgumentException("Endpoint cannot be null or empty.", nameof(endpoint));
         }
 
-        // Try to get existing channel
-        if (_channels.TryGetValue(endpoint, out var entry))
-        {
-            // Check if channel needs recycling
-            if (ShouldRecycleChannel(entry))
+        return _channels.AddOrUpdate(
+            endpoint,
+            // Add factory: create new channel
+            key =>
             {
-                RecycleChannel(endpoint, entry);
-            }
-            else
+                var channelOptions = new GrpcChannelOptions();
+                configure?.Invoke(channelOptions);
+                
+                var channel = GrpcChannel.ForAddress(key, channelOptions);
+                return new ChannelEntry(channel, DateTimeOffset.UtcNow);
+            },
+            // Update factory: reuse or recycle
+            (key, existingEntry) =>
             {
-                entry.UpdateLastAccessed();
-                return entry.Channel;
-            }
-        }
-
-        // Create new channel
-        var channelOptions = new GrpcChannelOptions();
-        configure?.Invoke(channelOptions);
-        
-        var channel = GrpcChannel.ForAddress(endpoint, channelOptions);
-        var newEntry = new ChannelEntry(channel, DateTimeOffset.UtcNow);
-        
-        _channels[endpoint] = newEntry;
-        return channel;
+                // Check if channel needs recycling
+                if (ShouldRecycleChannel(existingEntry))
+                {
+                    // Dispose old channel
+                    existingEntry.Channel.Dispose();
+                    
+                    // Create new channel
+                    var channelOptions = new GrpcChannelOptions();
+                    configure?.Invoke(channelOptions);
+                    
+                    var channel = GrpcChannel.ForAddress(key, channelOptions);
+                    return new ChannelEntry(channel, DateTimeOffset.UtcNow);
+                }
+                else
+                {
+                    // Reuse existing channel
+                    existingEntry.UpdateLastAccessed();
+                    return existingEntry;
+                }
+            }).Channel;
     }
 
     /// <summary>
@@ -181,15 +191,6 @@ public sealed class GrpcChannelPool : IDisposable
         return age > _options.MaxChannelLifetime.Value;
     }
 
-    private void RecycleChannel(string endpoint, ChannelEntry oldEntry)
-    {
-        // Dispose old channel
-        oldEntry.Channel.Dispose();
-        
-        // Remove from dictionary (will be recreated on next access)
-        _channels.TryRemove(endpoint, out _);
-    }
-
     private void HealthCheckCallback(object? state)
     {
         if (_disposed)
@@ -262,20 +263,22 @@ public sealed class GrpcChannelPool : IDisposable
 
     private sealed class ChannelEntry
     {
+        private long _lastAccessedTicks;
+
         public ChannelEntry(GrpcChannel channel, DateTimeOffset createdAt)
         {
             Channel = channel;
             CreatedAt = createdAt;
-            LastAccessedAt = createdAt;
+            _lastAccessedTicks = createdAt.UtcTicks;
         }
 
         public GrpcChannel Channel { get; }
         public DateTimeOffset CreatedAt { get; }
-        public DateTimeOffset LastAccessedAt { get; private set; }
+        public DateTimeOffset LastAccessedAt => new DateTimeOffset(_lastAccessedTicks, TimeSpan.Zero);
 
         public void UpdateLastAccessed()
         {
-            LastAccessedAt = DateTimeOffset.UtcNow;
+            Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         }
     }
 }
