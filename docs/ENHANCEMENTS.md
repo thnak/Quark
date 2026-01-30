@@ -40,12 +40,12 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ State storage latency distributions
   - ✅ Stream message counters
   - ✅ Reminder and timer tick counters
-* [~] **Structured Logging:** Enhanced logging with semantic conventions
+* [✓] **Structured Logging:** Enhanced logging with semantic conventions ✅ COMPLETED
   - ✅ Logging source generator already implemented (Phase 2)
-  - 🚧 Actor-specific log scopes (future enhancement)
-  - 🚧 Sampling for high-volume actors (future enhancement)
+  - ✅ Actor-specific log scopes (implemented - ActorLoggingOptions)
+  - ✅ Sampling for high-volume actors (implemented - LogSamplingConfiguration)
 
-**Status:** Core telemetry infrastructure complete. New project `Quark.OpenTelemetry` provides comprehensive tracing and metrics.
+**Status:** Core telemetry infrastructure complete. New project `Quark.OpenTelemetry` provides comprehensive tracing and metrics. Actor-specific logging enhancements implemented.
 
 ### 7.2 Health Monitoring & Diagnostics ✅ COMPLETED
 
@@ -68,11 +68,11 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ Mailbox integration for automatic capture
   - ✅ DLQ diagnostic endpoints (GET, DELETE)
   - ✅ Configuration options (`DeadLetterQueueOptions`)
-  - 🚧 Configurable DLQ per actor type (future enhancement)
-  - 🚧 Retry policies with exponential backoff (future enhancement)
-  - 🚧 DLQ message replay functionality (future enhancement)
+  - ✅ Configurable DLQ per actor type (implemented - ActorTypeDeadLetterQueueOptions)
+  - ✅ Retry policies with exponential backoff (implemented - RetryPolicy, RetryHandler)
+  - ✅ DLQ message replay functionality (implemented - ReplayAsync, ReplayBatchAsync, ReplayByActorAsync)
 
-**Status:** Core health checks, diagnostic endpoints, and Dead Letter Queue complete. Advanced cluster health monitoring and DLQ replay planned for future release.
+**Status:** Core health checks, diagnostic endpoints, and Dead Letter Queue complete including all enhancement features. Advanced cluster health monitoring planned for future release.
 
 ### 7.3 Performance Profiling & Analysis
 

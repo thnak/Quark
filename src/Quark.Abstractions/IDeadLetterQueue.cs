@@ -47,6 +47,36 @@ public interface IDeadLetterQueue
     /// </summary>
     /// <param name="cancellationToken">A cancellation token.</param>
     Task ClearAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replays a specific message from the dead letter queue by re-posting it to the target actor.
+    /// The message is removed from the DLQ after successful replay.
+    /// </summary>
+    /// <param name="messageId">The ID of the message to replay.</param>
+    /// <param name="mailboxProvider">A function that provides the mailbox for the target actor.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>True if the message was replayed successfully, false if not found or replay failed.</returns>
+    Task<bool> ReplayAsync(string messageId, Func<string, IMailbox?> mailboxProvider, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replays multiple messages from the dead letter queue.
+    /// Messages are removed from the DLQ after successful replay.
+    /// </summary>
+    /// <param name="messageIds">The IDs of the messages to replay.</param>
+    /// <param name="mailboxProvider">A function that provides the mailbox for the target actor.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A collection of message IDs that were successfully replayed.</returns>
+    Task<IReadOnlyList<string>> ReplayBatchAsync(IEnumerable<string> messageIds, Func<string, IMailbox?> mailboxProvider, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replays all messages for a specific actor from the dead letter queue.
+    /// Messages are removed from the DLQ after successful replay.
+    /// </summary>
+    /// <param name="actorId">The actor ID to replay messages for.</param>
+    /// <param name="mailboxProvider">A function that provides the mailbox for the target actor.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A collection of message IDs that were successfully replayed.</returns>
+    Task<IReadOnlyList<string>> ReplayByActorAsync(string actorId, Func<string, IMailbox?> mailboxProvider, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

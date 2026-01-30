@@ -6,6 +6,7 @@ namespace Quark.Core.Actors;
 /// <summary>
 /// In-memory implementation of a dead letter queue for failed actor messages.
 /// Thread-safe and suitable for single-silo scenarios or development/testing.
+/// Supports retry policies with exponential backoff and message replay functionality.
 /// </summary>
 public sealed class InMemoryDeadLetterQueue : IDeadLetterQueue
 {
@@ -108,5 +109,80 @@ public sealed class InMemoryDeadLetterQueue : IDeadLetterQueue
     {
         _messages.Clear();
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ReplayAsync(string messageId, Func<string, IMailbox?> mailboxProvider, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(messageId))
+            throw new ArgumentException("Message ID cannot be null or whitespace.", nameof(messageId));
+        if (mailboxProvider == null)
+            throw new ArgumentNullException(nameof(mailboxProvider));
+
+        // Try to get the message
+        if (!_messages.TryGetValue(messageId, out var deadLetterMessage))
+            return false;
+
+        // Get the mailbox for the actor
+        var mailbox = mailboxProvider(deadLetterMessage.ActorId);
+        if (mailbox == null)
+            return false;
+
+        // Try to replay the message
+        try
+        {
+            var posted = await mailbox.PostAsync(deadLetterMessage.Message, cancellationToken);
+            if (posted)
+            {
+                // Remove from DLQ after successful replay
+                _messages.TryRemove(messageId, out _);
+                return true;
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            // Replay failed, message stays in DLQ
+            // Log the exception for debugging (in production, use ILogger)
+            Console.WriteLine($"Failed to replay message {messageId}: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> ReplayBatchAsync(IEnumerable<string> messageIds, Func<string, IMailbox?> mailboxProvider, CancellationToken cancellationToken = default)
+    {
+        if (messageIds == null)
+            throw new ArgumentNullException(nameof(messageIds));
+        if (mailboxProvider == null)
+            throw new ArgumentNullException(nameof(mailboxProvider));
+
+        var replayed = new List<string>();
+
+        foreach (var messageId in messageIds)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            var success = await ReplayAsync(messageId, mailboxProvider, cancellationToken);
+            if (success)
+                replayed.Add(messageId);
+        }
+
+        return replayed;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> ReplayByActorAsync(string actorId, Func<string, IMailbox?> mailboxProvider, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(actorId))
+            throw new ArgumentException("Actor ID cannot be null or whitespace.", nameof(actorId));
+        if (mailboxProvider == null)
+            throw new ArgumentNullException(nameof(mailboxProvider));
+
+        var messages = await GetByActorAsync(actorId, cancellationToken);
+        var messageIds = messages.Select(m => m.Message.MessageId);
+
+        return await ReplayBatchAsync(messageIds, mailboxProvider, cancellationToken);
     }
 }

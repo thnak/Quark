@@ -24,4 +24,38 @@ public sealed class DeadLetterQueueOptions
     /// Default is true.
     /// </summary>
     public bool CaptureStackTraces { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the global retry policy for failed messages.
+    /// If not set, messages go directly to DLQ on failure without retry.
+    /// Can be overridden per actor type.
+    /// </summary>
+    public RetryPolicy? GlobalRetryPolicy { get; set; }
+
+    /// <summary>
+    /// Gets or sets per-actor-type DLQ configurations.
+    /// These override global settings for specific actor types.
+    /// </summary>
+    public Dictionary<string, ActorTypeDeadLetterQueueOptions> ActorTypeConfigurations { get; set; } = new();
+
+    /// <summary>
+    /// Gets the effective configuration for a given actor type.
+    /// Merges actor-specific settings with global defaults.
+    /// </summary>
+    /// <param name="actorTypeName">The actor type name.</param>
+    /// <returns>The effective configuration.</returns>
+    public (bool Enabled, int MaxMessages, bool CaptureStackTraces, RetryPolicy? RetryPolicy) GetEffectiveConfiguration(string actorTypeName)
+    {
+        if (ActorTypeConfigurations.TryGetValue(actorTypeName, out var actorConfig))
+        {
+            return (
+                actorConfig.Enabled ?? Enabled,
+                actorConfig.MaxMessages ?? MaxMessages,
+                actorConfig.CaptureStackTraces ?? CaptureStackTraces,
+                actorConfig.RetryPolicy ?? GlobalRetryPolicy
+            );
+        }
+
+        return (Enabled, MaxMessages, CaptureStackTraces, GlobalRetryPolicy);
+    }
 }
