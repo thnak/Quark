@@ -1,6 +1,4 @@
-using Quark.Abstractions;
 using Quark.Core.Actors;
-using Xunit;
 
 namespace Quark.Tests;
 
@@ -60,7 +58,7 @@ public class DeadLetterQueueTests
 
         // Assert
         Assert.Equal(2, messagesForActor1.Count);
-        Assert.Equal(1, messagesForActor2.Count);
+        Assert.Single(messagesForActor2);
     }
 
     [Fact]

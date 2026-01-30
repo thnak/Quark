@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -38,7 +37,7 @@ public class PerformanceAntiPatternAnalyzer : DiagnosticAnalyzer
                      "Use async alternatives like File.ReadAllTextAsync and File.WriteAllTextAsync for better performance and scalability.");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(BlockingCallRule, SyncIoRule);
+        [BlockingCallRule, SyncIoRule];
 
     public override void Initialize(AnalysisContext context)
     {
