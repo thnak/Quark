@@ -195,8 +195,10 @@ public class DiagnosticEndpointsTests
         
         public IConsistentHashRing HashRing => throw new NotImplementedException();
         
+#pragma warning disable CS0067 // Event is never used - intentionally unused in mock
         public event EventHandler<SiloInfo>? SiloJoined;
         public event EventHandler<SiloInfo>? SiloLeft;
+#pragma warning restore CS0067
 
         public Task<IReadOnlyCollection<SiloInfo>> GetActiveSilosAsync(CancellationToken cancellationToken = default)
         {

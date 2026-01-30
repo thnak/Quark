@@ -73,10 +73,9 @@ public static class QuarkOpenTelemetryExtensions
     /// <param name="serviceVersion">The service version for telemetry.</param>
     /// <returns>The builder for chaining.</returns>
     /// <remarks>
-    /// The Prometheus exporter adds a middleware that exposes metrics at the /metrics endpoint.
-    /// Use this method instead of AddQuarkInstrumentation when you want Prometheus scraping.
-    /// Call app.UseOpenTelemetryPrometheusScrapingEndpoint() in your application startup
-    /// to enable the /metrics endpoint (this is done automatically by the exporter).
+    /// The Prometheus exporter automatically adds a middleware that exposes metrics at /metrics.
+    /// Use this method instead of AddQuarkInstrumentation when you want Prometheus scraping support.
+    /// No additional configuration is needed - the /metrics endpoint is enabled automatically.
     /// </remarks>
     public static MeterProviderBuilder AddQuarkInstrumentationWithPrometheus(
         this MeterProviderBuilder builder,

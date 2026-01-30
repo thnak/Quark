@@ -281,7 +281,7 @@ public static class QuarkDiagnosticEndpoints
                 context.Response.StatusCode = 501; // Not Implemented
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    error = "Health check service not configured. Call AddHealthCheck() on the silo builder."
+                    error = "Health check service not configured. Call AddHealthChecks() on the service collection."
                 });
                 return;
             }
