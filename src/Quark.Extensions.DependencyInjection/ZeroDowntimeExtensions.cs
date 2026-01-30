@@ -1,0 +1,70 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Quark.Abstractions.Migration;
+using Quark.Core.Actors.Migration;
+
+namespace Quark.Extensions.DependencyInjection;
+
+/// <summary>
+/// Extension methods for registering Phase 10.1.1 (Zero Downtime & Rolling Upgrades) services.
+/// </summary>
+public static class ZeroDowntimeExtensions
+{
+    /// <summary>
+    /// Adds actor activity tracking for hot/cold detection during migration.
+    /// This is required for live actor migration to prioritize cold actors.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddActorActivityTracking(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IActorActivityTracker, ActorActivityTracker>();
+        return services;
+    }
+
+    /// <summary>
+    /// Adds actor migration coordination for live actor migration during rolling upgrades.
+    /// Requires state persistence and optionally reminder table for full functionality.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddActorMigration(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IActorMigrationCoordinator, ActorMigrationCoordinator>();
+        
+        // Also add activity tracking if not already registered
+        services.AddActorActivityTracking();
+        
+        return services;
+    }
+
+    /// <summary>
+    /// Adds version tracking and compatibility checking for version-aware placement.
+    /// Enables silos to track actor assembly versions and prefer compatible versions during placement.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddVersionAwarePlacement(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IVersionTracker, VersionTracker>();
+        services.TryAddSingleton<IVersionCompatibilityChecker, VersionCompatibilityChecker>();
+        return services;
+    }
+
+    /// <summary>
+    /// Adds all Phase 10.1.1 (Zero Downtime & Rolling Upgrades) services.
+    /// This is a convenience method that registers:
+    /// - Actor activity tracking (hot/cold detection)
+    /// - Actor migration coordination
+    /// - Version-aware placement
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddZeroDowntimeUpgrades(this IServiceCollection services)
+    {
+        services.AddActorActivityTracking();
+        services.AddActorMigration();
+        services.AddVersionAwarePlacement();
+        return services;
+    }
+}
