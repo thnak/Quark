@@ -8,11 +8,13 @@ namespace Quark.Core.Streaming;
 
 /// <summary>
 /// Implementation of the Quark stream provider for explicit pub/sub.
+/// Phase 8.5: Enhanced with backpressure configuration support.
 /// </summary>
 public class QuarkStreamProvider : IQuarkStreamProvider
 {
     private readonly ConcurrentDictionary<StreamId, object> _streams = new();
     private readonly StreamBroker _broker;
+    private readonly ConcurrentDictionary<string, StreamBackpressureOptions> _backpressureConfig = new();
 
     public QuarkStreamProvider(StreamBroker broker)
     {
@@ -29,6 +31,22 @@ public class QuarkStreamProvider : IQuarkStreamProvider
     /// </summary>
     public StreamBroker Broker => _broker;
 
+    /// <summary>
+    /// Configures backpressure options for a specific stream namespace.
+    /// Phase 8.5: Allows per-namespace flow control configuration.
+    /// </summary>
+    /// <param name="namespace">The stream namespace to configure.</param>
+    /// <param name="options">The backpressure options.</param>
+    public void ConfigureBackpressure(string @namespace, StreamBackpressureOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(@namespace))
+            throw new ArgumentNullException(nameof(@namespace));
+        if (options == null)
+            throw new ArgumentNullException(nameof(options));
+
+        _backpressureConfig[@namespace] = options;
+    }
+
     /// <inheritdoc/>
     public IStreamHandle<T> GetStream<T>(string @namespace, string key)
     {
@@ -40,6 +58,11 @@ public class QuarkStreamProvider : IQuarkStreamProvider
     {
         return (IStreamHandle<T>)_streams.GetOrAdd(
             streamId,
-            id => new StreamHandle<T>(id, _broker));
+            id =>
+            {
+                // Check if backpressure is configured for this namespace
+                _backpressureConfig.TryGetValue(id.Namespace, out var options);
+                return new StreamHandle<T>(id, _broker, options);
+            });
     }
 }
