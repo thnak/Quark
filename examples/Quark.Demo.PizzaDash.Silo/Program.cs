@@ -9,13 +9,13 @@ namespace Quark.Demo.PizzaDash.Silo;
 /// Kitchen Silo - A Native AOT console application that hosts actor instances.
 /// This represents a single node in the distributed cluster.
 /// </summary>
-class Program
+internal abstract class Program
 {
     private static IActorFactory? _factory;
-    private static readonly Dictionary<string, IActor> _activeActors = new();
-    private static readonly CancellationTokenSource _cts = new();
+    private static readonly Dictionary<string, IActor> ActiveActors = new();
+    private static readonly CancellationTokenSource Cts = new();
 
-    static async Task Main(string[] args)
+    private static async Task Main()
     {
         var siloId = Environment.GetEnvironmentVariable("SILO_ID") ?? $"silo-{Guid.NewGuid():N}";
         var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "localhost";
@@ -36,7 +36,7 @@ class Program
         _factory = new ActorFactory();
 
         // Register shutdown handler
-        Console.CancelKeyPress += async (sender, eventArgs) =>
+        Console.CancelKeyPress += async (_, eventArgs) =>
         {
             eventArgs.Cancel = true;
             Console.WriteLine();
@@ -45,7 +45,7 @@ class Program
         };
 
         // Start the reminder checker (simulates persistent reminders)
-        var reminderTask = Task.Run(() => ReminderCheckerLoop(_cts.Token));
+        var reminderTask = Task.Run(() => ReminderCheckerLoop(Cts.Token));
 
         Console.WriteLine("✅ Silo is ready to host actors");
         Console.WriteLine("📋 Waiting for actor placement requests...");
@@ -68,7 +68,7 @@ class Program
 
     private static async Task CommandLoop()
     {
-        while (!_cts.Token.IsCancellationRequested)
+        while (!Cts.Token.IsCancellationRequested)
         {
             Console.Write("> ");
             var input = Console.ReadLine();
@@ -97,7 +97,7 @@ class Program
 
                     case "exit":
                     case "quit":
-                        _cts.Cancel();
+                        await Cts.CancelAsync();
                         break;
 
                     default:
@@ -120,10 +120,10 @@ class Program
         // Create or get the order actor
         var actor = _factory.CreateActor<OrderActor>(orderId);
         
-        if (!_activeActors.ContainsKey(orderId))
+        if (!ActiveActors.ContainsKey(orderId))
         {
             await actor.OnActivateAsync();
-            _activeActors[orderId] = actor;
+            ActiveActors[orderId] = actor;
         }
 
         // Create the order
@@ -138,7 +138,7 @@ class Program
 
     private static async Task UpdateStatusAsync(string orderId, string statusString)
     {
-        if (!_activeActors.TryGetValue(orderId, out var actorBase))
+        if (!ActiveActors.TryGetValue(orderId, out var actorBase))
         {
             Console.WriteLine($"❌ Order {orderId} not found on this silo");
             return;
@@ -164,8 +164,8 @@ class Program
 
     private static void ListActors()
     {
-        Console.WriteLine($"📋 Active actors on this silo: {_activeActors.Count}");
-        foreach (var kvp in _activeActors)
+        Console.WriteLine($"📋 Active actors on this silo: {ActiveActors.Count}");
+        foreach (var kvp in ActiveActors)
         {
             Console.WriteLine($"   • {kvp.Value.GetType().Name}: {kvp.Key}");
         }
@@ -180,7 +180,7 @@ class Program
                 await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
 
                 // Check all active orders for late delivery
-                foreach (var kvp in _activeActors.ToList())
+                foreach (var kvp in ActiveActors.ToList())
                 {
                     if (kvp.Value is OrderActor orderActor)
                     {
@@ -205,10 +205,10 @@ class Program
 
     private static async Task ShutdownAsync()
     {
-        _cts.Cancel();
+        await Cts.CancelAsync();
 
         // Deactivate all actors
-        foreach (var kvp in _activeActors.ToList())
+        foreach (var kvp in ActiveActors.ToList())
         {
             try
             {
@@ -220,6 +220,6 @@ class Program
             }
         }
 
-        _activeActors.Clear();
+        ActiveActors.Clear();
     }
 }

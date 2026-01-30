@@ -10,7 +10,7 @@ namespace Quark.Abstractions.Streaming;
 /// </summary>
 public static class StreamConsumerDispatcherRegistry
 {
-    private static readonly ConcurrentDictionary<Type, IStreamConsumerDispatcher> _dispatchers = new();
+    private static readonly ConcurrentDictionary<Type, IStreamConsumerDispatcher> Dispatchers = new();
 
     /// <summary>
     /// Registers a dispatcher for a specific actor type.
@@ -26,7 +26,7 @@ public static class StreamConsumerDispatcherRegistry
         if (dispatcher == null)
             throw new ArgumentNullException(nameof(dispatcher));
 
-        _dispatchers.TryAdd(actorType, dispatcher);
+        Dispatchers.TryAdd(actorType, dispatcher);
     }
 
     /// <summary>
@@ -36,18 +36,19 @@ public static class StreamConsumerDispatcherRegistry
     /// <returns>The dispatcher, or null if not found.</returns>
     public static IStreamConsumerDispatcher? GetDispatcher(Type actorType)
     {
-        _dispatchers.TryGetValue(actorType, out var dispatcher);
+        Dispatchers.TryGetValue(actorType, out var dispatcher);
         return dispatcher;
     }
 
+  
+#if DEBUG
     /// <summary>
     /// Clears all registered dispatchers. 
     /// WARNING: For testing purposes only. Do not call this in production code.
     /// </summary>
-#if DEBUG
     internal static void Clear()
     {
-        _dispatchers.Clear();
+        Dispatchers.Clear();
     }
 #endif
 }

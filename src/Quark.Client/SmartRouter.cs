@@ -32,7 +32,7 @@ public sealed class SmartRouter : ISmartRouter, IDisposable
     {
         _actorDirectory = actorDirectory ?? throw new ArgumentNullException(nameof(actorDirectory));
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
-        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _options = options.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _localSiloId = localSiloId;
 
@@ -79,7 +79,7 @@ public sealed class SmartRouter : ISmartRouter, IDisposable
         {
             IncrementStatistic("CacheHits");
             _logger.LogDebug("Cache hit for actor {ActorId} ({ActorType})", actorId, actorType);
-            return cachedDecision;
+            if (cachedDecision != null) return cachedDecision;
         }
 
         IncrementStatistic("CacheMisses");
