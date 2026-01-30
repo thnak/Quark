@@ -62,4 +62,11 @@ public interface IQuarkTransport : IDisposable
     ///     Event raised when an envelope is received from a remote silo.
     /// </summary>
     event EventHandler<QuarkEnvelope>? EnvelopeReceived;
+
+    /// <summary>
+    ///     Sends a response envelope back to complete a pending request.
+    ///     Used for local call optimization to complete in-memory dispatches.
+    /// </summary>
+    /// <param name="responseEnvelope">The response envelope.</param>
+    void SendResponse(QuarkEnvelope responseEnvelope);
 }

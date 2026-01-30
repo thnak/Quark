@@ -10,6 +10,12 @@ namespace Quark.Client;
 public interface IClusterClient : IDisposable
 {
     /// <summary>
+    /// Gets the local silo ID if this client is co-located with a silo, null otherwise.
+    /// When non-null, calls to actors on this silo can be optimized to avoid network overhead.
+    /// </summary>
+    string? LocalSiloId { get; }
+
+    /// <summary>
     /// Gets the cluster membership provider.
     /// </summary>
     IQuarkClusterMembership ClusterMembership { get; }
