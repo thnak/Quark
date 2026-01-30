@@ -62,12 +62,17 @@ For the main development roadmap and overview, see [plainnings/README.md](plainn
   - ✅ `/quark/config` - Current configuration (sanitized, no secrets)
   - 🚧 `/metrics` - Prometheus-formatted metrics (use OpenTelemetry exporter)
   - 🚧 `/health` - Detailed health report (use ASP.NET health checks)
-* [ ] **Dead Letter Queue:** Capture failed messages for analysis
+* [✓] **Dead Letter Queue:** Capture failed messages for analysis ✅ COMPLETED
+  - ✅ Core DLQ infrastructure (`IDeadLetterQueue`, `DeadLetterMessage`)
+  - ✅ In-memory implementation (`InMemoryDeadLetterQueue`)
+  - ✅ Mailbox integration for automatic capture
+  - ✅ DLQ diagnostic endpoints (GET, DELETE)
+  - ✅ Configuration options (`DeadLetterQueueOptions`)
   - 🚧 Configurable DLQ per actor type (future enhancement)
   - 🚧 Retry policies with exponential backoff (future enhancement)
-  - 🚧 DLQ inspection and replay tools (future enhancement)
+  - 🚧 DLQ message replay functionality (future enhancement)
 
-**Status:** Core health checks and diagnostic endpoints complete. DLQ and advanced cluster health monitoring planned for future release.
+**Status:** Core health checks, diagnostic endpoints, and Dead Letter Queue complete. Advanced cluster health monitoring and DLQ replay planned for future release.
 
 ### 7.3 Performance Profiling & Analysis
 
