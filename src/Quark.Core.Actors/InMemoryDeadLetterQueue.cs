@@ -140,9 +140,11 @@ public sealed class InMemoryDeadLetterQueue : IDeadLetterQueue
             }
             return false;
         }
-        catch
+        catch (Exception ex)
         {
             // Replay failed, message stays in DLQ
+            // Log the exception for debugging (in production, use ILogger)
+            Console.WriteLine($"Failed to replay message {messageId}: {ex.Message}");
             return false;
         }
     }

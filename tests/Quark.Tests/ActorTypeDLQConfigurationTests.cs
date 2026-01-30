@@ -158,4 +158,21 @@ public class ActorTypeDLQConfigurationTests
 
         Assert.Equal("TestActor", options.ActorTypeName);
     }
+
+    [Fact]
+    public void ActorTypeDeadLetterQueueOptions_ThrowsOnNullOrWhitespaceActorTypeName()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => new ActorTypeDeadLetterQueueOptions
+        {
+            ActorTypeName = "",
+            Enabled = true
+        });
+
+        Assert.Throws<ArgumentException>(() => new ActorTypeDeadLetterQueueOptions
+        {
+            ActorTypeName = "   ",
+            Enabled = true
+        });
+    }
 }

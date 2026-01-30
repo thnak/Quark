@@ -8,7 +8,17 @@ public sealed class ActorTypeDeadLetterQueueOptions
     /// <summary>
     /// Gets or sets the actor type name this configuration applies to.
     /// </summary>
-    public required string ActorTypeName { get; init; }
+    public required string ActorTypeName 
+    { 
+        get => _actorTypeName;
+        init
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentException("Actor type name cannot be null or whitespace.", nameof(value));
+            _actorTypeName = value;
+        }
+    }
+    private readonly string _actorTypeName = string.Empty;
 
     /// <summary>
     /// Gets or sets whether the Dead Letter Queue is enabled for this actor type.

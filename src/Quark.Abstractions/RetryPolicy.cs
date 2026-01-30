@@ -56,7 +56,7 @@ public sealed class RetryPolicy
         var delay = InitialDelayMs * Math.Pow(BackoffMultiplier, attemptNumber - 1);
         delay = Math.Min(delay, MaxDelayMs);
 
-        // Add jitter if enabled (randomize between 50% and 100% of calculated delay)
+        // Add jitter if enabled (randomize between 50% and 150% of calculated delay)
         if (UseJitter)
         {
             var random = Random.Shared;

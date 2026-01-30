@@ -60,13 +60,22 @@ public sealed class RetryHandler
         for (int retry = 1; retry <= _retryPolicy.MaxRetries; retry++)
         {
             if (cancellationToken.IsCancellationRequested)
-                return (false, retry - 1, lastException);
+                return (false, retry, lastException);
 
             attemptNumber = retry;
 
             // Calculate delay with exponential backoff
             var delayMs = _retryPolicy.CalculateDelay(retry);
-            await Task.Delay(delayMs, cancellationToken);
+            
+            try
+            {
+                await Task.Delay(delayMs, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation during delay
+                return (false, retry, lastException);
+            }
 
             try
             {
