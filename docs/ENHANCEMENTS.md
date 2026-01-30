@@ -503,13 +503,21 @@ Seamless actor migration during rolling deployments with minimal disruption.
 
 **Configuration & Integration:**
 ```csharp
-services.AddLiveMigration(options =>
+// Future: Will be added via AddLiveMigration() extension method
+// For now, configuration via QuarkSiloOptions:
+services.Configure<QuarkSiloOptions>(options =>
 {
-    options.EnableAutomaticMigration = true;
+    options.EnableLiveMigration = true;
     options.MigrationTimeout = TimeSpan.FromSeconds(30);
-    options.PreferColdActorsMigration = true; // Migrate cold actors first
     options.MaxConcurrentMigrations = 10;
 });
+
+// Planned future design (not yet implemented):
+// services.AddLiveMigration(options =>
+// {
+//     options.EnableAutomaticMigration = true;
+//     options.PreferColdActorsMigration = true; // Migrate cold actors first
+// });
 ```
 
 ##### Version-Aware Placement 🚧 PLANNED
@@ -538,11 +546,18 @@ Prevent serialization mismatches and enable safe rolling deployments with versio
   
 **Configuration Example:**
 ```csharp
-services.AddVersionAwarePlacement(options =>
+services.Configure<QuarkSiloOptions>(options =>
 {
-    options.StrictVersionMatching = false; // Allow compatible versions
-    options.CompatibilityMode = VersionCompatibilityMode.Minor; // v2.x compatible
+    options.EnableVersionAwarePlacement = true;
+    options.AssemblyVersion = "2.1.0"; // Specify version for this silo
 });
+
+// Planned future design (not yet implemented):
+// services.AddVersionAwarePlacement(options =>
+// {
+//     options.StrictVersionMatching = false; // Allow compatible versions
+//     options.CompatibilityMode = VersionCompatibilityMode.Minor; // v2.x compatible
+// });
 ```
 
 #### 10.1.2 Stateless Workers (Grainless)
@@ -1470,12 +1485,8 @@ services.AddPredictiveActivation(options =>
   - Progress tracking and cancellation support
   - Automatic retry with exponential backoff
   - Job dependencies and workflow coordination
-* [ ] **Grainless (Stateless Workers):** Lightweight compute actors
-  - Stateless actor pattern for high-throughput processing
-  - No state persistence overhead
-  - Automatic scale-out based on load
-  - Request routing and load balancing
-  - Integration with existing actor model
+* [ ] **Stateless Workers (see 10.1.2):** Lightweight compute actors - *Note: Detailed in Tier 1 Core Infrastructure*
+  - Cross-reference: See section 10.1.2 for full details
 * [ ] **Durable Tasks:** Reliable asynchronous workflows
   - Task continuations with persistence
   - Automatic retry and error handling
@@ -1596,15 +1607,24 @@ services.AddPredictiveActivation(options =>
 
 *Last Updated: 2026-01-30*  
 *Status: Phases 1-9 Complete (379/382 tests passing), Phase 10 Planned*
-## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan
+
+---
+
+## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan (Future Design)
+
+**Note:** This section contains a detailed future design proposal for Phase 10.1.1. The current implementation already provides graceful shutdown via `QuarkSiloOptions.ShutdownTimeout`. The live migration and drain state management features described below are planned for future implementation.
 
 ### Overview
 
 For enterprise production deployments, cluster updates must not drop active actor calls or lose in-flight messages. This feature provides comprehensive support for zero-downtime deployments through graceful shutdown, live actor migration, and version-aware placement.
 
-### 1. Graceful Shutdown (Drain Pattern)
+### 1. Graceful Shutdown (Drain Pattern) - Future Enhancement
 
 **Goal:** Cleanly shut down a silo without dropping active operations.
+
+**Current Status:** Basic graceful shutdown is already implemented in `QuarkSilo.StopAsync()` with configurable timeout via `QuarkSiloOptions.ShutdownTimeout`.
+
+**Future Enhancement:** Add explicit drain state management and hot actor migration.
 
 #### 1.1 Drain State Management
 
@@ -1644,16 +1664,19 @@ public record DrainStatus(
 - Coordinate with `IActorRebalancer` to migrate hot actors
 - Signal drain completion to health check system
 
-**Configuration:**
+**Configuration (Future Design Proposal):**
 ```csharp
-public class SiloOptions
+// Note: This is a future design proposal. Current implementation uses QuarkSiloOptions.
+// See QuarkSiloOptions.ShutdownTimeout for the current graceful shutdown configuration.
+
+public class SiloOptions // Future enhancement to QuarkSiloOptions
 {
     // Existing properties...
     
-    public bool EnableGracefulShutdown { get; set; } = false;
-    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    public bool MigrateHotActorsOnShutdown { get; set; } = true;
-    public TimeSpan HotActorThreshold { get; set; } = TimeSpan.FromMinutes(5);
+    public bool EnableGracefulShutdown { get; set; } = true; // Currently always enabled
+    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(30); // Already exists
+    public bool MigrateHotActorsOnShutdown { get; set; } = true; // Planned
+    public TimeSpan HotActorThreshold { get; set; } = TimeSpan.FromMinutes(5); // Planned
 }
 ```
 
@@ -1800,7 +1823,10 @@ public enum PlacementPreference
 
 #### 4.1 Extension Methods
 
-**New extension in `Quark.Extensions.DependencyInjection`:**
+**New extension in `Quark.Extensions.DependencyInjection` (Future Design Proposal):**
+
+**Note:** This shows a future API design. Current configuration is done via `QuarkSiloOptions`.
+
 ```csharp
 public static class LiveMigrationExtensions
 {
@@ -1822,37 +1848,44 @@ public class LiveMigrationOptions
 {
     public bool EnableVersionAwarePlacement { get; set; } = true;
     public PlacementPreference VersionPreference { get; set; } = PlacementPreference.PreferSameVersion;
-    public TimeSpan MigrationTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan MigrationTimeout { get; set; } = TimeSpan.FromSeconds(30); // Aligned with QuarkSiloOptions
     public int MaxConcurrentMigrations { get; set; } = 10;
 }
 ```
 
-#### 4.2 Usage Example
+#### 4.2 Usage Example (Future Design Proposal)
+
+**Note:** This example shows a future design. Current implementation uses `QuarkSiloOptions` directly.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Quark Silo with graceful shutdown
-builder.Services.AddQuarkSilo(options =>
+// Current implementation - Add Quark Silo with graceful shutdown
+builder.Services.Configure<QuarkSiloOptions>(options =>
 {
     options.SiloId = "silo-1";
-    options.AdvertisedAddress = "localhost";
-    options.SiloPort = 5000;
+    options.Address = "localhost";
+    options.Port = 5000;
     
-    // Enable graceful shutdown
-    options.EnableGracefulShutdown = true;
+    // Graceful shutdown (already implemented)
     options.ShutdownTimeout = TimeSpan.FromSeconds(30);
-    options.MigrateHotActorsOnShutdown = true;
+    
+    // Live migration (planned - configuration options added in Phase 10.1.1)
+    options.EnableLiveMigration = true;
+    options.MigrationTimeout = TimeSpan.FromSeconds(30);
+    options.MaxConcurrentMigrations = 10;
+    
+    // Version-aware placement (planned)
+    options.EnableVersionAwarePlacement = true;
+    options.AssemblyVersion = "2.1.0";
 });
 
-// Add Live Migration support
-builder.Services.AddLiveMigration(options =>
-{
-    options.EnableVersionAwarePlacement = true;
-    options.VersionPreference = PlacementPreference.PreferSameVersion;
-    options.MigrationTimeout = TimeSpan.FromSeconds(10);
-    options.MaxConcurrentMigrations = 10;
-});
+// Future design - separate extension method (not yet implemented):
+// builder.Services.AddLiveMigration(options =>
+// {
+//     options.EnableVersionAwarePlacement = true;
+//     options.VersionPreference = PlacementPreference.PreferSameVersion;
+// });
 
 // Add Actor Rebalancing (required for migration)
 builder.Services.AddActorRebalancing(options =>
