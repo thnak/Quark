@@ -12,26 +12,26 @@ public sealed class GpuAccelerationOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the preferred GPU backend ("cuda", "opencl", "auto").
-    /// Default is "auto" which auto-detects the best available backend.
+    /// Gets or sets the preferred GPU backend.
+    /// Default is <see cref="GpuBackend.Auto"/> which auto-detects the best available backend.
     /// </summary>
-    public string PreferredBackend { get; set; } = "auto";
+    public GpuBackend PreferredBackend { get; set; } = GpuBackend.Auto;
 
     /// <summary>
-    /// Gets or sets the list of actor types that should use GPU acceleration.
-    /// If empty, all actors that request GPU will be accelerated.
+    /// Gets or sets the set of actor types that should use GPU acceleration.
+    /// If null or empty, all actors marked with [GpuBound] attribute will be accelerated.
+    /// Use the source-generated {AssemblyName}AcceleratedActorTypes.All property for easy configuration.
     /// </summary>
-    public List<string> AcceleratedActorTypes { get; set; } = new();
+    /// <remarks>
+    /// Example: options.AcceleratedActorTypes = MyAssemblyAcceleratedActorTypes.All;
+    /// </remarks>
+    public IReadOnlySet<Type>? AcceleratedActorTypes { get; set; }
 
     /// <summary>
     /// Gets or sets the GPU device selection strategy.
-    /// - "LeastUtilized": Prefer GPU with lowest utilization
-    /// - "LeastMemoryUsed": Prefer GPU with most available memory
-    /// - "RoundRobin": Distribute actors evenly across GPUs
-    /// - "FirstAvailable": Always use the first available GPU
-    /// Default is "LeastUtilized".
+    /// Default is <see cref="GpuDeviceSelectionStrategy.LeastUtilized"/>.
     /// </summary>
-    public string DeviceSelectionStrategy { get; set; } = "LeastUtilized";
+    public GpuDeviceSelectionStrategy DeviceSelectionStrategy { get; set; } = GpuDeviceSelectionStrategy.LeastUtilized;
 
     /// <summary>
     /// Gets or sets the maximum GPU memory utilization percentage (0-1) before considering a device as full.

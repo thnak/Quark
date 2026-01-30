@@ -6,6 +6,7 @@ using Quark.Extensions.DependencyInjection;
 using Quark.Placement.Abstractions;
 using Quark.Placement.Numa.Linux;
 using Quark.Placement.Gpu.Cuda;
+using Quark.Generated;
 
 namespace Quark.Examples.Placement;
 
@@ -53,22 +54,18 @@ public class Program
                 services.AddGpuAcceleration(options =>
                 {
                     options.Enabled = true;
-                    options.PreferredBackend = "cuda";
-                    options.DeviceSelectionStrategy = "LeastUtilized";
+                    options.PreferredBackend = GpuBackend.Cuda;
+                    options.DeviceSelectionStrategy = GpuDeviceSelectionStrategy.LeastUtilized;
                     options.AllowCpuFallback = true;
                     
-                    // Specify which actor types should use GPU
-                    options.AcceleratedActorTypes = new List<string>
-                    {
-                        "InferenceActor",
-                        "ComputeActor"
-                    };
+                    // Use the source-generated list of GPU-bound actors
+                    options.AcceleratedActorTypes = Quark_Examples_PlacementAcceleratedActorTypes.All;
                     
                     Console.WriteLine("✓ GPU acceleration configured");
                     Console.WriteLine($"  - Backend: {options.PreferredBackend}");
                     Console.WriteLine($"  - Strategy: {options.DeviceSelectionStrategy}");
                     Console.WriteLine($"  - CPU fallback: {options.AllowCpuFallback}");
-                    Console.WriteLine($"  - Accelerated types: {options.AcceleratedActorTypes.Count}");
+                    Console.WriteLine($"  - Accelerated types: {options.AcceleratedActorTypes?.Count ?? 0}");
                 });
 
                 // Register CUDA-specific GPU implementation
@@ -141,6 +138,7 @@ public class DataLoaderActor : ActorBase
 }
 
 [Actor(Name = "Inference")]
+[GpuBound]
 public class InferenceActor : ActorBase
 {
     public InferenceActor(string actorId) : base(actorId) { }

@@ -31,8 +31,9 @@ public abstract class GpuPlacementStrategyBase : IGpuPlacementStrategy
             return null;
 
         // Check if specific actor types are configured
-        if (_options.AcceleratedActorTypes.Count > 0 && 
-            !_options.AcceleratedActorTypes.Contains(actorType.Name))
+        if (_options.AcceleratedActorTypes != null && 
+            _options.AcceleratedActorTypes.Count > 0 && 
+            !_options.AcceleratedActorTypes.Contains(actorType))
         {
             return _options.AllowCpuFallback ? null : 0;
         }
@@ -51,10 +52,10 @@ public abstract class GpuPlacementStrategyBase : IGpuPlacementStrategy
         // Select device based on strategy
         var selectedDevice = _options.DeviceSelectionStrategy switch
         {
-            "LeastUtilized" => SelectLeastUtilizedDevice(availableDevices),
-            "LeastMemoryUsed" => SelectLeastMemoryUsedDevice(availableDevices),
-            "RoundRobin" => SelectRoundRobinDevice(availableDevices),
-            "FirstAvailable" => availableDevices[0].DeviceId,
+            GpuDeviceSelectionStrategy.LeastUtilized => SelectLeastUtilizedDevice(availableDevices),
+            GpuDeviceSelectionStrategy.LeastMemoryUsed => SelectLeastMemoryUsedDevice(availableDevices),
+            GpuDeviceSelectionStrategy.RoundRobin => SelectRoundRobinDevice(availableDevices),
+            GpuDeviceSelectionStrategy.FirstAvailable => availableDevices[0].DeviceId,
             _ => SelectLeastUtilizedDevice(availableDevices)
         };
 
