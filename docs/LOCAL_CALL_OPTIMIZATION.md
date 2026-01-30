@@ -8,6 +8,15 @@ When a `ClusterClient` is co-located with a `QuarkSilo` (running in the same pro
 2. The target actor for a call is determined (via consistent hashing) to be on the local silo
 3. The transport layer supports in-memory dispatch
 
+## Current Status
+
+**Note**: The local call optimization infrastructure is implemented and ready to use, but requires integration with the silo's actor invocation pipeline. The optimization will work when:
+
+1. The silo subscribes to `IQuarkTransport.EnvelopeReceived` event
+2. After processing an envelope locally, the silo calls `IQuarkTransport.SendResponse` with the result
+
+This integration is not yet completed in the current codebase, but the foundation is in place. The ClusterClient correctly detects local calls and logs them, and the GrpcQuarkTransport has the optimization path implemented.
+
 ## How It Works
 
 ### Detection Phase

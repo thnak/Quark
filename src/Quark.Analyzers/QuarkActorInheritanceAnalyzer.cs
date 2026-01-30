@@ -24,7 +24,8 @@ public class QuarkActorInheritanceAnalyzer : DiagnosticAnalyzer
         "Quark.Actors",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "Each IQuarkActor interface should typically be implemented by a single concrete class to ensure proper actor resolution in the cluster. Multiple implementations can lead to ambiguity in actor routing.");
+        description: "Each IQuarkActor interface should typically be implemented by a single concrete class to ensure proper actor resolution in the cluster. Multiple implementations can lead to ambiguity in actor routing.",
+        customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
 
     private static readonly DiagnosticDescriptor DeepInheritanceChainRule = new DiagnosticDescriptor(
         DeepInheritanceChainDiagnosticId,
@@ -138,14 +139,16 @@ public class QuarkActorInheritanceAnalyzer : DiagnosticAnalyzer
 
     private static bool ImplementsIQuarkActor(INamedTypeSymbol interfaceSymbol)
     {
-        // Check if this interface is IQuarkActor
-        if (interfaceSymbol.Name == "IQuarkActor")
+        // Check if this interface is IQuarkActor with full namespace verification
+        if (interfaceSymbol.Name == "IQuarkActor" && 
+            interfaceSymbol.ContainingNamespace?.ToDisplayString() == "Quark.Abstractions")
             return true;
 
         // Check if this interface inherits from IQuarkActor
         foreach (var baseInterface in interfaceSymbol.AllInterfaces)
         {
-            if (baseInterface.Name == "IQuarkActor")
+            if (baseInterface.Name == "IQuarkActor" && 
+                baseInterface.ContainingNamespace?.ToDisplayString() == "Quark.Abstractions")
                 return true;
         }
 

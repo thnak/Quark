@@ -49,7 +49,12 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     {
         // OPTIMIZATION: Local call detection - avoid network serialization/deserialization
         // If target is the local silo, use in-memory dispatch via EnvelopeReceived event
-        if (targetSiloId == LocalSiloId)
+        // 
+        // NOTE: This optimization requires the silo infrastructure to subscribe to the
+        // EnvelopeReceived event and call SendResponse when processing completes.
+        // When deployed standalone (client-only mode), this optimization won't apply
+        // since there's no local silo to handle the envelope.
+        if (targetSiloId == LocalSiloId && EnvelopeReceived != null)
         {
             // Create TCS for response before dispatching to avoid race condition
             var tcs = new TaskCompletionSource<QuarkEnvelope>();
@@ -58,8 +63,8 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             try
             {
                 // Dispatch locally via event - this triggers local actor invocation
-                // The response will come back through the same mechanism
-                EnvelopeReceived?.Invoke(this, envelope);
+                // The silo infrastructure handles this event and calls SendResponse with the result
+                EnvelopeReceived.Invoke(this, envelope);
 
                 // Wait for response with timeout
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

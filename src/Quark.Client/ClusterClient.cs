@@ -15,7 +15,6 @@ public sealed class ClusterClient : IClusterClient
     private readonly ClusterClientOptions _options;
     private readonly ILogger<ClusterClient> _logger;
     private readonly string _clientId;
-    private readonly IActorFactory? _localActorFactory;
     private bool _isConnected;
 
     /// <summary>
@@ -25,19 +24,16 @@ public sealed class ClusterClient : IClusterClient
     /// <param name="transport">The transport layer.</param>
     /// <param name="options">Configuration options.</param>
     /// <param name="logger">Logger instance.</param>
-    /// <param name="localActorFactory">Optional local actor factory for optimizing same-silo calls.</param>
     public ClusterClient(
         IQuarkClusterMembership clusterMembership,
         IQuarkTransport transport,
         ClusterClientOptions options,
-        ILogger<ClusterClient> logger,
-        IActorFactory? localActorFactory = null)
+        ILogger<ClusterClient> logger)
     {
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _localActorFactory = localActorFactory;
         _clientId = options.ClientId ?? Guid.NewGuid().ToString("N");
     }
 
@@ -136,10 +132,8 @@ public sealed class ClusterClient : IClusterClient
             throw new InvalidOperationException("No silos available to handle the request.");
         }
 
-        // OPTIMIZATION: If target is local silo and we have a local actor factory,
-        // we can still send via transport but flag for potential optimization at transport layer
-        // The transport layer (e.g., GrpcQuarkTransport) should check if targetSiloId == LocalSiloId
-        // and use in-memory dispatch instead of network call
+        // OPTIMIZATION: If target is the local silo, the transport can optimize the call
+        // to use in-memory dispatch instead of network serialization/gRPC
         if (LocalSiloId != null && targetSiloId == LocalSiloId)
         {
             _logger.LogDebug(
