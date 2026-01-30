@@ -38,4 +38,13 @@ public interface IClusterClient : IDisposable
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>The response envelope.</returns>
     Task<QuarkEnvelope> SendAsync(QuarkEnvelope envelope, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a type-safe proxy for invoking methods on a remote actor.
+    /// The proxy provides compile-time type checking and IntelliSense support.
+    /// </summary>
+    /// <typeparam name="TProxy">The proxy interface type (e.g., ICounterActorProxy).</typeparam>
+    /// <param name="actorId">The unique identifier of the actor instance.</param>
+    /// <returns>A proxy instance that implements the specified interface.</returns>
+    TProxy GetActorProxy<TProxy>(string actorId) where TProxy : class;
 }

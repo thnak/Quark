@@ -172,6 +172,53 @@ public sealed class ClusterClient : IClusterClient
     }
 
     /// <inheritdoc />
+    public TProxy GetActorProxy<TProxy>(string actorId) where TProxy : class
+    {
+        if (string.IsNullOrEmpty(actorId))
+        {
+            throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actorId));
+        }
+
+        if (!_isConnected)
+        {
+            throw new InvalidOperationException("Client is not connected. Call ConnectAsync first.");
+        }
+
+        // Use reflection to find and instantiate the proxy type
+        // The proxy type should be named {ActorName}Proxy and have a constructor taking (IClusterClient, string)
+        var proxyTypeName = typeof(TProxy).Name.Replace("I", "") + "Proxy";
+        var proxyNamespace = typeof(TProxy).Namespace + ".Generated";
+        
+        // Try to find the proxy type in the same assembly as TProxy
+        var proxyType = typeof(TProxy).Assembly.GetTypes()
+            .FirstOrDefault(t => t.Name == proxyTypeName && t.Namespace == proxyNamespace);
+
+        if (proxyType == null)
+        {
+            // Try without the "I" prefix replacement
+            proxyTypeName = typeof(TProxy).Name + "Proxy";
+            proxyType = typeof(TProxy).Assembly.GetTypes()
+                .FirstOrDefault(t => t.Name == proxyTypeName && t.Namespace == proxyNamespace);
+        }
+
+        if (proxyType == null)
+        {
+            throw new InvalidOperationException(
+                $"Could not find proxy type for {typeof(TProxy).Name}. " +
+                "Ensure the ProtoSourceGenerator has run and generated the proxy.");
+        }
+
+        // Create an instance of the proxy
+        var proxy = Activator.CreateInstance(proxyType, this, actorId);
+        if (proxy == null)
+        {
+            throw new InvalidOperationException($"Failed to create instance of {proxyType.Name}.");
+        }
+
+        return (TProxy)proxy;
+    }
+
+    /// <inheritdoc />
     public void Dispose()
     {
         _transport.Dispose();
