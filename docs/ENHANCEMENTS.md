@@ -416,6 +416,53 @@ Comprehensive testing: 24 new unit tests (14 hierarchical hashing + 10 adaptive 
   - Point-in-time recovery
   - Backup and restore tooling
 
+### 10.5 Community-Requested Features
+
+*Features requested by the community and from the Microsoft Orleans wish list.*
+
+* [ ] **Journaling:** Event sourcing and audit trails
+  - Event journal for actor state changes
+  - Replay capability for debugging and recovery
+  - Snapshot management for performance
+  - Integration with event stores (EventStoreDB, Kafka)
+  - CQRS pattern support with event sourcing
+* [ ] **Locality-Aware Repartitioning:** Intelligent actor placement optimization
+  - Data locality optimization for co-located actors
+  - Minimize cross-silo communication overhead
+  - Network topology-aware placement decisions
+  - Automatic detection of communication patterns
+  - Dynamic repartitioning based on observed locality
+* [ ] **Memory-Aware Rebalancing:** Resource-conscious load balancing
+  - Memory pressure-based actor migration
+  - Prevent OOM conditions via proactive rebalancing
+  - Memory usage tracking per actor and per silo
+  - Configurable memory thresholds and policies
+  - Integration with GC metrics for smart decisions
+* [ ] **Durable Jobs:** Long-running background tasks
+  - Persistent job queue with guaranteed execution
+  - Job scheduling and orchestration
+  - Progress tracking and cancellation support
+  - Automatic retry with exponential backoff
+  - Job dependencies and workflow coordination
+* [ ] **Grainless (Stateless Workers):** Lightweight compute actors
+  - Stateless actor pattern for high-throughput processing
+  - No state persistence overhead
+  - Automatic scale-out based on load
+  - Request routing and load balancing
+  - Integration with existing actor model
+* [ ] **Durable Tasks:** Reliable asynchronous workflows
+  - Task continuations with persistence
+  - Automatic retry and error handling
+  - Long-running workflow orchestration
+  - State checkpointing and recovery
+  - Integration with actor lifecycle
+* [ ] **Inbox/Outbox Pattern:** Transactional messaging
+  - Atomic operations with message guarantees
+  - Outbox: Ensure messages are sent exactly once
+  - Inbox: Deduplicate incoming messages
+  - Integration with state persistence
+  - Distributed transaction coordination
+
 ---
 
 ## Performance Targets (Post-1.0)
