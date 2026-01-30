@@ -124,6 +124,134 @@ public class MyActor : ActorBase
 }
 ```
 
+### QUARK007: Potential reentrancy issue detected
+**Severity:** Warning  
+**Category:** Quark.Actors
+
+Actor methods calling other methods on the same actor instance (e.g., `this.MethodAsync()`) can cause reentrancy issues in non-reentrant actors. This can lead to deadlocks or unexpected behavior.
+
+This warning is only raised if the actor is marked with `[Actor(Reentrant = false)]` or does not explicitly set `Reentrant = true` (default is non-reentrant).
+
+**Example:**
+```csharp
+// ❌ Will trigger QUARK007
+[Actor(Reentrant = false)]
+public class MyActor : ActorBase
+{
+    public async Task OuterMethodAsync()
+    {
+        await this.InnerMethodAsync(); // QUARK007: Potential reentrancy
+    }
+
+    public async Task InnerMethodAsync()
+    {
+        await Task.CompletedTask;
+    }
+}
+
+// ✅ Option 1: Mark actor as reentrant
+[Actor(Reentrant = true)]
+public class MyActor : ActorBase
+{
+    public async Task OuterMethodAsync()
+    {
+        await this.InnerMethodAsync(); // OK - actor allows reentrancy
+    }
+
+    public async Task InnerMethodAsync()
+    {
+        await Task.CompletedTask;
+    }
+}
+
+// ✅ Option 2: Restructure to avoid self-calls
+[Actor(Reentrant = false)]
+public class MyActor : ActorBase
+{
+    public async Task ProcessAsync()
+    {
+        // Inline the logic instead of calling another method
+        await Task.CompletedTask;
+    }
+}
+```
+
+### QUARK008: Blocking call detected in actor method
+**Severity:** Warning  
+**Category:** Quark.Performance
+
+Actor methods should avoid blocking calls that can cause thread starvation and deadlocks. Blocking operations include:
+- `Thread.Sleep`
+- `Task.Wait`, `Task.WaitAll`, `Task.WaitAny`
+- `Task.Result`
+- `.GetAwaiter().GetResult()`
+- `Monitor.Enter`, `Monitor.Wait`
+- `Semaphore.WaitOne`, `Mutex.WaitOne`
+
+Use `await` with async APIs instead to maintain responsiveness.
+
+**Example:**
+```csharp
+// ❌ Will trigger QUARK008
+[Actor]
+public class MyActor : ActorBase
+{
+    public async Task ProcessAsync()
+    {
+        Thread.Sleep(1000); // QUARK008: Blocking call
+        var result = SomeTaskAsync().Result; // QUARK008: Blocking call
+        await Task.CompletedTask;
+    }
+}
+
+// ✅ Correct - Use async/await
+[Actor]
+public class MyActor : ActorBase
+{
+    public async Task ProcessAsync()
+    {
+        await Task.Delay(1000);
+        var result = await SomeTaskAsync();
+    }
+}
+```
+
+### QUARK009: Synchronous I/O detected in actor method
+**Severity:** Warning  
+**Category:** Quark.Performance
+
+Synchronous file I/O methods block threads and reduce scalability. Use async alternatives for better performance:
+- `File.ReadAllText` → `File.ReadAllTextAsync`
+- `File.WriteAllText` → `File.WriteAllTextAsync`
+- `File.ReadAllLines` → `File.ReadAllLinesAsync`
+- `File.WriteAllLines` → `File.WriteAllLinesAsync`
+- `File.ReadAllBytes` → `File.ReadAllBytesAsync`
+- `File.WriteAllBytes` → `File.WriteAllBytesAsync`
+
+**Example:**
+```csharp
+// ❌ Will trigger QUARK009
+[Actor]
+public class MyActor : ActorBase
+{
+    public async Task LoadDataAsync(string filePath)
+    {
+        var content = File.ReadAllText(filePath); // QUARK009: Synchronous I/O
+        await Task.CompletedTask;
+    }
+}
+
+// ✅ Correct - Use async file I/O
+[Actor]
+public class MyActor : ActorBase
+{
+    public async Task LoadDataAsync(string filePath)
+    {
+        var content = await File.ReadAllTextAsync(filePath);
+    }
+}
+```
+
 ## Code Fix Providers
 
 ### ActorMethodSignatureCodeFixProvider
@@ -135,6 +263,79 @@ Provides automatic fixes for QUARK004:
 Provides automatic fixes for QUARK005:
 - **Add [Actor] attribute**: Adds the missing attribute to actor classes
 - Automatically includes the necessary `using Quark.Abstractions;` directive
+
+### StatePropertyCodeFixProvider
+Provides code generation for actor state management:
+- **Add QuarkState property (string)**: Generates a string state property with `[QuarkState]` attribute
+- **Add QuarkState property (int)**: Generates an integer state property with `[QuarkState]` attribute
+- **Add QuarkState property (custom type)**: Generates a custom state object property
+
+This code fix is available as a refactoring action (not triggered by a diagnostic). Use the lightbulb menu on any actor class to add state properties.
+
+**Example:**
+```csharp
+// Before
+[Actor]
+public class MyActor : ActorBase
+{
+    public MyActor(string actorId) : base(actorId) { }
+}
+
+// After applying "Add QuarkState property (string)"
+[Actor]
+public class MyActor : ActorBase
+{
+    public MyActor(string actorId) : base(actorId) { }
+
+    /// <summary>
+    /// Persisted state for this actor.
+    /// </summary>
+    [QuarkState]
+    public string State { get; set; }
+}
+```
+
+### SupervisionScaffoldCodeFixProvider
+Provides scaffolding for supervision hierarchy implementations:
+- **Implement ISupervisor (restart on failure)**: Generates `ISupervisor` implementation that restarts failed child actors
+- **Implement ISupervisor (stop on failure)**: Generates `ISupervisor` implementation that stops failed child actors
+- **Implement ISupervisor (custom strategy)**: Generates `ISupervisor` implementation with exception-based decision logic
+
+This code fix is available as a refactoring action on any actor class.
+
+**Example:**
+```csharp
+// Before
+[Actor]
+public class MyActor : ActorBase
+{
+    public MyActor(string actorId) : base(actorId) { }
+}
+
+// After applying "Implement ISupervisor (custom strategy)"
+[Actor]
+public class MyActor : ActorBase, ISupervisor
+{
+    public MyActor(string actorId) : base(actorId) { }
+
+    /// <summary>
+    /// Handles child actor failures.
+    /// </summary>
+    public override Task<SupervisionDirective> OnChildFailureAsync(
+        ChildFailureContext context,
+        CancellationToken cancellationToken = default)
+    {
+        // Custom supervision logic based on exception type
+        return context.Exception switch
+        {
+            TimeoutException => Task.FromResult(SupervisionDirective.Resume),
+            InvalidOperationException => Task.FromResult(SupervisionDirective.Restart),
+            OutOfMemoryException => Task.FromResult(SupervisionDirective.Stop),
+            _ => Task.FromResult(SupervisionDirective.Escalate)
+        };
+    }
+}
+```
 
 ## Usage
 
