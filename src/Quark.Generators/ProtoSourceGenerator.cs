@@ -385,4 +385,18 @@ namespace {{namespaceName}}.Generated
         return returnType == "System.Threading.Tasks.Task" || 
                returnType == "System.Threading.Tasks.ValueTask";
     }
+
+    private static string? GetTaskResultType(IMethodSymbol method)
+    {
+        if (method.ReturnType is not INamedTypeSymbol namedType)
+            return null;
+
+        // Check if it's Task<T> or ValueTask<T>
+        if (namedType.TypeArguments.Length == 1)
+        {
+            return namedType.TypeArguments[0].ToDisplayString();
+        }
+
+        return null;
+    }
 }
