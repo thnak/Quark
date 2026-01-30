@@ -669,7 +669,7 @@ public class StreamAggregatorActor : ReactiveActorBase<SensorData, AggregatedDat
 #### 10.2.1 Serverless Actors
 
 **Status:** 🚧 PLANNED  
-**Dependencies:** 10.1.2 (Stateless Workers), Phase 8.1 (Auto-scaling ✅)
+**Dependencies:** 10.1.2 (Stateless Workers ✅), Phase 8.1 (Auto-scaling ✅)
 
 Pay-per-use actor hosting with auto-scaling from zero for serverless environments.
 
@@ -712,7 +712,7 @@ Pay-per-use actor hosting with auto-scaling from zero for serverless environment
 #### 10.3.1 Saga Orchestration
 
 **Status:** 🚧 PLANNED  
-**Dependencies:** 10.1.2 (Stateless Workers), Phase 4 (State Persistence ✅)
+**Dependencies:** 10.1.2 (Stateless Workers ✅), Phase 4 (State Persistence ✅)
 
 Long-running distributed transactions with compensation logic for reliable workflows.
 
@@ -1486,8 +1486,8 @@ services.AddPredictiveActivation(options =>
   - Progress tracking and cancellation support
   - Automatic retry with exponential backoff
   - Job dependencies and workflow coordination
-* [ ] **Stateless Workers (see 10.1.2):** Lightweight compute actors - *Note: Detailed in Tier 1 Core Infrastructure*
-  - Cross-reference: See section 10.1.2 for full details
+* [x] **Stateless Workers (see 10.1.2) ✅:** Lightweight compute actors - *Note: Detailed in Tier 1 Core Infrastructure*
+  - Cross-reference: See section 10.1.2 for full details (IMPLEMENTED)
 * [ ] **Durable Tasks:** Reliable asynchronous workflows
   - Task continuations with persistence
   - Automatic retry and error handling
@@ -1613,7 +1613,7 @@ services.AddPredictiveActivation(options =>
 
 ## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan (Future Design)
 
-**Note:** This section contains a detailed future design proposal for Phase 10.1.1. The current implementation already provides graceful shutdown via `QuarkSiloOptions.ShutdownTimeout`. The live migration and drain state management features described below are planned for future implementation.
+**Note:** This section contains a detailed future design proposal for Phase 10.1.1. The current implementation already provides graceful shutdown via `QuarkSiloOptions.ShutdownTimeout`. The live migration features described below are now implemented as of Phase 10.1.1. The drain state management and version-aware placement features remain planned for future implementation.
 
 ### Overview
 
@@ -1871,7 +1871,7 @@ builder.Services.Configure<QuarkSiloOptions>(options =>
     // Graceful shutdown (already implemented)
     options.ShutdownTimeout = TimeSpan.FromSeconds(30);
     
-    // Live migration (planned - configuration options added in Phase 10.1.1)
+    // Live migration (implemented in Phase 10.1.1)
     options.EnableLiveMigration = true;
     options.MigrationTimeout = TimeSpan.FromSeconds(30);
     options.MaxConcurrentMigrations = 10;
