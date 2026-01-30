@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Quark.Abstractions.Clustering;
 using Quark.Client;
 using Quark.Networking.Abstractions;
 
@@ -100,7 +101,10 @@ public class ClusterClientTests
         mockTransport.Setup(t => t.LocalSiloId).Returns("local-silo-123");
         
         // Setup cluster membership to return active silos
-        var silos = new List<string> { "local-silo-123" };
+        var silos = new List<SiloInfo>
+        {
+            new SiloInfo("local-silo-123", "localhost", 5000, SiloStatus.Active)
+        };
         mockClusterMembership.Setup(m => m.GetActiveSilosAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(silos);
         
