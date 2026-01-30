@@ -12,6 +12,7 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
   - Object pooling for TaskCompletionSource and messages
   - Incremental message IDs (51x faster than GUID)
   - 44.5% memory reduction in hot paths
+  - **Local call optimization**: Automatic detection and optimization of same-silo calls 🆕
 - 🔧 **Source Generation**: Compile-time code generation for AOT compatibility
   - Actor factories
   - **Type-safe client proxies with Protobuf contracts** 🆕
@@ -24,6 +25,11 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
   - gRPC channel pooling with automatic lifecycle management
   - Health monitoring and automatic recovery
   - Zero-copy for co-hosted scenarios
+- 🔍 **Roslyn Analyzers**: Compile-time diagnostics for actor best practices 🆕
+  - Detect multiple implementations of IQuarkActor interfaces
+  - Warn about deep inheritance chains
+  - Parameter serializability checks
+  - Reentrancy detection
 - ⚡ **Parallel Build**: Multi-project structure optimized for parallel compilation
 - 🎯 **.NET 10 Target**: Built for the latest .NET platform
 
