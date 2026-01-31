@@ -1,3 +1,4 @@
+using Quark.Abstractions;
 using Quark.Core.Actors;
 
 namespace Quark.Tests;
@@ -81,7 +82,7 @@ public class ActorFactoryTests
 }
 
 // Test actor for unit tests
-[Abstractions.Actor]
+[Actor]
 public class TestActor : ActorBase
 {
     public TestActor(string actorId) : base(actorId)

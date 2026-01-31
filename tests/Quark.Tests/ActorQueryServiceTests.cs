@@ -12,9 +12,9 @@ public class ActorQueryServiceTests
     public async Task GetAllActorsAsync_ReturnsAllActiveActors()
     {
         // Arrange
-        var actor1 = new TestActor("actor-1");
-        var actor2 = new TestActor("actor-2");
-        var actor3 = new TestActor("actor-3");
+        var actor1 = new QueryTestActor("actor-1");
+        var actor2 = new QueryTestActor("actor-2");
+        var actor3 = new QueryTestActor("actor-3");
         
         var silo = CreateMockSilo(actor1, actor2, actor3);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
@@ -33,9 +33,9 @@ public class ActorQueryServiceTests
     public async Task QueryActorsAsync_FiltersByPredicate()
     {
         // Arrange
-        var actor1 = new TestActor("user-1");
-        var actor2 = new TestActor("order-1");
-        var actor3 = new TestActor("user-2");
+        var actor1 = new QueryTestActor("user-1");
+        var actor2 = new QueryTestActor("order-1");
+        var actor3 = new QueryTestActor("user-2");
         
         var silo = CreateMockSilo(actor1, actor2, actor3);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
@@ -54,15 +54,15 @@ public class ActorQueryServiceTests
     public async Task QueryActorsByTypeAsync_FiltersCorrectly()
     {
         // Arrange
-        var actor1 = new TestActor("actor-1");
-        var actor2 = new OtherTestActor("actor-2");
-        var actor3 = new TestActor("actor-3");
+        var actor1 = new QueryTestActor("actor-1");
+        var actor2 = new OtherQueryTestActor("actor-2");
+        var actor3 = new QueryTestActor("actor-3");
         
         var silo = CreateMockSilo(actor1, actor2, actor3);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
 
         // Act
-        var result = await queryService.QueryActorsByTypeAsync<TestActor>();
+        var result = await queryService.QueryActorsByTypeAsync<QueryTestActor>();
 
         // Assert
         Assert.Equal(2, result.Count);
@@ -74,9 +74,9 @@ public class ActorQueryServiceTests
     public async Task QueryActorsByIdPatternAsync_SupportsWildcards()
     {
         // Arrange
-        var actor1 = new TestActor("user-123");
-        var actor2 = new TestActor("user-456");
-        var actor3 = new TestActor("order-789");
+        var actor1 = new QueryTestActor("user-123");
+        var actor2 = new QueryTestActor("user-456");
+        var actor3 = new QueryTestActor("order-789");
         
         var silo = CreateMockSilo(actor1, actor2, actor3);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
@@ -95,8 +95,8 @@ public class ActorQueryServiceTests
     public async Task GetActorMetadataAsync_ReturnsMetadataForAllActors()
     {
         // Arrange
-        var actor1 = new TestActor("actor-1");
-        var actor2 = new TestActor("actor-2");
+        var actor1 = new QueryTestActor("actor-1");
+        var actor2 = new QueryTestActor("actor-2");
         
         var silo = CreateMockSilo(actor1, actor2);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
@@ -119,7 +119,7 @@ public class ActorQueryServiceTests
     {
         // Arrange
         var actors = Enumerable.Range(1, 25)
-            .Select(i => new TestActor($"actor-{i}"))
+            .Select(i => new QueryTestActor($"actor-{i}"))
             .ToArray<IActor>();
         
         var silo = CreateMockSilo(actors);
@@ -159,7 +159,7 @@ public class ActorQueryServiceTests
     {
         // Arrange
         var actors = Enumerable.Range(1, 42)
-            .Select(i => new TestActor($"actor-{i}"))
+            .Select(i => new QueryTestActor($"actor-{i}"))
             .ToArray<IActor>();
         
         var silo = CreateMockSilo(actors);
@@ -177,14 +177,14 @@ public class ActorQueryServiceTests
     {
         // Arrange
         var actors = Enumerable.Range(1, 10)
-            .Select(i => new TestActor($"actor-{i}"))
+            .Select(i => new QueryTestActor($"actor-{i}"))
             .ToArray<IActor>();
         
         var silo = CreateMockSilo(actors);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
 
         // Act
-        var count = await queryService.CountActorsAsync(m => m.ActorType == "TestActor");
+        var count = await queryService.CountActorsAsync(m => m.ActorType == "QueryTestActor");
 
         // Assert
         Assert.Equal(10, count);
@@ -194,11 +194,11 @@ public class ActorQueryServiceTests
     public async Task GroupActorsByTypeAsync_GroupsCorrectly()
     {
         // Arrange
-        var actor1 = new TestActor("actor-1");
-        var actor2 = new TestActor("actor-2");
-        var actor3 = new OtherTestActor("actor-3");
-        var actor4 = new OtherTestActor("actor-4");
-        var actor5 = new OtherTestActor("actor-5");
+        var actor1 = new QueryTestActor("actor-1");
+        var actor2 = new QueryTestActor("actor-2");
+        var actor3 = new OtherQueryTestActor("actor-3");
+        var actor4 = new OtherQueryTestActor("actor-4");
+        var actor5 = new OtherQueryTestActor("actor-5");
         
         var silo = CreateMockSilo(actor1, actor2, actor3, actor4, actor5);
         var queryService = new ActorQueryService(silo, NullLogger<ActorQueryService>.Instance);
@@ -208,8 +208,8 @@ public class ActorQueryServiceTests
 
         // Assert
         Assert.Equal(2, grouped.Count);
-        Assert.Equal(2, grouped["TestActor"]);
-        Assert.Equal(3, grouped["OtherTestActor"]);
+        Assert.Equal(2, grouped["QueryTestActor"]);
+        Assert.Equal(3, grouped["OtherQueryTestActor"]);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public class ActorQueryServiceTests
     {
         // Arrange
         var actors = Enumerable.Range(1, 20)
-            .Select(i => new TestActor($"actor-{i}"))
+            .Select(i => new QueryTestActor($"actor-{i}"))
             .ToArray<IActor>();
         
         var silo = CreateMockSilo(actors);
@@ -286,10 +286,10 @@ public class ActorQueryServiceTests
         return mock.Object;
     }
 
-    [Actor(Name = "TestActor")]
-    private class TestActor : IActor
+    [Actor(Name = "QueryTestActor")]
+    internal class QueryTestActor : IActor
     {
-        public TestActor(string actorId)
+        public QueryTestActor(string actorId)
         {
             ActorId = actorId;
         }
@@ -307,10 +307,10 @@ public class ActorQueryServiceTests
         }
     }
 
-    [Actor(Name = "OtherTestActor")]
-    private class OtherTestActor : IActor
+    [Actor(Name = "OtherQueryTestActor")]
+    internal class OtherQueryTestActor : IActor
     {
-        public OtherTestActor(string actorId)
+        public OtherQueryTestActor(string actorId)
         {
             ActorId = actorId;
         }
