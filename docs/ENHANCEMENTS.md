@@ -423,7 +423,7 @@ Console.WriteLine($"Dropped: {metrics.MessagesDropped}, Buffer: {metrics.Current
 
 #### 10.1.1 Zero Downtime & Rolling Upgrades
 
-**Status:** 🟢 Graceful Shutdown IMPLEMENTED, 🚧 Live Migration PLANNED  
+**Status:** 🟢 Graceful Shutdown IMPLEMENTED, 🟢 Live Migration IMPLEMENTED, 🚧 Version-Aware Placement PLANNED  
 **Dependencies:** Phase 7.2 (Health Checks ✅), Phase 8.2 (Actor Rebalancing ✅), Phase 4 (State Persistence ✅)
 
 Enterprise-grade deployment capabilities enabling production updates without service disruption.
@@ -470,44 +470,43 @@ services.Configure<QuarkSiloOptions>(options =>
 });
 ```
 
-##### Live Actor Migration 🚧 PLANNED
+##### Live Actor Migration ✅ IMPLEMENTED
 
 Seamless actor migration during rolling deployments with minimal disruption.
 
-* [ ] **Hot Actor Detection**
-  - Identify actors with active calls or recent activity
-  - Track message queue depth per actor
-  - Detect actors with open streams or subscriptions
-  - Priority-based migration ordering (cold actors first)
+* [x] **Hot Actor Detection**
+  - ✅ Identify actors with active calls or recent activity via `IActorActivityTracker`
+  - ✅ Track message queue depth per actor
+  - ✅ Detect actors with open streams or subscriptions
+  - ✅ Priority-based migration ordering (cold actors first) via `GetMigrationPriorityListAsync()`
   
-* [ ] **Migration Orchestration**
-  - Integration with `IActorRebalancer` from Phase 8.2
-  - Coordinated migration across cluster
-  - Drain pattern: stop routing new messages to migrating actors
-  - Graceful handoff to target silo
+* [x] **Migration Orchestration**
+  - ✅ Integration with `IActorMigrationCoordinator` and rebalancing
+  - ✅ Coordinated migration across cluster
+  - ✅ Drain pattern: stop routing new messages to migrating actors via `BeginDrainAsync()`
+  - ✅ Graceful handoff to target silo via `MigrateActorAsync()`
   
-* [ ] **State Transfer with Optimistic Concurrency**
-  - E-Tag based concurrency control
-  - Atomic state transfer from source to target silo
-  - Rollback on conflict or failure
-  - State versioning for consistency
+* [x] **State Transfer with Optimistic Concurrency**
+  - ✅ E-Tag based concurrency control
+  - ✅ Atomic state transfer from source to target silo via `TransferActorStateAsync()`
+  - ✅ Rollback on conflict or failure
+  - ✅ State versioning for consistency
   
-* [ ] **Minimal Disruption Migration**
-  - Queue pending messages during transfer
-  - Message replay on target silo after activation
-  - Preserve message ordering guarantees
-  - Transparent to callers (automatic retry/redirect)
+* [x] **Minimal Disruption Migration**
+  - ✅ Queue pending messages during transfer
+  - ✅ Message replay on target silo after activation
+  - ✅ Preserve message ordering guarantees
+  - ✅ Transparent to callers (automatic retry/redirect)
   
-* [ ] **Reminder and Timer Migration**
-  - Migrate persistent reminders to target silo
-  - Re-register reminders after migration
-  - Timer state transfer and re-scheduling
-  - Ensure no duplicate or missed ticks
+* [x] **Reminder and Timer Migration**
+  - ✅ Migrate persistent reminders to target silo
+  - ✅ Re-register reminders after migration
+  - ✅ Timer state transfer and re-scheduling
+  - ✅ Ensure no duplicate or missed ticks
 
 **Configuration & Integration:**
 ```csharp
-// Future: Will be added via AddLiveMigration() extension method
-// For now, configuration via QuarkSiloOptions:
+// Configuration via QuarkSiloOptions:
 services.Configure<QuarkSiloOptions>(options =>
 {
     options.EnableLiveMigration = true;
@@ -515,12 +514,11 @@ services.Configure<QuarkSiloOptions>(options =>
     options.MaxConcurrentMigrations = 10;
 });
 
-// Planned future design (not yet implemented):
-// services.AddLiveMigration(options =>
-// {
-//     options.EnableAutomaticMigration = true;
-//     options.PreferColdActorsMigration = true; // Migrate cold actors first
-// });
+// Implemented in QuarkSilo.cs via MigrateColdActorsAsync():
+// - Automatically triggered during graceful shutdown when EnableLiveMigration = true
+// - Prioritizes cold actors first for minimal disruption
+// - Integrated with IActorActivityTracker for hot actor detection
+// - Uses IActorMigrationCoordinator for state transfer and activation
 ```
 
 ##### Version-Aware Placement 🚧 PLANNED
@@ -565,34 +563,34 @@ services.Configure<QuarkSiloOptions>(options =>
 
 #### 10.1.2 Stateless Workers (Grainless)
 
-**Status:** 🚧 PLANNED  
+**Status:** ✅ IMPLEMENTED  
 **Dependencies:** Phase 1 (Actor Runtime ✅), Phase 2 (Placement ✅)
 
 Lightweight compute actors for high-throughput processing without state persistence overhead.
 
-* [ ] **Stateless Actor Base Class**
-  - `StatelessActorBase` - No state persistence
-  - Multiple instances per actor ID (load balanced)
-  - No activation/deactivation lifecycle overhead
-  - Short-lived, disposable instances
+* [x] **Stateless Actor Base Class**
+  - ✅ `StatelessActorBase` - No state persistence (implemented in `Quark.Core.Actors/StatelessActorBase.cs`)
+  - ✅ Multiple instances per actor ID (load balanced)
+  - ✅ No activation/deactivation lifecycle overhead
+  - ✅ Short-lived, disposable instances
   
-* [ ] **Automatic Scale-Out**
-  - Dynamic instance count based on load
-  - Request queue depth triggers scaling
-  - Scale to zero when idle
-  - Configurable min/max instance count
+* [x] **Automatic Scale-Out**
+  - ✅ Dynamic instance count based on load
+  - ✅ Request queue depth triggers scaling
+  - ✅ Scale to zero when idle
+  - ✅ Configurable min/max instance count via `[StatelessWorker]` attribute
   
-* [ ] **Request Routing and Load Balancing**
-  - Round-robin distribution across instances
-  - Least-loaded instance selection
-  - Request coalescing for identical operations
-  - Integration with existing placement policies
+* [x] **Request Routing and Load Balancing**
+  - ✅ Round-robin distribution across instances via `StatelessWorkerPlacementPolicy`
+  - ✅ Least-loaded instance selection
+  - ✅ Request coalescing for identical operations
+  - ✅ Integration with existing placement policies
   
-* [ ] **High-Throughput Processing**
-  - Minimal overhead per invocation
-  - No state load/save latency
-  - Optimized for CPU-bound operations
-  - Batch processing support
+* [x] **High-Throughput Processing**
+  - ✅ Minimal overhead per invocation
+  - ✅ No state load/save latency
+  - ✅ Optimized for CPU-bound operations
+  - ✅ Batch processing support
 
 **Use Cases:**
 - Image processing/transformation
@@ -671,7 +669,7 @@ public class StreamAggregatorActor : ReactiveActorBase<SensorData, AggregatedDat
 #### 10.2.1 Serverless Actors
 
 **Status:** 🚧 PLANNED  
-**Dependencies:** 10.1.2 (Stateless Workers), Phase 8.1 (Auto-scaling ✅)
+**Dependencies:** 10.1.2 (Stateless Workers ✅), Phase 8.1 (Auto-scaling ✅)
 
 Pay-per-use actor hosting with auto-scaling from zero for serverless environments.
 
@@ -714,7 +712,7 @@ Pay-per-use actor hosting with auto-scaling from zero for serverless environment
 #### 10.3.1 Saga Orchestration
 
 **Status:** 🚧 PLANNED  
-**Dependencies:** 10.1.2 (Stateless Workers), Phase 4 (State Persistence ✅)
+**Dependencies:** 10.1.2 (Stateless Workers ✅), Phase 4 (State Persistence ✅)
 
 Long-running distributed transactions with compensation logic for reliable workflows.
 
@@ -1488,8 +1486,8 @@ services.AddPredictiveActivation(options =>
   - Progress tracking and cancellation support
   - Automatic retry with exponential backoff
   - Job dependencies and workflow coordination
-* [ ] **Stateless Workers (see 10.1.2):** Lightweight compute actors - *Note: Detailed in Tier 1 Core Infrastructure*
-  - Cross-reference: See section 10.1.2 for full details
+* [x] **Stateless Workers (see 10.1.2) ✅:** Lightweight compute actors - *Note: Detailed in Tier 1 Core Infrastructure*
+  - Cross-reference: See section 10.1.2 for full details (IMPLEMENTED)
 * [ ] **Durable Tasks:** Reliable asynchronous workflows
   - Task continuations with persistence
   - Automatic retry and error handling
@@ -1615,7 +1613,7 @@ services.AddPredictiveActivation(options =>
 
 ## Zero Downtime & Rolling Upgrades - Detailed Implementation Plan (Future Design)
 
-**Note:** This section contains a detailed future design proposal for Phase 10.1.1. The current implementation already provides graceful shutdown via `QuarkSiloOptions.ShutdownTimeout`. The live migration and drain state management features described below are planned for future implementation.
+**Note:** This section contains a detailed future design proposal for Phase 10.1.1. The current implementation already provides graceful shutdown via `QuarkSiloOptions.ShutdownTimeout`. The live migration features described below are now implemented as of Phase 10.1.1. The drain state management and version-aware placement features remain planned for future implementation.
 
 ### Overview
 
@@ -1873,7 +1871,7 @@ builder.Services.Configure<QuarkSiloOptions>(options =>
     // Graceful shutdown (already implemented)
     options.ShutdownTimeout = TimeSpan.FromSeconds(30);
     
-    // Live migration (planned - configuration options added in Phase 10.1.1)
+    // Live migration (implemented in Phase 10.1.1)
     options.EnableLiveMigration = true;
     options.MigrationTimeout = TimeSpan.FromSeconds(30);
     options.MaxConcurrentMigrations = 10;
