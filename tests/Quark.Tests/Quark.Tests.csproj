@@ -37,6 +37,7 @@
     <ProjectReference Include="../../src/Quark.Storage.Postgres/Quark.Storage.Postgres.csproj" />
     <ProjectReference Include="../../src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
     <ProjectReference Include="../../src/Quark.Sagas/Quark.Sagas.csproj" />
+    <ProjectReference Include="../../src/Quark.Queries/Quark.Queries.csproj" />
     <ProjectReference Include="../../src/Quark.Hosting/Quark.Hosting.csproj" />
     <ProjectReference Include="../../src/Quark.Client/Quark.Client.csproj" />
     <ProjectReference Include="../../src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
