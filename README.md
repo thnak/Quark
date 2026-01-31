@@ -405,6 +405,28 @@ dotnet test
 dotnet test -v normal
 ```
 
+## Documentation
+
+For comprehensive guides and advanced topics, see the `docs/` directory:
+
+### Planning & Roadmap
+- **[Community Features Roadmap](docs/COMMUNITY_FEATURES_ROADMAP.md)** - Detailed implementation plan for 6 community-requested features (Journaling, Durable Jobs, Inbox/Outbox, Durable Tasks, Memory Rebalancing, Locality Repartitioning)
+- **[Community Features Action Plan](docs/COMMUNITY_FEATURES_ACTION_PLAN.md)** - Week-by-week execution plan (20 weeks)
+- **[Community Features Visual Summary](docs/COMMUNITY_FEATURES_VISUAL_SUMMARY.md)** - At-a-glance overview with charts and timelines
+- **[Community Features Implementation Guide](docs/COMMUNITY_FEATURES_IMPLEMENTATION_GUIDE.md)** - Practical coding patterns and best practices
+- **[Enhancements](docs/ENHANCEMENTS.md)** - Complete feature enhancement roadmap
+
+### Core Concepts
+- **[Source Generator Setup](docs/SOURCE_GENERATOR_SETUP.md)** - Critical setup guide for actors
+- **[Zero Reflection Achievement](docs/ZERO_REFLECTION_ACHIEVEMENT.md)** - How we achieved 100% reflection-free
+- **[Progress](docs/PROGRESS.md)** - Current implementation status
+
+### Advanced Features
+- **[Backpressure](docs/BACKPRESSURE.md)** - Flow control and reactive streaming
+- **[Connection Optimization](docs/CONNECTION_OPTIMIZATION.md)** - Connection pooling and sharing
+- **[Database Integrations](docs/DATABASE_INTEGRATIONS_GUIDE.md)** - Multi-database support
+- **[Cluster Health Monitoring](docs/CLUSTER_HEALTH_MONITORING_GUIDE.md)** - Production monitoring
+
 ## License
 
 MIT License - see LICENSE file for details
@@ -412,6 +434,11 @@ MIT License - see LICENSE file for details
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
+
+For implementing community-requested features, start with:
+1. [Community Features Visual Summary](docs/COMMUNITY_FEATURES_VISUAL_SUMMARY.md) - Understand the big picture
+2. [Community Features Action Plan](docs/COMMUNITY_FEATURES_ACTION_PLAN.md) - See week-by-week tasks
+3. [Community Features Implementation Guide](docs/COMMUNITY_FEATURES_IMPLEMENTATION_GUIDE.md) - Learn coding patterns
 
 ## Roadmap
 
