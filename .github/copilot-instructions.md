@@ -488,7 +488,7 @@ public class OrderProcessorActor : ActorBase, IStreamConsumer<OrderMessage>
 - [ ] Know how to build, test, and run examples
 - [ ] Understand the project structure and organization
 - [ ] Ready to make minimal, surgical changes following conventions
-
+- [ ] When working with a plan file. please update working progress into it to tracking current state of works
 ---
 
 **Last Updated**: 2026-01-29  
