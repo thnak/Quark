@@ -782,8 +782,8 @@ Long-running distributed transactions with compensation logic for reliable workf
 
 #### 10.3.2 Actor Queries (LINQ-style)
 
-**Status:** 🚧 PLANNED  
-**Dependencies:** Phase 7.2 (Diagnostics ✅), Phase 8.3 (Advanced Placement ✅)
+**Status:** 🟢 READY TO START  
+**Dependencies:** Phase 7.2 (Diagnostics ✅), Phase 8.3 (Advanced Placement ✅), Phase 10.3.1 (Saga Orchestration ✅)
 
 Query and aggregate active actors for analytics and management.
 
