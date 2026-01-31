@@ -614,28 +614,28 @@ public class ImageProcessorActor : StatelessActorBase
 
 #### 10.1.3 Reactive Actors (Backpressure-Aware)
 
-**Status:** 🚧 PLANNED  
+**Status:** ✅ COMPLETE  
 **Dependencies:** Phase 5 (Streaming ✅)
 
 Actors with built-in backpressure and flow control for reliable stream processing.
 
-* [ ] **Flow Control Integration**
-  - Integration with System.Threading.Channels
-  - Backpressure signals to upstream producers
-  - Dynamic buffer sizing based on processing capacity
-  - Overflow handling strategies (drop, block, spill to disk)
+* [x] **Flow Control Integration**
+  - Integration with System.Threading.Channels ✅
+  - Backpressure signals to upstream producers ✅
+  - Dynamic buffer sizing based on processing capacity ✅
+  - Overflow handling strategies (drop, block) ✅
   
-* [ ] **Windowing and Buffering Strategies**
-  - Time-based windows (e.g., 5-second batches)
-  - Count-based windows (e.g., 100 messages)
-  - Sliding windows for continuous aggregation
-  - Session windows for event correlation
+* [x] **Windowing and Buffering Strategies**
+  - Time-based windows (e.g., 5-second batches) ✅
+  - Count-based windows (e.g., 100 messages) ✅
+  - Sliding windows for continuous aggregation ✅
+  - Session windows for event correlation ✅
   
-* [ ] **Reactive Stream Patterns**
-  - `IReactiveActor<TIn, TOut>` interface
-  - Operators: Map, Filter, Reduce, GroupBy
-  - Async stream processing with `IAsyncEnumerable<T>`
-  - Integration with existing `IStreamConsumer<T>`
+* [x] **Reactive Stream Patterns**
+  - `IReactiveActor<TIn, TOut>` interface ✅
+  - Operators: Map, Filter, Reduce, GroupByStream ✅
+  - Async stream processing with `IAsyncEnumerable<T>` ✅
+  - Integration with existing `IStreamConsumer<T>` ✅
 
 **Use Cases:**
 - Real-time analytics and aggregation
@@ -643,14 +643,15 @@ Actors with built-in backpressure and flow control for reliable stream processin
 - Data pipeline transformations
 - Rate-limited API consumers
 
-**Configuration:**
+**Implementation:**
 ```csharp
 [Actor(Name = "StreamAggregator")]
 [ReactiveActor(BufferSize = 1000, BackpressureThreshold = 0.8)]
 public class StreamAggregatorActor : ReactiveActorBase<SensorData, AggregatedData>
 {
-    protected override async IAsyncEnumerable<AggregatedData> ProcessStreamAsync(
-        IAsyncEnumerable<SensorData> stream)
+    public override async IAsyncEnumerable<AggregatedData> ProcessStreamAsync(
+        IAsyncEnumerable<SensorData> stream,
+        CancellationToken cancellationToken = default)
     {
         await foreach (var batch in stream.Window(TimeSpan.FromSeconds(5)))
         {
@@ -659,6 +660,8 @@ public class StreamAggregatorActor : ReactiveActorBase<SensorData, AggregatedDat
     }
 }
 ```
+
+**Example:** `examples/Quark.Examples.ReactiveActors`
 
 ---
 
