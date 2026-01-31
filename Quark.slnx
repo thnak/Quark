@@ -19,10 +19,13 @@
         <Project Path="src/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" />
         <Project Path="src/Quark.Client/Quark.Client.csproj" />
         <Project Path="src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
+        <Project Path="src/Quark.Profiling.Abstractions/Quark.Profiling.Abstractions.csproj" />
         <Project Path="src/Quark.Queries/Quark.Queries.csproj" />
         <Project Path="src/Quark.Sagas/Quark.Sagas.csproj" />
         <Project Path="src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
         <Project Path="src/Quark.Hosting/Quark.Hosting.csproj" />
+        <Project Path="src/Quark.Jobs.Redis/Quark.Jobs.Redis.csproj" />
+        <Project Path="src/Quark.Jobs/Quark.Jobs.csproj" />
         <Project Path="src/Quark.OpenTelemetry/Quark.OpenTelemetry.csproj" />
         <Project Path="src/Quark.Storage.Cassandra/Quark.Storage.Cassandra.csproj" />
         <Project Path="src/Quark.Storage.DynamoDB/Quark.Storage.DynamoDB.csproj" />
