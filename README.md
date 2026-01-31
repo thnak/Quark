@@ -6,66 +6,137 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
 
 ## Features
 
+### Core Framework
 - ✨ **Native AOT Ready**: Full support for .NET Native AOT compilation
 - 🚫 **Zero Reflection**: 100% reflection-free - all code generated at compile-time
+- 🏗️ **Orleans-inspired**: Familiar virtual actor model with modern AOT support
+- 🎯 **.NET 10 Target**: Built for the latest .NET platform
+- ⚡ **Parallel Build**: Multi-project structure optimized for parallel compilation
+
+### Performance
 - 🚀 **High Performance**: Lock-free messaging, persistent gRPC streams, zero-allocation messaging
   - Object pooling for TaskCompletionSource and messages
   - Incremental message IDs (51x faster than GUID)
   - 44.5% memory reduction in hot paths
-  - **Local call optimization**: Automatic detection and optimization of same-silo calls 🆕
-- 🔧 **Source Generation**: Compile-time code generation for AOT compatibility
-  - Actor factories
-  - **Type-safe client proxies with Protobuf contracts** 🆕
-  - **Context-based proxy registration** (like JsonSerializerContext) 🆕
+  - Local call optimization: Automatic detection and optimization of same-silo calls
+  - SIMD-accelerated hash computations (AVX2 support)
+
+### Source Generation
+- 🔧 **Compile-time Code Generation**: Full AOT compatibility
+  - Actor factories with automatic registration
+  - Type-safe client proxies with Protobuf contracts
+  - Context-based proxy registration (like JsonSerializerContext)
+  - State persistence (Load/Save/Delete for [QuarkState] properties)
+  - Stream dispatchers for reactive messaging
   - JSON serialization (JsonSerializerContext)
-  - High-performance logging (LoggerMessage)
-- 🏗️ **Orleans-inspired**: Familiar actor model with modern AOT support
-- 💪 **Stateless Workers**: High-throughput compute actors for stateless operations 🆕
+  - High-performance logging (LoggerMessage pattern)
+
+### Actor Model
+- 🎭 **Virtual Actors**: Location-transparent distributed actors
+- 💪 **Stateless Workers**: High-throughput compute actors
   - Multiple instances per actor ID
   - No state persistence overhead
-  - Automatic load balancing
-  - ~2000 ops/sec throughput in benchmarks
-- 🌐 **Distributed**: Redis clustering with consistent hashing
-- 🔌 **Connection Optimization**: Intelligent connection pooling and sharing
+  - Automatic load balancing (~2000 ops/sec)
+- 👨‍👩‍👧‍👦 **Supervision Hierarchies**: Parent-child relationships with failure handling
+  - Supervision directives (Resume, Restart, Stop, Escalate)
+  - Multiple restart strategies (OneForOne, AllForOne, RestForOne)
+  - Exponential backoff support
+
+### Distributed Features
+- 🌐 **Clustering**: Redis-based cluster membership with consistent hashing
+- 🔌 **Connection Optimization**: Intelligent pooling and sharing
   - Shared Redis connections across components
   - gRPC channel pooling with automatic lifecycle management
   - Health monitoring and automatic recovery
   - Zero-copy for co-hosted scenarios
-- 🔍 **Roslyn Analyzers**: Compile-time diagnostics for actor best practices 🆕
-  - Detect multiple implementations of IQuarkActor interfaces
+- 🔄 **Reactive Streaming**: Publish-subscribe messaging
+  - Implicit subscriptions with [QuarkStream] attribute
+  - Explicit pub/sub with IQuarkStreamProvider
+  - Multiple subscribers support
+  - Backpressure control
+- ⏰ **Temporal Services**: Timers and reminders
+  - Lightweight in-memory timers
+  - Persistent reminders that survive reboots
+  - Distributed scheduler with consistent hashing
+
+### Persistence & Storage
+- 💾 **Multi-Database Support**: Pluggable state storage
+  - Redis, PostgreSQL, SQL Server
+  - MongoDB, Cassandra, DynamoDB
+  - In-memory storage for development/testing
+  - E-Tag/optimistic concurrency control
+- 📜 **Event Sourcing**: Native journaling support
+  - Redis and PostgreSQL implementations
+  - Audit logs and state replay
+
+### Advanced Features
+- 🎯 **Actor Queries**: LINQ-style actor discovery and querying
+- 🔀 **Sagas**: Long-running distributed transactions
+- 📨 **Messaging Patterns**: Inbox/Outbox pattern support
+  - Redis and PostgreSQL implementations
+  - At-least-once delivery guarantees
+- ⚡ **Durable Jobs**: Redis-backed job queues
+  - Persistent job state
+  - Retry policies and dead-letter queues
+- 🗺️ **Advanced Placement**: Hardware-aware actor placement
+  - Memory-based placement (NUMA-aware)
+  - Locality-based placement (network topology)
+  - GPU placement (CUDA support)
+  - Platform-specific optimizations (Linux/Windows)
+
+### Developer Experience
+- 🔍 **Roslyn Analyzers**: Compile-time diagnostics
+  - Detect multiple IQuarkActor interface implementations
   - Warn about deep inheritance chains
   - Parameter serializability checks
   - Reentrancy detection
-- ⚡ **Parallel Build**: Multi-project structure optimized for parallel compilation
-- 🎯 **.NET 10 Target**: Built for the latest .NET platform
+  - Method signature validation
+- 📊 **Observability**: Production monitoring
+  - OpenTelemetry integration
+  - Performance profiling (Linux/Windows)
+  - Profiling dashboard
+  - Load testing tools
+  - Health monitoring
+- 📚 **Comprehensive Documentation**: Wiki, guides, and examples
 
 ## Project Structure
 
-```
-Quark/
-├── src/
-│   ├── Quark.Core/              # Main actor framework library
-│   │   ├── IActor.cs            # Actor interface
-│   │   ├── ActorBase.cs         # Base actor implementation
-│   │   ├── ActorFactory.cs      # Actor factory for creating instances
-│   │   └── IActorFactory.cs     # Factory interface
-│   │
-│   └── Quark.SourceGenerator/   # Roslyn source generator
-│       └── ActorSourceGenerator.cs
-│
-├── tests/
-│   └── Quark.Tests/             # xUnit tests
-│       └── ActorFactoryTests.cs
-│
-├── examples/
-│   ├── Quark.Examples.Basic/             # Basic usage example
-│   ├── Quark.Examples.StatelessWorkers/  # Stateless workers example 🆕
-│   ├── Quark.Examples.Supervision/       # Actor supervision patterns
-│   └── Quark.Examples.Streaming/         # Reactive streaming example
-│
-├── Directory.Build.props         # Shared MSBuild properties
-└── Quark.slnx                   # Solution file
-```
+The Quark framework is organized into focused, composable packages:
+
+### Core Framework (`src/`)
+- **Abstractions**: `Quark.Abstractions`, `Quark.Networking.Abstractions`
+- **Core Runtime**: `Quark.Core`, `Quark.Core.Actors`, `Quark.Core.Persistence`
+- **Temporal Services**: `Quark.Core.Timers`, `Quark.Core.Reminders`
+- **Reactive Streaming**: `Quark.Core.Streaming`
+- **Source Generators**: `Quark.Generators`, `Quark.Generators.Logging`
+- **Analyzers**: `Quark.Analyzers`, `Quark.Analyzers.CodeFixes`
+
+### Distributed Systems (`src/`)
+- **Networking**: `Quark.Transport.Grpc`, `Quark.Clustering.Redis`
+- **Client**: `Quark.Client`
+- **Hosting**: `Quark.Hosting`, `Quark.Extensions.DependencyInjection`
+
+### Persistence (`src/`)
+- **Storage Providers**: Redis, PostgreSQL, SQL Server, MongoDB, Cassandra, DynamoDB
+- **Event Sourcing**: `Quark.EventSourcing` (Redis, PostgreSQL)
+- **Messaging**: `Quark.Messaging` (Inbox/Outbox pattern - Redis, PostgreSQL)
+- **Jobs**: `Quark.Jobs`, `Quark.Jobs.Redis`
+
+### Advanced Features (`src/`)
+- **Sagas**: `Quark.Sagas` - Long-running distributed transactions
+- **Queries**: `Quark.Queries` - Actor discovery and querying
+- **Placement**: Memory, Locality, NUMA (Linux/Windows), GPU (CUDA)
+- **Observability**: `Quark.OpenTelemetry`, Profiling (Linux/Windows, Dashboard, Load Testing)
+
+### Examples (`examples/`)
+- **Getting Started**: Basic, Supervision, Streaming, StatelessWorkers
+- **Advanced**: Sagas, ActorQueries, Placement, Backpressure, DeadLetterQueue
+- **Performance**: Performance, MassiveScale, ZeroAllocation, Profiling
+- **Production Demos**: PizzaTracker (API + Console), PizzaDash (Full-stack demo)
+- **Integration**: ContextRegistration, ReactiveActors, Serverless
+
+### Tests
+- `tests/Quark.Tests/` - Comprehensive test suite with xUnit
 
 ## Getting Started
 
@@ -408,25 +479,36 @@ dotnet test -v normal
 
 ## Documentation
 
-For comprehensive guides and advanced topics, see the `docs/` directory:
+### Essential Guides (`docs/`)
+- **[Source Generator Setup](docs/SOURCE_GENERATOR_SETUP.md)** - Critical setup guide for using Quark actors
+- **[Zero Reflection Achievement](docs/ZERO_REFLECTION_ACHIEVEMENT.md)** - How we achieved 100% reflection-free operation
+- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Quick API reference
 
-### Planning & Roadmap
-- **[Community Features Roadmap](docs/COMMUNITY_FEATURES_ROADMAP.md)** - Detailed implementation plan for 6 community-requested features (Journaling, Durable Jobs, Inbox/Outbox, Durable Tasks, Memory Rebalancing, Locality Repartitioning)
-- **[Community Features Action Plan](docs/COMMUNITY_FEATURES_ACTION_PLAN.md)** - Week-by-week execution plan (20 weeks)
-- **[Community Features Visual Summary](docs/COMMUNITY_FEATURES_VISUAL_SUMMARY.md)** - At-a-glance overview with charts and timelines
-- **[Community Features Implementation Guide](docs/COMMUNITY_FEATURES_IMPLEMENTATION_GUIDE.md)** - Practical coding patterns and best practices
-- **[Enhancements](docs/ENHANCEMENTS.md)** - Complete feature enhancement roadmap
-
-### Core Concepts
-- **[Source Generator Setup](docs/SOURCE_GENERATOR_SETUP.md)** - Critical setup guide for actors
-- **[Zero Reflection Achievement](docs/ZERO_REFLECTION_ACHIEVEMENT.md)** - How we achieved 100% reflection-free
-- **[Progress](docs/PROGRESS.md)** - Current implementation status
-
-### Advanced Features
+### Advanced Features (`docs/`)
+- **[Streaming](docs/STREAMING.md)** - Reactive streaming and pub/sub patterns
 - **[Backpressure](docs/BACKPRESSURE.md)** - Flow control and reactive streaming
+- **[Type-Safe Proxies](docs/TYPE_SAFE_PROXIES.md)** - Client proxy generation for remote actors
+- **[Local Call Optimization](docs/LOCAL_CALL_OPTIMIZATION.md)** - Automatic same-silo call optimization
 - **[Connection Optimization](docs/CONNECTION_OPTIMIZATION.md)** - Connection pooling and sharing
-- **[Database Integrations](docs/DATABASE_INTEGRATIONS_GUIDE.md)** - Multi-database support
+- **[Advanced Placement](docs/ADVANCED_PLACEMENT_EXAMPLE.md)** - Hardware-aware actor placement
+
+### Operations & Production (`docs/`)
+- **[Database Integrations](docs/DATABASE_INTEGRATIONS_GUIDE.md)** - Multi-database storage support
 - **[Cluster Health Monitoring](docs/CLUSTER_HEALTH_MONITORING_GUIDE.md)** - Production monitoring
+- **[Dead Letter Queue Usage](docs/DLQ_USAGE_GUIDE.md)** - Handling failed messages
+
+### Wiki
+The `wiki/` directory contains comprehensive guides:
+- **Getting Started** - Installation and first steps
+- **Actor Model** - Core concepts and patterns
+- **Supervision** - Failure handling and hierarchies
+- **Persistence** - State management
+- **Clustering** - Distributed deployment
+- **Timers and Reminders** - Temporal services
+- **Streaming** - Reactive messaging
+- **Source Generators** - Understanding code generation
+- **Migration Guides** - From Orleans and Akka.NET
+- **API Reference** - Complete API documentation
 
 ## License
 
@@ -436,52 +518,63 @@ MIT License - see LICENSE file for details
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
-For implementing community-requested features, start with:
-1. [Community Features Visual Summary](docs/COMMUNITY_FEATURES_VISUAL_SUMMARY.md) - Understand the big picture
-2. [Community Features Action Plan](docs/COMMUNITY_FEATURES_ACTION_PLAN.md) - See week-by-week tasks
-3. [Community Features Implementation Guide](docs/COMMUNITY_FEATURES_IMPLEMENTATION_GUIDE.md) - Learn coding patterns
+See the `wiki/Contributing.md` for guidelines.
 
-## Roadmap
+## Implementation Status
 
-- [x] **Phase 1: Core Actor Abstractions** - Lifecycle management and supervision hierarchies
-  - [x] OnActivateAsync and OnDeactivateAsync lifecycle methods
-  - [x] Supervision directives (Resume, Restart, Stop, Escalate)
-  - [x] Parent-child actor relationships with SpawnChildAsync
-  - [x] Child failure handling with OnChildFailureAsync
-  - [x] GetChildren for accessing supervised actors
-- [x] **Phase 2: Cluster & Networking** - gRPC transport and distributed actors
-  - [x] Bi-directional gRPC streaming
-  - [x] Consistent hashing for actor placement
-  - [x] Redis-based cluster membership
-  - [x] Location transparency with routing
-- [x] **Phase 3: Reliability & Supervision** - Advanced failure handling
-  - [x] Call-chain reentrancy with Chain IDs
-  - [x] Restart strategies (OneForOne, AllForOne, RestForOne)
-  - [x] Configurable supervision with exponential backoff
-- [x] **Phase 4: Persistence & Temporal Services** - State durability and timers
-  - [x] Production-grade state generator with JsonSerializerContext
-  - [x] E-Tag/optimistic concurrency for state management
-  - [x] Persistent reminders that survive reboots
-  - [x] Distributed scheduler with consistent hashing
-  - [x] Lightweight in-memory timers
-  - [x] State storage abstractions (IStateStorage with optimistic concurrency)
-  - [x] Reminder storage abstractions (IReminderTable with consistent hashing)
-  - [x] InMemoryStateStorage implementation for development/testing
-  - [x] InMemoryReminderTable implementation for development/testing
-  - [ ] State Providers: Redis and Postgres storage with optimistic concurrency (deferred)
-  - [ ] Reminder Storage: Redis and Postgres reminder tables (deferred)
-  - [ ] Event Sourcing: Native journaling support for audit-logs and state replay (deferred)
-- [x] **Phase 5: Reactive Streaming** - Decoupled messaging patterns
-  - [x] Implicit subscriptions with `[QuarkStream]` attribute
-  - [x] Explicit pub/sub with `IQuarkStreamProvider`
-  - [x] Stream-to-actor mappings via source generator
-  - [x] Analyzer for compile-time validation
-  - [x] Multiple subscribers support
-- [ ] **Phase 6: Silo Host & Client Gateway** - Production-ready hosting (planning)
-  - [ ] IQuarkSilo host with lifecycle orchestration
-  - [ ] IClusterClient lightweight gateway
-  - [ ] IServiceCollection extensions for DI registration
-  - [ ] Actor method signature analyzers
-  - [ ] Protobuf proxy generation
-- [ ] Performance benchmarks and optimization
+Quark is feature-complete and production-ready with the following implemented capabilities:
+
+### ✅ Core Actor System
+- Virtual actor model with location transparency
+- Lifecycle management (OnActivateAsync/OnDeactivateAsync)
+- Supervision hierarchies with failure handling strategies
+- Stateless workers for high-throughput compute
+- Turn-based mailbox with reentrancy control
+
+### ✅ Distributed Systems
+- gRPC-based transport with bi-directional streaming
+- Redis-based cluster membership
+- Consistent hashing for actor placement
+- Local call optimization (same-silo)
+- Connection pooling and sharing
+
+### ✅ State Management
+- Multi-database storage (Redis, PostgreSQL, SQL Server, MongoDB, Cassandra, DynamoDB)
+- Optimistic concurrency (E-Tag support)
+- Event sourcing with Redis and PostgreSQL
+- Inbox/Outbox messaging pattern
+- In-memory storage for development
+
+### ✅ Temporal Services
+- Lightweight in-memory timers
+- Persistent reminders with distributed scheduling
+- Consistent hashing for reminder distribution
+
+### ✅ Reactive Streaming
+- Implicit subscriptions with [QuarkStream] attribute
+- Explicit pub/sub with IQuarkStreamProvider
+- Multiple subscribers support
+- Backpressure control
+- Stream-to-actor dispatching
+
+### ✅ Advanced Features
+- Sagas for distributed transactions
+- Actor queries (LINQ-style discovery)
+- Durable jobs with Redis backend
+- Dead-letter queues for failed messages
+- Hardware-aware placement (Memory, NUMA, Locality, GPU/CUDA)
+
+### ✅ Developer Experience
+- 100% Native AOT compatible (zero reflection)
+- Compile-time code generation for all dynamic behavior
+- Type-safe client proxies with Protobuf
+- Roslyn analyzers for best practices
+- Comprehensive test coverage
+- Production monitoring (OpenTelemetry, profiling)
+
+### 📊 Current Statistics
+- **52 projects** across core framework, storage providers, and placement strategies
+- **24+ examples** demonstrating various patterns and use cases
+- **Comprehensive test suite** with xUnit
+- **Full wiki documentation** with guides and API reference
 
