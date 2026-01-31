@@ -192,7 +192,8 @@ Potential future improvements:
 
 ## Related Documentation
 
-- [Phase 1: Core Actor Abstractions](../PROGRESS.md)
-- [Phase 2: Cluster & Networking](../PROGRESS.md)
-- [Phase 3: Reliability & Supervision](../PROGRESS.md)
-- [Phase 4: Persistence & Temporal Services](PHASE4_SUMMARY.md)
+- [Actor Model](../wiki/Actor-Model.md) - Core actor concepts
+- [Supervision](../wiki/Supervision.md) - Actor supervision patterns
+- [Persistence](../wiki/Persistence.md) - State management
+- [Timers and Reminders](../wiki/Timers-and-Reminders.md) - Temporal services
+- [Backpressure](BACKPRESSURE.md) - Flow control and reactive streaming
