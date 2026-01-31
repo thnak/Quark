@@ -829,36 +829,45 @@ Query and aggregate active actors for analytics and management.
 
 #### 10.4.1 Database Integrations
 
-**Status:** 🚧 PLANNED  
+**Status:** ✅ COMPLETED  
 **Dependencies:** Phase 4 (State Persistence ✅)
 
 Additional storage providers for state and reminder persistence.
 
-* [ ] **SQL Server:** State and reminder storage
-  - ADO.NET based provider
-  - Connection pooling and retry policies
-  - Schema migration support
-  - Query performance optimization
+* [x] **SQL Server:** State and reminder storage ✅ IMPLEMENTED
+  - ✅ ADO.NET based provider (`SqlServerStateStorage`, `SqlServerReminderTable`)
+  - ✅ Connection pooling and retry policies (Polly integration with exponential backoff)
+  - ✅ Schema migration support (`InitializeSchemaAsync`)
+  - ✅ Query performance optimization (indexes, MERGE for upserts)
+  - ✅ Package: `Quark.Storage.SqlServer`
   
-* [ ] **MongoDB:** Document-based state storage
-  - Native MongoDB driver integration
-  - BSON serialization for complex state
-  - Index optimization for actor lookups
-  - Change streams for state notifications
+* [x] **MongoDB:** Document-based state storage ✅ IMPLEMENTED
+  - ✅ Native MongoDB driver integration (`MongoDbStateStorage`, `MongoDbReminderTable`)
+  - ✅ BSON serialization for complex state
+  - ✅ Index optimization for actor lookups (compound indexes on actor_id and state_name/name)
+  - ✅ Time-based index for reminder queries
+  - 🚧 Change streams for state notifications (future enhancement)
+  - ✅ Package: `Quark.Storage.MongoDB`
   
-* [ ] **Cassandra:** Wide-column state storage
-  - Cassandra CQL driver
-  - Multi-datacenter replication
-  - Tunable consistency levels
-  - Time-series data optimizations
+* [x] **Cassandra:** Wide-column state storage ✅ IMPLEMENTED
+  - ✅ Cassandra CQL driver (`CassandraStateStorage`, `CassandraReminderTable`)
+  - ✅ Multi-datacenter replication (configurable replication strategy)
+  - ✅ Tunable consistency levels (LOCAL_QUORUM default, configurable per operation)
+  - ✅ Time-series data optimizations (TimeWindowCompactionStrategy)
+  - ✅ Materialized views for efficient time-based queries
+  - ✅ Lightweight transactions for optimistic concurrency
+  - ✅ Package: `Quark.Storage.Cassandra`
   
-* [ ] **DynamoDB:** Serverless state storage
-  - AWS SDK integration
-  - On-demand capacity mode
-  - Global tables for multi-region
-  - Point-in-time recovery
+* [x] **DynamoDB:** Serverless state storage ✅ IMPLEMENTED
+  - ✅ AWS SDK integration (`DynamoDbStateStorage`, `DynamoDbReminderTable`)
+  - ✅ On-demand capacity mode (PAY_PER_REQUEST default, PROVISIONED also supported)
+  - ✅ Global tables support for multi-region (table creation infrastructure ready)
+  - ✅ Point-in-time recovery (configurable via `InitializeTableAsync`)
+  - ✅ Conditional writes for optimistic concurrency
+  - ✅ Global secondary indexes for query optimization
+  - ✅ Package: `Quark.Storage.DynamoDB`
   
-* [ ] **CosmosDB:** Multi-region state replication
+* [ ] **CosmosDB:** Multi-region state replication 🚧 FUTURE
   - Azure Cosmos DB SDK
   - Multi-model support (SQL, MongoDB, Cassandra APIs)
   - Global distribution and consistency

@@ -23,8 +23,12 @@
         <Project Path="src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
         <Project Path="src/Quark.Hosting/Quark.Hosting.csproj" />
         <Project Path="src/Quark.OpenTelemetry/Quark.OpenTelemetry.csproj" />
+        <Project Path="src/Quark.Storage.Cassandra/Quark.Storage.Cassandra.csproj" />
+        <Project Path="src/Quark.Storage.DynamoDB/Quark.Storage.DynamoDB.csproj" />
+        <Project Path="src/Quark.Storage.MongoDB/Quark.Storage.MongoDB.csproj" />
         <Project Path="src/Quark.Storage.Postgres/Quark.Storage.Postgres.csproj" />
         <Project Path="src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
+        <Project Path="src/Quark.Storage.SqlServer/Quark.Storage.SqlServer.csproj" />
     </Folder>
     <Folder Name="/src/Placement/">
         <Project Path="src/Quark.Placement.Abstractions/Quark.Placement.Abstractions.csproj" />
