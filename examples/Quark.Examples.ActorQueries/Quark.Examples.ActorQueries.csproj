@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <IsPublishable>true</IsPublishable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Quark.Abstractions\Quark.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Hosting\Quark.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Extensions.DependencyInjection\Quark.Extensions.DependencyInjection.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Queries\Quark.Queries.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Generators\Quark.Generators.csproj" 
+                      OutputItemType="Analyzer" 
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
