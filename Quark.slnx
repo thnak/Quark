@@ -6,6 +6,7 @@
         <Project Path="examples/Quark.Examples.PizzaTracker.Shared/Quark.Examples.PizzaTracker.Shared.csproj" />
         <Project Path="examples/Quark.Examples.StatelessWorkers/Quark.Examples.StatelessWorkers.csproj" />
         <Project Path="examples/Quark.Examples.Streaming/Quark.Examples.Streaming.csproj" />
+        <Project Path="examples/Quark.Examples.Sagas/Quark.Examples.Sagas.csproj" />
         <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
         <Project Path="examples/Quark.Examples.Placement/Quark.Examples.Placement.csproj" />
         <Project Path="examples/Quark.Demo.PizzaDash.Shared/Quark.Demo.PizzaDash.Shared.csproj" />
