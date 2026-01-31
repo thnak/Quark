@@ -369,7 +369,7 @@ public class SiloClientIntegrationTests
         var tasks = new List<Task<QuarkEnvelope>>();
         for (int i = 1; i <= 10; i++)
         {
-            var envelope = CreateEnvelope(actorId, "IDataCenterStreamActor", "PublishMessageAsync",
+            var envelope = CreateEnvelope(actorId, "IDataCenterStreamActor", "PublishStreamMessageAsync",
                 BitConverter.GetBytes(i));
             tasks.Add(client.SendAsync(envelope));
         }
@@ -394,7 +394,7 @@ public class SiloClientIntegrationTests
         var tasks = new List<Task<QuarkEnvelope>>();
         for (int i = 1; i <= 1000; i++)
         {
-            var envelope = CreateEnvelope(actorId, "IDataCenterStreamActor", "PublishMessageAsync",
+            var envelope = CreateEnvelope(actorId, "IDataCenterStreamActor", "PublishStreamMessageAsync",
                 BitConverter.GetBytes(i));
             tasks.Add(client.SendAsync(envelope));
         }
@@ -418,7 +418,7 @@ public class SiloClientIntegrationTests
         var actorId = "stream-3";
 
         // Act - Publish then complete
-        var publish = CreateEnvelope(actorId, "IDataCenterStreamActor", "PublishMessageAsync", BitConverter.GetBytes(42));
+        var publish = CreateEnvelope(actorId, "IDataCenterStreamActor", "PublishStreamMessageAsync", BitConverter.GetBytes(42));
         await client.SendAsync(publish);
 
         var complete = CreateEnvelope(actorId, "IDataCenterStreamActor", "CompleteStreamAsync", Array.Empty<byte>());
