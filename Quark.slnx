@@ -6,6 +6,7 @@
         <Project Path="examples/Quark.Examples.PizzaTracker.Shared/Quark.Examples.PizzaTracker.Shared.csproj" />
         <Project Path="examples/Quark.Examples.StatelessWorkers/Quark.Examples.StatelessWorkers.csproj" />
         <Project Path="examples/Quark.Examples.Streaming/Quark.Examples.Streaming.csproj" />
+        <Project Path="examples/Quark.Examples.Sagas/Quark.Examples.Sagas.csproj" />
         <Project Path="examples/Quark.Examples.Supervision/Quark.Examples.Supervision.csproj" />
         <Project Path="examples/Quark.Examples.Placement/Quark.Examples.Placement.csproj" />
         <Project Path="examples/Quark.Demo.PizzaDash.Shared/Quark.Demo.PizzaDash.Shared.csproj" />
@@ -18,6 +19,7 @@
         <Project Path="src/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" />
         <Project Path="src/Quark.Client/Quark.Client.csproj" />
         <Project Path="src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
+        <Project Path="src/Quark.Sagas/Quark.Sagas.csproj" />
         <Project Path="src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
         <Project Path="src/Quark.Hosting/Quark.Hosting.csproj" />
         <Project Path="src/Quark.OpenTelemetry/Quark.OpenTelemetry.csproj" />
