@@ -41,9 +41,9 @@
 Every line of framework code is generated at compile time using Roslyn Incremental Source Generators. No runtime reflection, no `Activator.CreateInstance()`, no IL emission—just pure, AOT-friendly code.
 
 ### ⚡ **Blazing Performance**
-- **SIMD-Accelerated Hashing**: CRC32 hardware intrinsics for 10-20x faster hash computation
+- **SIMD-Accelerated Hashing**: CRC32 hardware intrinsics (10-20x faster than MD5)
 - **Lock-Free Messaging**: Zero contention in actor mailboxes
-- **Local Call Optimization**: 10-100x lower latency for same-silo calls (zero serialization)
+- **Local Call Optimization**: 10-100x lower latency for same-silo calls (eliminates network + serialization overhead)
 - **Zero-Allocation Messaging**: Object pooling for TaskCompletionSource and envelopes
 - **Incremental Message IDs**: 51x faster than GUID generation
 - **Persistent gRPC Streams**: Long-lived connections for minimal latency
@@ -81,7 +81,7 @@ public class ImageProcessorActor : StatelessActorBase
 }
 ```
 - ✅ Multiple instances per actor ID for automatic load balancing
-- ✅ No state persistence overhead (~2000 ops/sec in benchmarks)
+- ✅ No state persistence overhead (see examples/Quark.Examples.StatelessWorkers for benchmarks)
 - ✅ Minimal activation/deactivation cost
 
 ### 🌊 **Reactive Streams**
@@ -113,8 +113,6 @@ Choose the right storage backend for your needs:
 Catch errors at compile time:
 - **QUARK010**: Detect multiple implementations of `IQuarkActor` interfaces
 - **QUARK011**: Warn about deep inheritance chains (>3 levels)
-- **QUARK020**: Parameter serializability checks
-- **QUARK030**: Reentrancy detection
 
 ### 🛡️ **Akka-Style Supervision**
 Fault tolerance with flexible supervision strategies:
@@ -290,7 +288,7 @@ Quark/
 | **Stateless** | Stateless Workers, High-Throughput Compute | ✅ |
 | **Analyzers** | QUARK010, QUARK011 (Inheritance Analysis) | ✅ |
 | **Storage** | SQL Server, MongoDB, Cassandra, DynamoDB | ✅ |
-| **Placement** | NUMA Optimization, GPU Acceleration (Optional) | ✅ |
+| **Placement** | NUMA Optimization, GPU Acceleration Plugins | ✅ |
 | **Jobs** | Distributed Job Queue (Redis) | ✅ |
 | **Messaging** | Inbox/Outbox Pattern (Postgres/Redis) | ✅ |
 | **Event Sourcing** | Journaling (Postgres/Redis) | ✅ |
