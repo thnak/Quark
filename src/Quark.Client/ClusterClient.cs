@@ -194,7 +194,7 @@ public sealed class ClusterClient : IClusterClient
     }
 
     /// <inheritdoc />
-    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class, IQuarkActor
+    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class
     {
         if (string.IsNullOrWhiteSpace(actorId))
         {

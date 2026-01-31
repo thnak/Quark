@@ -50,7 +50,7 @@ public interface IClusterClient : IDisposable
     /// Gets a type-safe proxy for an actor in the cluster.
     /// The proxy provides strongly-typed method calls that are routed to the appropriate silo.
     /// </summary>
-    /// <typeparam name="TActorInterface">The actor interface type. Must inherit from IQuarkActor.</typeparam>
+    /// <typeparam name="TActorInterface">The actor interface type. Must inherit from IQuarkActor or be registered via QuarkActorContext.</typeparam>
     /// <param name="actorId">The unique identifier of the actor instance.</param>
     /// <returns>A proxy instance implementing the actor interface.</returns>
     /// <remarks>
@@ -58,5 +58,5 @@ public interface IClusterClient : IDisposable
     /// Method calls on the proxy are automatically serialized to Protobuf messages and
     /// sent to the cluster using SendAsync.
     /// </remarks>
-    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class, IQuarkActor;
+    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class;
 }

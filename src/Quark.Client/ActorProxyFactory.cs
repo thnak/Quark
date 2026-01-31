@@ -18,13 +18,14 @@ internal static partial class ActorProxyFactory
     /// <returns>A proxy instance implementing the actor interface.</returns>
     /// <exception cref="InvalidOperationException">
     /// Thrown when no proxy factory is registered for the specified actor interface type.
-    /// This typically means the source generator did not run or the interface does not inherit from IQuarkActor.
+    /// This typically means the source generator did not run or the interface does not inherit from IQuarkActor
+    /// or is not registered via QuarkActorContext.
     /// </exception>
     public static TActorInterface CreateProxy<TActorInterface>(IClusterClient client, string actorId)
-        where TActorInterface : class, IQuarkActor
+        where TActorInterface : class
     {
         throw new InvalidOperationException(
             $"No proxy factory registered for actor interface type '{typeof(TActorInterface).FullName}'. " +
-            "Ensure the interface inherits from IQuarkActor and the ProxySourceGenerator is properly referenced.");
+            "Ensure the interface inherits from IQuarkActor or is registered via QuarkActorContext, and the ProxySourceGenerator is properly referenced.");
     }
 }
