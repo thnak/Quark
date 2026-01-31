@@ -1,4 +1,11 @@
 <Solution>
+    <Folder Name="/AwesomePizza/">
+        <Project Path="productExample/src/Quark.AwesomePizza.Gateway/Quark.AwesomePizza.Gateway.csproj" />
+        <Project Path="productExample/src/Quark.AwesomePizza.MqttBridge/Quark.AwesomePizza.MqttBridge.csproj" />
+        <Project Path="productExample/src/Quark.AwesomePizza.Shared/Quark.AwesomePizza.Shared.csproj" />
+        <Project Path="productExample/src/Quark.AwesomePizza.Silo/Quark.AwesomePizza.Silo.csproj" />
+        <Project Path="productExample/src/Quark.AwesomePizza.Tests/Quark.AwesomePizza.Tests.csproj" />
+    </Folder>
     <Folder Name="/examples/">
         <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Api/Quark.Examples.PizzaTracker.Api.csproj" />
