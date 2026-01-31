@@ -34,6 +34,7 @@ cd productExample/src
 dotnet build Quark.AwesomePizza.Shared
 dotnet build Quark.AwesomePizza.Silo
 dotnet build Quark.AwesomePizza.Gateway
+dotnet build Quark.AwesomePizza.MqttBridge
 ```
 
 ### 3. Start the Silo (Actor Host)
@@ -82,7 +83,29 @@ You should see:
 Gateway API starting on: http://localhost:5000
 ```
 
-### 5. Test the API
+### 5. Start the MQTT Bridge (Optional - for IoT Integration)
+
+Open a third terminal and start the MQTT Bridge:
+
+```bash
+cd productExample/src/Quark.AwesomePizza.MqttBridge
+dotnet run
+```
+
+You should see:
+
+```
+╔══════════════════════════════════════════════════════════╗
+║       Awesome Pizza - MQTT Bridge Service               ║
+║       Real-time IoT Integration with MQTTnet            ║
+╚══════════════════════════════════════════════════════════╝
+
+🔌 MQTT Broker: localhost:1883
+✅ Connected to MQTT broker
+✅ Subscribed to all topics
+```
+
+### 6. Test the API
 
 #### Create an Order
 
@@ -173,7 +196,35 @@ curl -N http://localhost:5000/api/orders/{orderId}/track
 
 This will open a Server-Sent Events stream that sends real-time updates about the order.
 
-### 6. Using the Silo Interactive Console
+### 7. Testing MQTT Integration (Optional)
+
+If you started the MQTT Bridge, you can send driver location updates via MQTT:
+
+```bash
+# Install mosquitto clients (if not already installed)
+# Ubuntu/Debian: sudo apt-get install mosquitto-clients
+# macOS: brew install mosquitto
+
+# Send driver location update
+mosquitto_pub -t "pizza/drivers/driver-1/location" \
+  -m '{"lat":40.7128,"lon":-74.0060,"timestamp":"2026-01-31T12:00:00Z"}'
+
+# Send driver status update
+mosquitto_pub -t "pizza/drivers/driver-1/status" \
+  -m '{"status":"Available"}'
+
+# Verify the update via Gateway API
+curl http://localhost:5000/api/drivers/driver-1
+```
+
+The MQTT Bridge will automatically:
+1. Receive the MQTT message
+2. Create/update the DriverActor
+3. Route location updates to the appropriate actor
+
+See [MqttBridge README](src/Quark.AwesomePizza.MqttBridge/README.md) for more details.
+
+### 8. Using the Silo Interactive Console
 
 The Silo provides an interactive console for testing actors directly:
 
