@@ -16,6 +16,7 @@ Quark is a high-performance, ultra-lightweight distributed actor framework for .
 - 🔧 **Source Generation**: Compile-time code generation for AOT compatibility
   - Actor factories
   - **Type-safe client proxies with Protobuf contracts** 🆕
+  - **Context-based proxy registration** (like JsonSerializerContext) 🆕
   - JSON serialization (JsonSerializerContext)
   - High-performance logging (LoggerMessage)
 - 🏗️ **Orleans-inspired**: Familiar actor model with modern AOT support
