@@ -1,0 +1,6 @@
+@Quark.AwesomePizza.Gateway_HostAddress = http://localhost:5003
+
+GET {{Quark.AwesomePizza.Gateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
