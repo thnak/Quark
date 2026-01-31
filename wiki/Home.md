@@ -41,9 +41,9 @@
 Every line of framework code is generated at compile time using Roslyn Incremental Source Generators. No runtime reflection, no `Activator.CreateInstance()`, no IL emission—just pure, AOT-friendly code.
 
 ### ⚡ **Blazing Performance**
-- **SIMD-Accelerated Hashing**: CRC32 hardware intrinsics (10-20x faster than MD5)
+- **SIMD-Accelerated Hashing**: CRC32 hardware intrinsics (10-20x faster than MD5 for actor ID hash computation)
 - **Lock-Free Messaging**: Zero contention in actor mailboxes
-- **Local Call Optimization**: 10-100x lower latency for same-silo calls (eliminates network + serialization overhead)
+- **Local Call Optimization**: Up to 100x lower latency for same-silo calls (varies by message size, eliminates network + serialization overhead)
 - **Zero-Allocation Messaging**: Object pooling for TaskCompletionSource and envelopes
 - **Incremental Message IDs**: 51x faster than GUID generation
 - **Persistent gRPC Streams**: Long-lived connections for minimal latency
@@ -98,7 +98,6 @@ public class OrderActor : ActorBase, IStreamHandler<Order>
 - **Redis Membership**: Consistent hashing for actor placement
 - **gRPC Transport**: Bi-directional streaming with automatic retry
 - **Connection Pooling**: Shared connections with health monitoring
-- **Multi-Datacenter**: Cassandra replication for global deployments
 
 ### 💾 **Multi-Database Persistence**
 Choose the right storage backend for your needs:
@@ -106,7 +105,7 @@ Choose the right storage backend for your needs:
 - **Postgres** - Relational data with JSONB state storage
 - **SQL Server** - Enterprise integration with retry policies
 - **MongoDB** - Document-based flexible schemas
-- **Cassandra** - Wide-column, multi-datacenter replication
+- **Cassandra** - Wide-column storage with multi-datacenter replication
 - **DynamoDB** - Serverless, pay-per-request AWS integration
 
 ### 🔍 **Roslyn Analyzers**
@@ -288,7 +287,7 @@ Quark/
 | **Stateless** | Stateless Workers, High-Throughput Compute | ✅ |
 | **Analyzers** | QUARK010, QUARK011 (Inheritance Analysis) | ✅ |
 | **Storage** | SQL Server, MongoDB, Cassandra, DynamoDB | ✅ |
-| **Placement** | NUMA Optimization, GPU Acceleration Plugins | ✅ |
+| **Placement** | NUMA Optimization, GPU Acceleration (Opt-In Plugins) | ✅ |
 | **Jobs** | Distributed Job Queue (Redis) | ✅ |
 | **Messaging** | Inbox/Outbox Pattern (Postgres/Redis) | ✅ |
 | **Event Sourcing** | Journaling (Postgres/Redis) | ✅ |
