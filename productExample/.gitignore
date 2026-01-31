@@ -1,0 +1,45 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options directory
+.vs/
+.vscode/
+
+# User-specific files
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# Docker volumes
+redis-data/
+mosquitto-data/
+mosquitto-logs/
+
+# Test results
+TestResults/
+*.trx
+
+# Coverage
+coverage/
+*.coverage
+*.coveragexml
+
+# AOT compilation artifacts
+*.runtimeconfig.json
+*.deps.json

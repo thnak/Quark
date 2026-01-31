@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: awesomepizza-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - awesomepizza
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: awesomepizza-mqtt
+    ports:
+      - "1883:1883"  # MQTT
+      - "9001:9001"  # WebSocket
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - awesomepizza
+
+volumes:
+  redis-data:
+    driver: local
+  mosquitto-data:
+    driver: local
+  mosquitto-logs:
+    driver: local
+
+networks:
+  awesomepizza:
+    driver: bridge
