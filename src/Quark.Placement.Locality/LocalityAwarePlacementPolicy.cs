@@ -135,11 +135,14 @@ public sealed class LocalityAwarePlacementPolicy : IPlacementPolicy
             }
 
             // Select the silo with the highest score
-            var bestScore = siloScores.Values.Max();
-            if (bestScore > 0)
+            if (siloScores.Count > 0)
             {
-                var bestSilo = siloScores.First(kvp => kvp.Value == bestScore).Key;
-                return bestSilo;
+                var bestScore = siloScores.Values.Max();
+                if (bestScore > 0)
+                {
+                    var bestSilo = siloScores.First(kvp => kvp.Value == bestScore).Key;
+                    return bestSilo;
+                }
             }
 
             return null;
@@ -153,9 +156,8 @@ public sealed class LocalityAwarePlacementPolicy : IPlacementPolicy
 
     private string? SelectRandomSilo(IReadOnlyCollection<string> availableSilos)
     {
-        // Simple random selection for load balancing
-        var random = new Random();
-        var index = random.Next(availableSilos.Count);
+        // Use Random.Shared for thread-safe random selection (available in .NET 6+)
+        var index = Random.Shared.Next(availableSilos.Count);
         return availableSilos.ElementAt(index);
     }
 

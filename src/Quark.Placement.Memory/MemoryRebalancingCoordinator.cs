@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quark.Abstractions.Clustering;
@@ -14,7 +15,7 @@ public sealed class MemoryRebalancingCoordinator : IActorRebalancer
     private readonly IActorDirectory _actorDirectory;
     private readonly ILogger<MemoryRebalancingCoordinator> _logger;
     private readonly MemoryAwarePlacementOptions _options;
-    private readonly Dictionary<string, DateTimeOffset> _lastMigrationTime = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastMigrationTime = new();
     private readonly TimeSpan _migrationCooldown = TimeSpan.FromMinutes(5);
 
     /// <summary>
@@ -84,14 +85,17 @@ public sealed class MemoryRebalancingCoordinator : IActorRebalancer
                     actorInfo.ActorType, 
                     cancellationToken);
 
-                // Create rebalancing decision
-                // Note: In a real implementation, we'd select a target silo with lower memory usage
-                // For now, we just propose the migration without a specific target
+                // NOTE: This is a simplified implementation for the initial version.
+                // In a production implementation, this would:
+                // 1. Query memory metrics from all available silos
+                // 2. Select a target silo with lowest memory usage/pressure
+                // 3. Validate target silo has capacity before migration
+                // For now, source == target means "migration proposed but target selection deferred"
                 var decision = new RebalancingDecision(
                     actorInfo.ActorId,
                     actorInfo.ActorType,
                     location.SiloId,
-                    location.SiloId, // TODO: Select actual target silo
+                    location.SiloId, // Target selection requires cluster-wide memory monitoring
                     RebalancingReason.HealthDegradation,
                     cost);
 

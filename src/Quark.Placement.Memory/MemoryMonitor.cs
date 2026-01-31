@@ -23,7 +23,6 @@ public sealed class MemoryMonitor : IMemoryMonitor
     /// <inheritdoc />
     public MemoryMetrics GetSiloMemoryMetrics()
     {
-        var process = System.Diagnostics.Process.GetCurrentProcess();
         var totalMemory = GC.GetTotalMemory(forceFullCollection: false);
         var gcMemInfo = GC.GetGCMemoryInfo();
         
@@ -35,7 +34,7 @@ public sealed class MemoryMonitor : IMemoryMonitor
             Gen0Collections = GC.CollectionCount(0),
             Gen1Collections = GC.CollectionCount(1),
             Gen2Collections = GC.CollectionCount(2),
-            LastGCPause = TimeSpan.Zero, // TODO: Track actual GC pause times
+            LastGCPause = TimeSpan.Zero, // GC pause tracking requires specialized metrics
             Timestamp = DateTimeOffset.UtcNow
         };
     }
