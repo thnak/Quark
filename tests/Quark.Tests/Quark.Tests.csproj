@@ -43,6 +43,8 @@
     <ProjectReference Include="../../src/Quark.Hosting/Quark.Hosting.csproj" />
     <ProjectReference Include="../../src/Quark.Client/Quark.Client.csproj" />
     <ProjectReference Include="../../src/Quark.Extensions.DependencyInjection/Quark.Extensions.DependencyInjection.csproj" />
+    <ProjectReference Include="../../src/Quark.Jobs/Quark.Jobs.csproj" />
+    <ProjectReference Include="../../src/Quark.Jobs.Redis/Quark.Jobs.Redis.csproj" />
     <ProjectReference Include="../../src/Quark.Generators/Quark.Generators.csproj" 
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />

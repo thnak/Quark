@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Quark.Abstractions/Quark.Abstractions.csproj" />
+    <ProjectReference Include="../Quark.Core.Actors/Quark.Core.Actors.csproj" />
+    <ProjectReference Include="../Quark.Core.Timers/Quark.Core.Timers.csproj" />
+    <ProjectReference Include="../Quark.EventSourcing/Quark.EventSourcing.csproj" />
+  </ItemGroup>
+
+</Project>
