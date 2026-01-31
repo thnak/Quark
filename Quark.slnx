@@ -33,6 +33,8 @@
     </Folder>
     <Folder Name="/src/Placement/">
         <Project Path="src/Quark.Placement.Abstractions/Quark.Placement.Abstractions.csproj" />
+        <Project Path="src/Quark.Placement.Locality/Quark.Placement.Locality.csproj" />
+        <Project Path="src/Quark.Placement.Memory/Quark.Placement.Memory.csproj" />
         <Project Path="src/Quark.Placement.Numa/Quark.Placement.Numa.csproj" />
         <Project Path="src/Quark.Placement.Numa.Linux/Quark.Placement.Numa.Linux.csproj" />
         <Project Path="src/Quark.Placement.Numa.Windows/Quark.Placement.Numa.Windows.csproj" />
