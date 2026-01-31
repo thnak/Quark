@@ -9,7 +9,7 @@ namespace Quark.Generators;
 
 /// <summary>
 /// Source generator for creating AOT-compatible actor proxies with Protobuf message contracts.
-/// Generates type-safe client proxies for interfaces inheriting from IQuarkActor.
+/// Generates type-safe client proxies for interfaces inheriting from IQuarkActor or registered via QuarkActorContext.
 /// </summary>
 [Generator]
 public class ProxySourceGenerator : IIncrementalGenerator
@@ -23,12 +23,21 @@ public class ProxySourceGenerator : IIncrementalGenerator
                 static (ctx, _) => GetSemanticTargetForGeneration(ctx))
             .Where(static m => m is not null);
 
-        // Collect all actor interfaces
-        var compilation = context.CompilationProvider.Combine(actorInterfaces.Collect());
+        // Find all classes with QuarkActorContext attribute
+        var contextClasses = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (s, _) => IsContextSyntaxTarget(s),
+                static (ctx, _) => GetContextSemanticTarget(ctx))
+            .Where(static m => m is not null);
+
+        // Collect both sources
+        var compilation = context.CompilationProvider
+            .Combine(actorInterfaces.Collect())
+            .Combine(contextClasses.Collect());
 
         // Generate code for all actor interfaces at once
         context.RegisterSourceOutput(compilation,
-            static (spc, source) => Execute(source.Left, source.Right!, spc));
+            static (spc, source) => Execute(source.Left.Left, source.Left.Right!, source.Right!, spc));
     }
 
     private static bool IsSyntaxTargetForGeneration(SyntaxNode node)
@@ -37,6 +46,13 @@ public class ProxySourceGenerator : IIncrementalGenerator
         return node is InterfaceDeclarationSyntax interfaceDeclaration
                && interfaceDeclaration.BaseList is not null
                && interfaceDeclaration.BaseList.Types.Count > 0;
+    }
+
+    private static bool IsContextSyntaxTarget(SyntaxNode node)
+    {
+        // Look for class declarations with attributes
+        return node is ClassDeclarationSyntax classDeclaration
+               && classDeclaration.AttributeLists.Count > 0;
     }
 
     private static InterfaceDeclarationSyntax? GetSemanticTargetForGeneration(GeneratorSyntaxContext context)
@@ -51,6 +67,26 @@ public class ProxySourceGenerator : IIncrementalGenerator
         if (InheritsFromIQuarkActor(interfaceSymbol))
         {
             return interfaceDeclaration;
+        }
+
+        return null;
+    }
+
+    private static ClassDeclarationSyntax? GetContextSemanticTarget(GeneratorSyntaxContext context)
+    {
+        var classDeclaration = (ClassDeclarationSyntax)context.Node;
+        var classSymbol = context.SemanticModel.GetDeclaredSymbol(classDeclaration) as INamedTypeSymbol;
+
+        if (classSymbol == null)
+            return null;
+
+        // Check if class has QuarkActorContext attribute
+        foreach (var attribute in classSymbol.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() == "Quark.Abstractions.QuarkActorContextAttribute")
+            {
+                return classDeclaration;
+            }
         }
 
         return null;
@@ -79,13 +115,13 @@ public class ProxySourceGenerator : IIncrementalGenerator
     private static void Execute(
         Compilation compilation,
         ImmutableArray<InterfaceDeclarationSyntax?> actorInterfaces,
+        ImmutableArray<ClassDeclarationSyntax?> contextClasses,
         SourceProductionContext context)
     {
-        if (actorInterfaces.IsEmpty)
-            return;
-
+        var allInterfaceSymbols = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var proxyFactoryMethods = new StringBuilder();
 
+        // Process interfaces inheriting from IQuarkActor
         foreach (var interfaceDeclaration in actorInterfaces)
         {
             if (interfaceDeclaration is null)
@@ -97,9 +133,53 @@ public class ProxySourceGenerator : IIncrementalGenerator
             if (interfaceSymbol is null)
                 continue;
 
+            allInterfaceSymbols.Add(interfaceSymbol);
+        }
+
+        // Process context classes and extract actor interfaces from QuarkActor attributes
+        foreach (var contextClass in contextClasses)
+        {
+            if (contextClass is null)
+                continue;
+
+            var semanticModel = compilation.GetSemanticModel(contextClass.SyntaxTree);
+            var classSymbol = semanticModel.GetDeclaredSymbol(contextClass) as INamedTypeSymbol;
+
+            if (classSymbol is null)
+                continue;
+
+            // Find all QuarkActor attributes on the context class
+            foreach (var attribute in classSymbol.GetAttributes())
+            {
+                if (attribute.AttributeClass?.ToDisplayString() != "Quark.Abstractions.QuarkActorAttribute")
+                    continue;
+
+                // Get the actor type from the attribute constructor argument
+                if (attribute.ConstructorArguments.Length > 0)
+                {
+                    var actorTypeArg = attribute.ConstructorArguments[0];
+                    if (actorTypeArg.Value is INamedTypeSymbol actorTypeSymbol)
+                    {
+                        // Validate that it's an interface
+                        if (actorTypeSymbol.TypeKind == TypeKind.Interface)
+                        {
+                            allInterfaceSymbols.Add(actorTypeSymbol);
+                        }
+                    }
+                }
+            }
+        }
+
+        // If no interfaces found, exit early
+        if (allInterfaceSymbols.Count == 0)
+            return;
+
+        // Generate proxies for all collected interfaces
+        foreach (var interfaceSymbol in allInterfaceSymbols)
+        {
             var interfaceName = interfaceSymbol.Name;
             var fullInterfaceName = interfaceSymbol.ToDisplayString();
-            var namespaceName = GetNamespace(interfaceDeclaration);
+            var namespaceName = interfaceSymbol.ContainingNamespace.ToDisplayString();
 
             // Get all methods in the interface (excluding IActor base methods)
             var methods = GetActorMethods(interfaceSymbol);
