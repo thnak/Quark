@@ -347,11 +347,11 @@ public class ProxySourceGenerator : IIncrementalGenerator
         // If the interface doesn't inherit from IQuarkActor, explicitly implement it in the proxy
         if (implementsIQuarkActor)
         {
-            source.AppendLine($"    internal sealed class {interfaceName}Proxy : {fullInterfaceName}");
+            source.AppendLine($"    public sealed class {interfaceName}Proxy : {fullInterfaceName}");
         }
         else
         {
-            source.AppendLine($"    internal sealed class {interfaceName}Proxy : {fullInterfaceName}, IQuarkActor");
+            source.AppendLine($"    public sealed class {interfaceName}Proxy : {fullInterfaceName}, IQuarkActor");
         }
         
         source.AppendLine($"    {{");

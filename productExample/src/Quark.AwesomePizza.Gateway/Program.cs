@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Interfaces;
+using Quark.AwesomePizza.Shared.Interfaces.Generated;
 using Quark.Client;
 using Quark.Client.DependencyInjection;
 
@@ -13,6 +14,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.WriteIndented = true;
 });
 ConfigureServices(builder);
+
+// Demo API
+ActorProxyFactory.RegisterProxyFactory<IOrderActor>((x, s) => new IOrderActorProxy(x, s));
 
 void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
 {
