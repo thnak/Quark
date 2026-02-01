@@ -7,33 +7,42 @@ namespace Quark.AwesomePizza.Silo;
 
 /// <summary>
 /// Awesome Pizza Silo - A Native AOT console application that hosts actor instances.
-/// This represents a single node in the distributed cluster.
+/// This is the CENTRAL actor host where ALL actors live.
+/// Gateway connects to actors here, and MQTT updates actors directly here.
 /// </summary>
 internal abstract class Program
 {
     private static IActorFactory? _factory;
     private static readonly Dictionary<string, IActor> ActiveActors = new();
     private static readonly CancellationTokenSource Cts = new();
+    private static MqttService? _mqttService;
 
     private static async Task Main()
     {
         var siloId = Environment.GetEnvironmentVariable("SILO_ID") ?? $"silo-{Guid.NewGuid():N}";
         var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "localhost";
         var redisPort = Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379";
+        var mqttHost = Environment.GetEnvironmentVariable("MQTT_HOST") ?? "localhost";
+        var mqttPort = int.Parse(Environment.GetEnvironmentVariable("MQTT_PORT") ?? "1883");
 
         Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
         Console.WriteLine("║       Awesome Pizza - Quark Silo Host                   ║");
-        Console.WriteLine("║       High-Performance Native AOT Actor System           ║");
+        Console.WriteLine("║       Central Actor System with MQTT Integration         ║");
         Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
         Console.WriteLine();
         Console.WriteLine($"🏭 Silo ID: {siloId}");
         Console.WriteLine($"🔌 Redis:   {redisHost}:{redisPort}");
+        Console.WriteLine($"🔌 MQTT:    {mqttHost}:{mqttPort}");
         Console.WriteLine($"⚡ Native AOT: Enabled");
         Console.WriteLine($"🚀 Started at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
         Console.WriteLine();
 
         // Initialize actor factory
         _factory = new ActorFactory();
+
+        // Initialize and start MQTT service
+        _mqttService = new MqttService(_factory, ActiveActors, mqttHost, mqttPort);
+        await _mqttService.StartAsync();
 
         // Register shutdown handler
         Console.CancelKeyPress += async (_, eventArgs) =>
@@ -44,8 +53,14 @@ internal abstract class Program
             await ShutdownAsync();
         };
 
-        Console.WriteLine("✅ Silo is ready to host actors");
-        Console.WriteLine("📋 Actor types registered: Order, Driver, Chef, Kitchen, Inventory, Restaurant");
+        Console.WriteLine();
+        Console.WriteLine("✅ Silo is ready - All actors live here!");
+        Console.WriteLine("📋 Actor types: Order, Driver, Chef, Kitchen, Inventory, Restaurant");
+        Console.WriteLine();
+        Console.WriteLine("💡 Architecture:");
+        Console.WriteLine("   • Silo = Central actor host (YOU ARE HERE)");
+        Console.WriteLine("   • Gateway = Connects to actors via proxy calls");
+        Console.WriteLine("   • MQTT = Updates actors directly in this Silo");
         Console.WriteLine();
         Console.WriteLine("Commands:");
         Console.WriteLine("  create-order <orderId> <customerId> <restaurantId> - Create new order");
@@ -54,6 +69,9 @@ internal abstract class Program
         Console.WriteLine("  status <orderId> <newStatus>                       - Update order status");
         Console.WriteLine("  list                                               - List active actors");
         Console.WriteLine("  exit                                               - Shutdown silo");
+        Console.WriteLine();
+        Console.WriteLine("💡 Test MQTT integration:");
+        Console.WriteLine("   mosquitto_pub -t \"pizza/drivers/driver-1/location\" -m '{\"lat\":40.7128,\"lon\":-74.0060}'");
         Console.WriteLine();
 
         // Command loop
@@ -227,6 +245,12 @@ internal abstract class Program
     {
         await Cts.CancelAsync();
 
+        // Stop MQTT service
+        if (_mqttService != null)
+        {
+            await _mqttService.StopAsync();
+        }
+
         // Deactivate all actors
         foreach (var kvp in ActiveActors.ToList())
         {
@@ -241,5 +265,26 @@ internal abstract class Program
         }
 
         ActiveActors.Clear();
+    }
+
+    /// <summary>
+    /// Gets or creates an actor for Gateway access.
+    /// This is how the Gateway will interact with actors.
+    /// </summary>
+    public static async Task<T?> GetOrCreateActorAsync<T>(string actorId) where T : IActor
+    {
+        if (_factory == null)
+            return default;
+
+        if (ActiveActors.TryGetValue(actorId, out var existingActor) && existingActor is T typedActor)
+        {
+            return typedActor;
+        }
+
+        var actor = _factory.CreateActor<T>(actorId);
+        await actor.OnActivateAsync();
+        ActiveActors[actorId] = actor;
+
+        return actor;
     }
 }

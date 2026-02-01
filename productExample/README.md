@@ -2,6 +2,13 @@
 
 > A production-grade demo application showcasing the Quark Framework's distributed actor capabilities through a global pizza ordering and tracking system.
 
+⚠️ **IMPORTANT ARCHITECTURE UPDATE**: This project now follows the correct distributed actor pattern:
+- **Silos** = Central actor host (all actors live here)
+- **Gateway** = Connects to actors in Silo (should use proxies)  
+- **MQTT** = Integrated into Silo to update actors directly
+
+📄 See **[ARCHITECTURE-FIX.md](ARCHITECTURE-FIX.md)** for complete details.
+
 ---
 
 ## 📖 Overview

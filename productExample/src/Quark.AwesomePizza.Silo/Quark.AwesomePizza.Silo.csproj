@@ -6,12 +6,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPublishable>true</IsPublishable>
-    <PublishAot>true</PublishAot>
+    <PublishAot>false</PublishAot>
     <InvariantGlobalization>false</InvariantGlobalization>
     <OptimizationPreference>Speed</OptimizationPreference>
     <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
     <StackTraceSupport>false</StackTraceSupport>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+    <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="4.3.7.1207" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../Quark.AwesomePizza.Shared/Quark.AwesomePizza.Shared.csproj" />
