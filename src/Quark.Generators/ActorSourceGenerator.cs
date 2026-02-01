@@ -94,12 +94,14 @@ public class ActorSourceGenerator : IIncrementalGenerator
             GenerateActorDispatcher(context, className, fullClassName, namespaceName, classSymbol);
 
             // Add to registration list with actor type name and fully qualified factory name
+            // Both factory and dispatcher should use the SAME actorTypeName for consistent lookup
             registrations.AppendLine(
                 $"        ActorFactoryRegistry.RegisterFactory<{fullClassName}>(\"{actorTypeName}\", {namespaceName}.{className}Factory.Create);");
             
-            // Add dispatcher registration
+            // Add dispatcher registration using the SAME actorTypeName as factory
+            // This ensures ProxySourceGenerator's interface name matches dispatcher registration
             registrations.AppendLine(
-                $"        ActorMethodDispatcherRegistry.RegisterDispatcher(\"{fullClassName}\", new {namespaceName}.{className}Dispatcher());");
+                $"        ActorMethodDispatcherRegistry.RegisterDispatcher(\"{actorTypeName}\", new {namespaceName}.{className}Dispatcher());");
         }
 
         // Generate the module initializer

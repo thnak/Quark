@@ -9,7 +9,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Actor that manages a delivery driver's state and location.
 /// Receives GPS updates via MQTT bridge and manages delivery assignments.
 /// </summary>
-[Actor(Name = "Driver", Reentrant = false)]
+[Actor(InterfaceType = typeof(IDriverActor), Reentrant = false)]
 public class DriverActor : ActorBase, IDriverActor
 {
     private DriverState? _state;

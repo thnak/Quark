@@ -9,7 +9,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Actor that manages an individual chef's workload and cooking tasks.
 /// Handles order assignments and tracks cooking progress.
 /// </summary>
-[Actor(Name = "Chef", Reentrant = false)]
+[Actor(InterfaceType = typeof(IChefActor), Reentrant = false)]
 public class ChefActor : ActorBase, IChefActor
 {
     private ChefState? _state;

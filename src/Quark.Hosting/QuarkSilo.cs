@@ -30,6 +30,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     private readonly QuarkSiloOptions _options;
     private readonly ILogger<QuarkSilo> _logger;
     private readonly ConcurrentDictionary<string, IActor> _actorRegistry = new();
+    private readonly ConcurrentDictionary<string, ActorInvocationMailbox> _actorMailboxes = new();
     private readonly CancellationTokenSource _heartbeatCts = new();
     private Task? _heartbeatTask;
     private SiloInfo _siloInfo;
@@ -164,39 +165,42 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 await MigrateColdActorsAsync(cancellationToken);
             }
 
-            // 4. Deactivate all active actors
+            // 4. Stop all actor mailboxes (graceful shutdown)
+            await StopAllMailboxesAsync(cancellationToken);
+
+            // 5. Deactivate all active actors
             await DeactivateAllActorsAsync(cancellationToken);
 
-            // 5. Stop ReminderTickManager
+            // 6. Stop ReminderTickManager
             if (_reminderTickManager != null)
             {
                 await _reminderTickManager.StopAsync(cancellationToken);
                 _logger.LogInformation("ReminderTickManager stopped for silo {SiloId}", SiloId);
             }
 
-            // 6. Wait for in-flight gRPC calls to complete (with timeout)
+            // 7. Wait for in-flight gRPC calls to complete (with timeout)
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_options.ShutdownTimeout);
             await Task.Delay(TimeSpan.FromSeconds(1), timeoutCts.Token).ContinueWith(_ => { });
             _logger.LogInformation("Waited for in-flight calls to complete for silo {SiloId}", SiloId);
 
-            // 7. Unsubscribe from transport events
+            // 8. Unsubscribe from transport events
             _transport.EnvelopeReceived -= OnEnvelopeReceived;
             _logger.LogDebug("Unsubscribed from transport EnvelopeReceived event for silo {SiloId}", SiloId);
 
-            // 8. Stop transport
+            // 9. Stop transport
             await _transport.StopAsync(cancellationToken);
             _logger.LogInformation("Transport stopped for silo {SiloId}", SiloId);
 
-            // 9. Stop cluster membership monitoring
+            // 10. Stop cluster membership monitoring
             await _clusterMembership.StopAsync(cancellationToken);
             _logger.LogInformation("Cluster membership stopped for silo {SiloId}", SiloId);
 
-            // 10. Unregister from cluster
+            // 11. Unregister from cluster
             await _clusterMembership.UnregisterSiloAsync(cancellationToken);
             _logger.LogInformation("Silo {SiloId} unregistered from cluster", SiloId);
 
-            // 11. Mark as Dead
+            // 12. Mark as Dead
             _status = SiloStatus.Dead;
 
             _logger.LogInformation("Quark Silo {SiloId} stopped successfully", SiloId);
@@ -256,6 +260,36 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         }
 
         _logger.LogInformation("Heartbeat loop stopped for silo {SiloId}", SiloId);
+    }
+
+    private async Task StopAllMailboxesAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Stopping {Count} actor mailboxes for silo {SiloId}", _actorMailboxes.Count, SiloId);
+
+        var tasks = new List<Task>();
+        foreach (var kvp in _actorMailboxes)
+        {
+            tasks.Add(StopMailboxAsync(kvp.Key, kvp.Value, cancellationToken));
+        }
+
+        await Task.WhenAll(tasks);
+        _actorMailboxes.Clear();
+
+        _logger.LogInformation("All actor mailboxes stopped for silo {SiloId}", SiloId);
+    }
+
+    private async Task StopMailboxAsync(string actorId, ActorInvocationMailbox mailbox, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await mailbox.StopAsync(cancellationToken);
+            mailbox.Dispose();
+            _logger.LogDebug("Mailbox for actor {ActorId} stopped", actorId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error stopping mailbox for actor {ActorId}", actorId);
+        }
     }
 
     private async Task DeactivateAllActorsAsync(CancellationToken cancellationToken)
@@ -410,86 +444,24 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
     /// <summary>
     /// Handles incoming envelope events from the transport layer.
-    /// Routes messages to actors and integrates with StreamBroker for streaming scenarios.
+    /// Posts messages to actor mailboxes for sequential processing.
     /// </summary>
     private void OnEnvelopeReceived(object? sender, Networking.Abstractions.QuarkEnvelope envelope)
     {
-        _ = Task.Run(async () =>
+        try
         {
-            try
+            _logger.LogTrace(
+                "Received envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
+                envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
+
+            // 1. Look up the dispatcher for this actor type
+            var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher(envelope.ActorType);
+            if (dispatcher == null)
             {
-                _logger.LogTrace(
-                    "Processing envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
-                    envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
-
-                // 1. Look up the dispatcher for this actor type
-                var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher(envelope.ActorType);
-                if (dispatcher == null)
-                {
-                    _logger.LogWarning(
-                        "No dispatcher found for actor type {ActorType}. Message {MessageId} cannot be processed.",
-                        envelope.ActorType, envelope.MessageId);
-                    
-                    throw new InvalidOperationException(
-                        $"No dispatcher registered for actor type '{envelope.ActorType}'. " +
-                        $"Ensure the actor is decorated with [Actor] attribute and the source generator has run.");
-                }
-
-                // 2. Get or create the actor instance (reflection-free)
-                if (_actorFactory is not ActorFactory concreteFactory)
-                {
-                    throw new InvalidOperationException(
-                        "ActorFactory must be an instance of Quark.Core.Actors.ActorFactory to support runtime dispatch");
-                }
-
-                var actor = concreteFactory.GetOrCreateActorByName(envelope.ActorType, envelope.ActorId);
-
-                if (actor == null)
-                {
-                    _logger.LogError(
-                        "Failed to create actor {ActorId} of type {ActorType}",
-                        envelope.ActorId, envelope.ActorType);
-                    
-                    throw new InvalidOperationException(
-                        $"Failed to create actor '{envelope.ActorId}' of type '{envelope.ActorType}'");
-                }
-
-                // 3. Register actor in silo's registry (if not already registered)
-                RegisterActor(envelope.ActorId, actor);
-
-                // 4. Invoke the method via dispatcher
-                var responsePayload = await dispatcher.InvokeAsync(
-                    actor,
-                    envelope.MethodName,
-                    envelope.Payload,
-                    CancellationToken.None);
-
-                // 5. Send successful response back (with empty Payload, result in ResponsePayload)
-                var response = new Networking.Abstractions.QuarkEnvelope(
-                    envelope.MessageId,
-                    envelope.ActorId,
-                    envelope.ActorType,
-                    envelope.MethodName,
-                    Array.Empty<byte>(),  // Empty payload - response data is in ResponsePayload
-                    envelope.CorrelationId)
-                {
-                    ResponsePayload = responsePayload,
-                    IsError = false
-                };
-
-                _transport.SendResponse(response);
-
-                _logger.LogTrace(
-                    "Envelope {MessageId} processed successfully",
-                    envelope.MessageId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Error processing envelope {MessageId} for actor {ActorId}",
-                    envelope.MessageId, envelope.ActorId);
-
-                // Send error response back
+                _logger.LogWarning(
+                    "No dispatcher found for actor type {ActorType}. Message {MessageId} cannot be processed.",
+                    envelope.ActorType, envelope.MessageId);
+                
                 var errorResponse = new Networking.Abstractions.QuarkEnvelope(
                     envelope.MessageId,
                     envelope.ActorId,
@@ -499,12 +471,100 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                     envelope.CorrelationId)
                 {
                     IsError = true,
-                    ErrorMessage = ex.Message
+                    ErrorMessage = $"No dispatcher registered for actor type '{envelope.ActorType}'"
                 };
-
+                
                 _transport.SendResponse(errorResponse);
+                return;
             }
-        });
+
+            // 2. Get or create the actor instance (reflection-free)
+            if (_actorFactory is not ActorFactory concreteFactory)
+            {
+                _logger.LogError("ActorFactory must be an instance of Quark.Core.Actors.ActorFactory");
+                
+                var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                    envelope.MessageId,
+                    envelope.ActorId,
+                    envelope.ActorType,
+                    envelope.MethodName,
+                    Array.Empty<byte>(),
+                    envelope.CorrelationId)
+                {
+                    IsError = true,
+                    ErrorMessage = "Invalid ActorFactory implementation"
+                };
+                
+                _transport.SendResponse(errorResponse);
+                return;
+            }
+
+            var actor = concreteFactory.GetOrCreateActorByName(envelope.ActorType, envelope.ActorId);
+
+            if (actor == null)
+            {
+                _logger.LogError(
+                    "Failed to create actor {ActorId} of type {ActorType}",
+                    envelope.ActorId, envelope.ActorType);
+                
+                var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                    envelope.MessageId,
+                    envelope.ActorId,
+                    envelope.ActorType,
+                    envelope.MethodName,
+                    Array.Empty<byte>(),
+                    envelope.CorrelationId)
+                {
+                    IsError = true,
+                    ErrorMessage = $"Failed to create actor '{envelope.ActorId}' of type '{envelope.ActorType}'"
+                };
+                
+                _transport.SendResponse(errorResponse);
+                return;
+            }
+
+            // 3. Register actor in silo's registry (if not already registered)
+            RegisterActor(envelope.ActorId, actor);
+
+            // 4. Get or create mailbox for this actor
+            var mailbox = _actorMailboxes.GetOrAdd(envelope.ActorId, actorId =>
+            {
+                var newMailbox = new ActorInvocationMailbox(actor, dispatcher, _transport, _logger);
+                // Start the mailbox processing immediately
+                _ = newMailbox.StartAsync();
+                _logger.LogDebug("Created and started mailbox for actor {ActorId}", actorId);
+                return newMailbox;
+            });
+
+            // 5. Post message to mailbox for sequential processing
+            var message = new ActorEnvelopeMessage(envelope);
+            _ = mailbox.PostAsync(message, CancellationToken.None);
+
+            _logger.LogTrace(
+                "Envelope {MessageId} posted to mailbox for actor {ActorId}",
+                envelope.MessageId, envelope.ActorId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error handling envelope {MessageId} for actor {ActorId}",
+                envelope.MessageId, envelope.ActorId);
+
+            // Send error response
+            var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                envelope.MessageId,
+                envelope.ActorId,
+                envelope.ActorType,
+                envelope.MethodName,
+                Array.Empty<byte>(),
+                envelope.CorrelationId)
+            {
+                IsError = true,
+                ErrorMessage = ex.Message
+            };
+
+            _transport.SendResponse(errorResponse);
+        }
     }
 
     /// <inheritdoc />

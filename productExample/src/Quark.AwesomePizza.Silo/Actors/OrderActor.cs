@@ -10,7 +10,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Demonstrates optimistic concurrency with E-Tag persistence.
 /// This is the core actor for the Awesome Pizza system.
 /// </summary>
-[Actor(Name = "Order", Reentrant = false)]
+[Actor(InterfaceType = typeof(IOrderActor), Reentrant = false)]
 public class OrderActor : ActorBase, IOrderActor
 {
     private OrderState? _state;
