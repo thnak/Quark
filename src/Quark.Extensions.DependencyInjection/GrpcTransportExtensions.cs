@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Hosting;
@@ -50,6 +52,26 @@ public static class GrpcTransportExtensions
             return new GrpcQuarkTransport(siloId, endpoint, channelPool);
         });
 
+        // Register gRPC server services
+        builder.Services.AddGrpc();
+        builder.Services.TryAddSingleton<QuarkTransportService>();
+
         return builder;
+    }
+
+    /// <summary>
+    /// Maps the gRPC transport service endpoint for handling actor invocations.
+    /// Call this in your application's Configure/middleware setup (e.g., app.MapQuarkGrpcService()).
+    /// </summary>
+    /// <param name="app">The WebApplication or endpoint route builder.</param>
+    /// <returns>The endpoint convention builder for further configuration.</returns>
+    public static GrpcServiceEndpointConventionBuilder MapQuarkGrpcService(this IEndpointRouteBuilder app)
+    {
+        if (app == null)
+        {
+            throw new ArgumentNullException(nameof(app));
+        }
+
+        return app.MapGrpcService<QuarkTransportService>();
     }
 }

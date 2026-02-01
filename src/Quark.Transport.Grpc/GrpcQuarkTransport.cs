@@ -185,6 +185,16 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         }
     }
 
+    /// <summary>
+    /// Raises the EnvelopeReceived event.
+    /// Used by the server-side gRPC service to notify subscribers of incoming messages.
+    /// </summary>
+    /// <param name="envelope">The received envelope.</param>
+    internal void RaiseEnvelopeReceived(QuarkEnvelope envelope)
+    {
+        EnvelopeReceived?.Invoke(this, envelope);
+    }
+
     private async Task ReadResponsesAsync(SiloConnection connection, CancellationToken cancellationToken)
     {
         try

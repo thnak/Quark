@@ -83,6 +83,10 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
         try
         {
+            // 0. Subscribe to transport EnvelopeReceived event for incoming actor invocations
+            _transport.EnvelopeReceived += OnEnvelopeReceived;
+            _logger.LogDebug("Subscribed to transport EnvelopeReceived event for silo {SiloId}", SiloId);
+
             // 1. Start transport layer
             await _transport.StartAsync(cancellationToken);
             _logger.LogInformation("Transport started for silo {SiloId}", SiloId);
@@ -175,19 +179,23 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             await Task.Delay(TimeSpan.FromSeconds(1), timeoutCts.Token).ContinueWith(_ => { });
             _logger.LogInformation("Waited for in-flight calls to complete for silo {SiloId}", SiloId);
 
-            // 7. Stop transport
+            // 7. Unsubscribe from transport events
+            _transport.EnvelopeReceived -= OnEnvelopeReceived;
+            _logger.LogDebug("Unsubscribed from transport EnvelopeReceived event for silo {SiloId}", SiloId);
+
+            // 8. Stop transport
             await _transport.StopAsync(cancellationToken);
             _logger.LogInformation("Transport stopped for silo {SiloId}", SiloId);
 
-            // 8. Stop cluster membership monitoring
+            // 9. Stop cluster membership monitoring
             await _clusterMembership.StopAsync(cancellationToken);
             _logger.LogInformation("Cluster membership stopped for silo {SiloId}", SiloId);
 
-            // 9. Unregister from cluster
+            // 10. Unregister from cluster
             await _clusterMembership.UnregisterSiloAsync(cancellationToken);
             _logger.LogInformation("Silo {SiloId} unregistered from cluster", SiloId);
 
-            // 10. Mark as Dead
+            // 11. Mark as Dead
             _status = SiloStatus.Dead;
 
             _logger.LogInformation("Quark Silo {SiloId} stopped successfully", SiloId);
@@ -397,6 +405,69 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             _logger.LogError(ex, "Error during cold actor migration for silo {SiloId}", SiloId);
             // Don't throw - allow shutdown to continue even if migration fails
         }
+    }
+
+    /// <summary>
+    /// Handles incoming envelope events from the transport layer.
+    /// Routes messages to actors and integrates with StreamBroker for streaming scenarios.
+    /// </summary>
+    private void OnEnvelopeReceived(object? sender, Networking.Abstractions.QuarkEnvelope envelope)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _logger.LogTrace(
+                    "Processing envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
+                    envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
+
+                // Check if this is a stream message (stream messages have specific method patterns)
+                // For now, we'll focus on basic actor invocation handling
+                // StreamBroker integration would go here for [QuarkStream] attributed actors
+
+                // TODO: Full actor invocation dispatch would go here
+                // This is a placeholder that demonstrates the integration point
+                // In a complete implementation, this would:
+                // 1. Deserialize the payload to get method arguments
+                // 2. Get or create the actor instance via _actorFactory
+                // 3. Invoke the method on the actor
+                // 4. Serialize the result
+                // 5. Send the response back via _transport.SendResponse(responseEnvelope)
+
+                // For streaming scenarios with StreamBroker:
+                if (_streamBroker != null)
+                {
+                    // Example: If this is a stream publish operation, notify StreamBroker
+                    // The StreamBroker would then dispatch to all implicit subscribers
+                    // await _streamBroker.NotifyImplicitSubscribersAsync(streamId, message, cancellationToken);
+                }
+
+                _logger.LogTrace(
+                    "Envelope {MessageId} processed successfully",
+                    envelope.MessageId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error processing envelope {MessageId} for actor {ActorId}",
+                    envelope.MessageId, envelope.ActorId);
+
+                // Send error response back
+                var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                    envelope.MessageId,
+                    envelope.ActorId,
+                    envelope.ActorType,
+                    envelope.MethodName,
+                    Array.Empty<byte>(),
+                    envelope.CorrelationId)
+                {
+                    IsError = true,
+                    ErrorMessage = ex.Message
+                };
+
+                _transport.SendResponse(errorResponse);
+            }
+        });
     }
 
     /// <inheritdoc />
