@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Quark.Client.DependencyInjection</RootNamespace>
+        <Description>Dependency injection extensions for configuring Quark cluster clients with Microsoft.Extensions.DependencyInjection. Client-only, lightweight, no silo hosting.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Quark.Abstractions\Quark.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Client\Quark.Client.csproj" />
+        <ProjectReference Include="..\Quark.Networking.Abstractions\Quark.Networking.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Clustering.Redis\Quark.Clustering.Redis.csproj" />
+        <ProjectReference Include="..\Quark.Transport.Grpc\Quark.Transport.Grpc.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.2" />
+        <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
+    </ItemGroup>
+
+</Project>
