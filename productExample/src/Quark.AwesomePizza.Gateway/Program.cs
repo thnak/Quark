@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
+using Quark.AwesomePizza.Shared.Constants;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Client;
@@ -12,6 +14,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     options.SerializerOptions.WriteIndented = true;
+    options.SerializerOptions.TypeInfoResolver = JsonTypeInfoResolver.Combine(ModelJsonContext.Default);
 });
 ConfigureServices(builder);
 
