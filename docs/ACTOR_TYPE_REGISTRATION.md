@@ -245,15 +245,18 @@ public interface IOrderActor : IReadOnlyOrderActor
 
 // Register under the main interface
 [Actor(InterfaceType = typeof(IOrderActor))]
-public class OrderActor : ActorBase, IOrderActor
+public class OrderActor : ActorBase, IOrderActor, IReadOnlyOrderActor
 {
     // Implementation
 }
 
-// Clients can use either interface
+// Clients can use the main interface
 var fullProxy = ActorProxyFactory.CreateProxy<IOrderActor>(client, "order-1");
-var readOnlyProxy = ActorProxyFactory.CreateProxy<IReadOnlyOrderActor>(client, "order-1");
-// Both send actorType: "MyApp.IOrderActor"
+// Sends actorType: "MyApp.IOrderActor"
+
+// Note: IReadOnlyOrderActor proxy would send "MyApp.IReadOnlyOrderActor"
+// which won't resolve unless registered separately. For this pattern,
+// clients should use the registered interface type (IOrderActor) only.
 ```
 
 ### Versioned Actors
@@ -280,9 +283,16 @@ public class OrderActorV1 : ActorBase, IOrderActorV1 { }
 [Actor(InterfaceType = typeof(IOrderActorV2))]
 public class OrderActorV2 : ActorBase, IOrderActorV2 { }
 
-// Clients choose version
-var v1Proxy = ActorProxyFactory.CreateProxy<IOrderActorV1>(client, "order-1");
-var v2Proxy = ActorProxyFactory.CreateProxy<IOrderActorV2>(client, "order-1");
+// Clients choose version - IMPORTANT: Use different actor IDs!
+var v1Proxy = ActorProxyFactory.CreateProxy<IOrderActorV1>(client, "order-v1-123");
+var v2Proxy = ActorProxyFactory.CreateProxy<IOrderActorV2>(client, "order-v2-123");
+
+// Note on Actor ID Versioning:
+// When running multiple versions of the same logical actor, use versioned actor IDs:
+// - Option 1: Include version in ID: "order-v1-123", "order-v2-123"
+// - Option 2: Use separate namespaces: "v1/order-123", "v2/order-123"
+// - Option 3: Route based on feature flags or migration state
+// This prevents ID collisions and allows gradual migration between versions.
 ```
 
 ## Debugging Actor Type Issues
