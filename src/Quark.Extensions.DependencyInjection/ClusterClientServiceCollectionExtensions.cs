@@ -1,9 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Client;
-using Quark.Clustering.Redis;
 using Quark.Extensions.DependencyInjection.SingletonStartupServices;
-using StackExchange.Redis;
 
 namespace Quark.Extensions.DependencyInjection;
 
