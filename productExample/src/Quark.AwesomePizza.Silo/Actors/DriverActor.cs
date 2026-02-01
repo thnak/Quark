@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
@@ -9,7 +10,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Receives GPS updates via MQTT bridge and manages delivery assignments.
 /// </summary>
 [Actor(Name = "Driver", Reentrant = false)]
-public class DriverActor : ActorBase
+public class DriverActor : ActorBase, IDriverActor
 {
     private DriverState? _state;
 
