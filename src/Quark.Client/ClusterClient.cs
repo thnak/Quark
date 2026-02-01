@@ -18,6 +18,7 @@ public sealed class ClusterClient : IClusterClient
     private readonly string _clientId;
     private bool _isConnected;
     private CancellationTokenSource? _shutdownCts;
+    private readonly object _shutdownLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClusterClient"/> class.
@@ -128,10 +129,13 @@ public sealed class ClusterClient : IClusterClient
         {
             _isConnected = false;
 
-            // Cancel any pending operations
-            _shutdownCts?.Cancel();
-            _shutdownCts?.Dispose();
-            _shutdownCts = null;
+            // Cancel any pending operations in thread-safe manner
+            lock (_shutdownLock)
+            {
+                _shutdownCts?.Cancel();
+                _shutdownCts?.Dispose();
+                _shutdownCts = null;
+            }
 
             // Unsubscribe from membership changes
             _clusterMembership.SiloJoined -= OnSiloJoined;
@@ -274,16 +278,25 @@ public sealed class ClusterClient : IClusterClient
                 _logger.LogInformation("Silo {SiloId} joined the cluster at {Endpoint}, establishing connection",
                     siloInfo.SiloId, siloInfo.Endpoint);
 
-                var cts = _shutdownCts;
-                if (cts == null || cts.IsCancellationRequested)
+                // Get cancellation token in thread-safe manner
+                CancellationToken cancellationToken;
+                lock (_shutdownLock)
                 {
-                    _logger.LogDebug("Skipping connection to silo {SiloId} - client is shutting down", siloInfo.SiloId);
-                    return;
+                    if (_shutdownCts == null || _shutdownCts.IsCancellationRequested)
+                    {
+                        _logger.LogDebug("Skipping connection to silo {SiloId} - client is shutting down", siloInfo.SiloId);
+                        return;
+                    }
+                    cancellationToken = _shutdownCts.Token;
                 }
 
-                await _transport.ConnectAsync(siloInfo, cts.Token);
+                await _transport.ConnectAsync(siloInfo, cancellationToken);
 
                 _logger.LogInformation("Successfully connected to silo {SiloId}", siloInfo.SiloId);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Connection to silo {SiloId} was cancelled", siloInfo.SiloId);
             }
             catch (Exception ex)
             {
