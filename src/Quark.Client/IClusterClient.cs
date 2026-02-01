@@ -1,3 +1,4 @@
+using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;
@@ -57,5 +58,5 @@ public interface IClusterClient : IDisposable
     /// Method calls on the proxy are automatically serialized to Protobuf messages and
     /// sent to the cluster using SendAsync.
     /// </remarks>
-    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class;
+    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IActor;
 }

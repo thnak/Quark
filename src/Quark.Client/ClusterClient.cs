@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;
@@ -13,6 +14,7 @@ public sealed class ClusterClient : IClusterClient
     private readonly IQuarkTransport _transport;
     private readonly ClusterClientOptions _options;
     private readonly ILogger<ClusterClient> _logger;
+    private readonly IActorFactory _actorFactory;
     private readonly string _clientId;
     private bool _isConnected;
 
@@ -23,21 +25,24 @@ public sealed class ClusterClient : IClusterClient
     /// <param name="transport">The transport layer.</param>
     /// <param name="options">Configuration options.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="actorFactory"></param>
     public ClusterClient(
         IQuarkClusterMembership clusterMembership,
         IQuarkTransport transport,
         ClusterClientOptions options,
-        ILogger<ClusterClient> logger)
+        ILogger<ClusterClient> logger,
+        IActorFactory actorFactory)
     {
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _actorFactory = actorFactory;
         _clientId = options.ClientId ?? Guid.NewGuid().ToString("N");
     }
 
     /// <inheritdoc />
-    public string? LocalSiloId => _transport.LocalSiloId;
+    public string LocalSiloId => _transport.LocalSiloId;
 
     /// <inheritdoc />
     public IQuarkClusterMembership ClusterMembership => _clusterMembership;
@@ -137,7 +142,7 @@ public sealed class ClusterClient : IClusterClient
 
         // OPTIMIZATION: If target is the local silo, the transport can optimize the call
         // to use in-memory dispatch instead of network serialization/gRPC
-        if (LocalSiloId != null && targetSiloId == LocalSiloId)
+        if (!string.IsNullOrEmpty(LocalSiloId) && targetSiloId == LocalSiloId)
         {
             _logger.LogDebug(
                 "Local call detected for actor {ActorId} ({ActorType}) on silo {SiloId} - transport will optimize",
@@ -197,7 +202,7 @@ public sealed class ClusterClient : IClusterClient
     }
 
     /// <inheritdoc />
-    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : class
+    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IActor
     {
         if (string.IsNullOrWhiteSpace(actorId))
         {
@@ -206,7 +211,7 @@ public sealed class ClusterClient : IClusterClient
 
         // Delegate to the generated proxy factory
         // This will be implemented by the ProxySourceGenerator
-        return ActorProxyFactory.CreateProxy<TActorInterface>(this, actorId);
+        return _actorFactory.GetOrCreateActor<TActorInterface>(actorId);
     }
 
     /// <inheritdoc />
