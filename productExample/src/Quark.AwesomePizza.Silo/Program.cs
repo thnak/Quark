@@ -57,6 +57,8 @@ public class Program
     {
         var config = app.Services.GetRequiredService<QuarkSiloOptions>();
 
+        // Map gRPC service endpoint for actor invocations
+        app.MapQuarkGrpcService();
 
         // Display startup banner
         Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
@@ -76,6 +78,7 @@ public class Program
         Console.WriteLine("   • Actors = Hosted in Silo, accessed via IClusterClient");
         Console.WriteLine("   • Gateway = Uses IClusterClient to call actors");
         Console.WriteLine("   • MQTT = Uses IClusterClient to update actors");
+        Console.WriteLine("   • gRPC Server = Listening for actor invocations");
         Console.WriteLine();
     }
 }
