@@ -9,7 +9,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Actor that aggregates restaurant-level metrics and operations.
 /// Demonstrates multi-stream aggregation pattern.
 /// </summary>
-[Actor(Name = "Restaurant", Reentrant = false)]
+[Actor(InterfaceType = typeof(IRestaurantActor), Reentrant = false)]
 public class RestaurantActor : ActorBase, IRestaurantActor
 {
     private RestaurantMetrics? _metrics;

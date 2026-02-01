@@ -9,7 +9,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Actor that manages inventory for a restaurant.
 /// Tracks ingredient stock levels and triggers reorder reminders.
 /// </summary>
-[Actor(Name = "Inventory", Reentrant = false)]
+[Actor(InterfaceType = typeof(IInventoryActor), Reentrant = false)]
 public class InventoryActor : ActorBase, IInventoryActor
 {
     private InventoryState? _state;

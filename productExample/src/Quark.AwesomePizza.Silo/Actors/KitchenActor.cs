@@ -9,7 +9,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Actor that manages kitchen operations and order queue.
 /// Demonstrates supervision pattern by managing ChefActors.
 /// </summary>
-[Actor(Name = "Kitchen", Reentrant = false)]
+[Actor(InterfaceType = typeof(IKitchenActor), Reentrant = false)]
 public class KitchenActor : ActorBase, IKitchenActor
 {
     private KitchenState? _state;
