@@ -28,6 +28,22 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
     }
 
     /// <summary>
+    /// Connection-specific state for managing response stream writes.
+    /// Each ActorStream connection gets its own instance to ensure thread-safe writes.
+    /// </summary>
+    private sealed class StreamContext : IDisposable
+    {
+        private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
+
+        public SemaphoreSlim WriteSemaphore => _writeSemaphore;
+
+        public void Dispose()
+        {
+            _writeSemaphore.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Handles bi-directional streaming for actor invocations.
     /// Reads incoming requests from remote silos and writes responses back.
     /// </summary>
@@ -39,6 +55,9 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
         var clientPeer = context.Peer; // For logging
         _logger.LogInformation("ActorStream connection established from {Peer}", clientPeer);
 
+        // Create connection-specific context for thread-safe response stream writes
+        using var streamContext = new StreamContext();
+
         try
         {
             // Subscribe to EnvelopeReceived event to send responses back
@@ -49,14 +68,23 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
                 // (responses to requests that came through this connection)
                 var protoMessage = ToProtoMessage(envelope);
                 
-                // Write async in a fire-and-forget manner
-                // The response stream is thread-safe in gRPC
+                // Write async with synchronization to prevent concurrent writes
+                // gRPC response streams are NOT thread-safe and require sequential writes
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await responseStream.WriteAsync(protoMessage);
-                        _logger.LogTrace("Response sent for message {MessageId}", envelope.MessageId);
+                        // Acquire semaphore to ensure only one write at a time
+                        await streamContext.WriteSemaphore.WaitAsync();
+                        try
+                        {
+                            await responseStream.WriteAsync(protoMessage);
+                            _logger.LogTrace("Response sent for message {MessageId}", envelope.MessageId);
+                        }
+                        finally
+                        {
+                            streamContext.WriteSemaphore.Release();
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -93,14 +121,23 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
                     {
                         _logger.LogError(ex, "Error processing incoming message");
                         
-                        // Send error response back to client
+                        // Send error response back to client with synchronization
                         var errorResponse = new EnvelopeMessage
                         {
                             MessageId = message.MessageId,
                             IsError = true,
                             ErrorMessage = ex.Message
                         };
-                        await responseStream.WriteAsync(errorResponse);
+                        
+                        await streamContext.WriteSemaphore.WaitAsync();
+                        try
+                        {
+                            await responseStream.WriteAsync(errorResponse);
+                        }
+                        finally
+                        {
+                            streamContext.WriteSemaphore.Release();
+                        }
                     }
                 }
             }
