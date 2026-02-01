@@ -12,8 +12,20 @@ public sealed class ActorAttribute : Attribute
     /// <summary>
     /// Gets or sets the name of the actor type.
     /// If not specified, the class name is used.
+    /// This name is used for actor type registration and remote invocation.
     /// </summary>
     public string? Name { get; set; }
+
+    /// <summary>
+    /// Gets or sets the interface type that this actor implements for remote calls.
+    /// If specified, the actor will be registered under the fully qualified interface name,
+    /// allowing clients to call it via ActorProxyFactory.CreateProxy&lt;TInterface&gt;().
+    /// </summary>
+    /// <remarks>
+    /// Example: [Actor(InterfaceType = typeof(ICounterActor))]
+    /// This registers the actor under "MyNamespace.ICounterActor" instead of the class name.
+    /// </remarks>
+    public Type? InterfaceType { get; set; }
 
     /// <summary>
     /// Gets or sets whether this actor supports reentrancy.

@@ -384,7 +384,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
         // Generate proxy methods
         foreach (var method in methods)
         {
-            GenerateProxyMethod(source, interfaceName, method);
+            GenerateProxyMethod(source, interfaceName, fullInterfaceName, method);
         }
 
         source.AppendLine($"    }}");
@@ -393,7 +393,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
         context.AddSource($"{interfaceName}Proxy.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
     }
 
-    private static void GenerateProxyMethod(StringBuilder source, string interfaceName, IMethodSymbol method)
+    private static void GenerateProxyMethod(StringBuilder source, string interfaceName, string fullInterfaceName, IMethodSymbol method)
     {
         var methodName = method.Name;
         var returnType = method.ReturnType.ToDisplayString();
@@ -445,10 +445,9 @@ public class ProxySourceGenerator : IIncrementalGenerator
 
         source.AppendLine();
 
-        // Determine actor type name (remove 'I' prefix from interface name)
-        var actorTypeName = interfaceName.StartsWith("I") && interfaceName.Length > 1
-            ? interfaceName.Substring(1)
-            : interfaceName;
+        // Use fully qualified interface name as actor type for uniqueness across namespaces
+        // This prevents conflicts when multiple actors with same simple name exist
+        var actorTypeName = fullInterfaceName;
 
         // Create envelope
         source.AppendLine($"            var envelope = new QuarkEnvelope(");

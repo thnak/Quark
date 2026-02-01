@@ -85,7 +85,7 @@ public class ContextBasedProxyGenerationTests
         Assert.Equal(expectedResult, result);
         Assert.NotNull(capturedEnvelope);
         Assert.Equal(actorId, capturedEnvelope.ActorId);
-        Assert.Equal("ExternalLibraryActor", capturedEnvelope.ActorType);
+        Assert.Equal("Quark.Tests.IExternalLibraryActor", capturedEnvelope.ActorType);
         Assert.Equal("CalculateAsync", capturedEnvelope.MethodName);
         Assert.NotEmpty(capturedEnvelope.Payload);
         

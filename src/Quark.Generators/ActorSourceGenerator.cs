@@ -83,13 +83,16 @@ public class ActorSourceGenerator : IIncrementalGenerator
             var className = classSymbol.Name;
             var fullClassName = classSymbol.ToDisplayString();
             var namespaceName = GetNamespace(classDeclaration);
+            
+            // Extract actor type name from [Actor(Name = "...")] attribute or use class name
+            var actorTypeName = GetActorTypeName(classSymbol) ?? className;
 
             // Generate factory method for this actor
             GenerateActorFactory(context, className, fullClassName, namespaceName, classSymbol);
 
-            // Add to registration list with fully qualified factory name
+            // Add to registration list with actor type name and fully qualified factory name
             registrations.AppendLine(
-                $"        ActorFactoryRegistry.RegisterFactory<{fullClassName}>({namespaceName}.{className}Factory.Create);");
+                $"        ActorFactoryRegistry.RegisterFactory<{fullClassName}>(\"{actorTypeName}\", {namespaceName}.{className}Factory.Create);");
         }
 
         // Generate the module initializer
@@ -215,5 +218,35 @@ public class ActorSourceGenerator : IIncrementalGenerator
             .FirstOrDefault();
 
         return fileScopedNamespace?.Name.ToString() ?? "Global";
+    }
+
+    private static string? GetActorTypeName(INamedTypeSymbol classSymbol)
+    {
+        // Find the [Actor] attribute
+        var actorAttribute = classSymbol.GetAttributes()
+            .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == "Quark.Abstractions.ActorAttribute");
+
+        if (actorAttribute == null)
+            return null;
+
+        // First, check for InterfaceType property - if specified, use the fully qualified interface name
+        foreach (var namedArg in actorAttribute.NamedArguments)
+        {
+            if (namedArg.Key == "InterfaceType" && namedArg.Value.Value is INamedTypeSymbol interfaceType)
+            {
+                return interfaceType.ToDisplayString();
+            }
+        }
+
+        // Next, check for Name property - if specified, use it as the actor type name
+        foreach (var namedArg in actorAttribute.NamedArguments)
+        {
+            if (namedArg.Key == "Name" && namedArg.Value.Value is string name && !string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+        }
+
+        return null;
     }
 }
