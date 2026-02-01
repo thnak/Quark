@@ -70,7 +70,15 @@ public static class RedisClusteringExtensions
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var siloOptions = sp.GetRequiredService<QuarkSiloOptions>();
             var siloId = siloOptions.SiloId ?? Guid.NewGuid().ToString("N");
-            
+
+            return new RedisClusterMembership(redis, siloId);
+        });
+        builder.Services.TryAddSingleton<IQuarkClusterMembership>(sp =>
+        {
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            var siloOptions = sp.GetRequiredService<QuarkSiloOptions>();
+            var siloId = siloOptions.SiloId ?? Guid.NewGuid().ToString("N");
+
             return new RedisClusterMembership(redis, siloId);
         });
 
@@ -83,7 +91,7 @@ public static class RedisClusteringExtensions
                 var healthOptions = new RedisConnectionHealthOptions();
                 configureHealthOptions?.Invoke(healthOptions);
                 var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<RedisConnectionHealthMonitor>>();
-                
+
                 return new RedisConnectionHealthMonitor(redis, healthOptions, logger);
             });
         }
@@ -133,14 +141,14 @@ public static class RedisClusteringExtensions
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var db = redis.GetDatabase();
-            
+
             // Try to get the Redis membership to access hash ring
             IConsistentHashRing? hashRing = null;
             if (sp.GetService<IClusterMembership>() is RedisClusterMembership redisMembership)
             {
                 hashRing = redisMembership.HashRing;
             }
-            
+
             return new RedisReminderTable(db, hashRing);
         });
 
@@ -200,7 +208,7 @@ public static class RedisClusteringExtensions
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var clientOptions = sp.GetRequiredService<ClusterClientOptions>();
             var clientId = clientOptions.ClientId ?? Guid.NewGuid().ToString("N");
-            
+
             return new RedisClusterMembership(redis, clientId);
         });
 
@@ -213,7 +221,7 @@ public static class RedisClusteringExtensions
                 var healthOptions = new RedisConnectionHealthOptions();
                 configureHealthOptions?.Invoke(healthOptions);
                 var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<RedisConnectionHealthMonitor>>();
-                
+
                 return new RedisConnectionHealthMonitor(redis, healthOptions, logger);
             });
         }

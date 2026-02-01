@@ -2,7 +2,7 @@ using Quark.Abstractions;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
-namespace Quark.AwesomePizza.Shared.Actors;
+namespace Quark.AwesomePizza.Silo.Actors;
 
 /// <summary>
 /// Actor that aggregates restaurant-level metrics and operations.

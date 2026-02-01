@@ -1,7 +1,8 @@
 using Quark.Abstractions;
-using Quark.Core.Actors;
-using Quark.AwesomePizza.Shared.Client;
-using Quark.AwesomePizza.Silo.Services;
+using Quark.AwesomePizza.Silo.BackgroundServices;
+using Quark.AwesomePizza.Silo.Configs;
+using Quark.Client;
+using Quark.Extensions.DependencyInjection;
 
 namespace Quark.AwesomePizza.Silo;
 
@@ -17,7 +18,7 @@ public class Program
         var builder = WebApplication.CreateSlimBuilder(args);
 
         // Configure services
-        ConfigureServices(builder.Services, builder.Configuration);
+        ConfigureServices(builder, builder.Configuration);
 
         var app = builder.Build();
 
@@ -28,33 +29,41 @@ public class Program
         await app.RunAsync();
     }
 
-    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    private static void ConfigureServices(IHostApplicationBuilder applicationBuilder,
+        IConfiguration configuration)
     {
         // Get configuration values
-        var siloId = Environment.GetEnvironmentVariable("SILO_ID") 
-            ?? configuration["Silo:Id"] 
-            ?? $"silo-{Guid.NewGuid():N}";
-        
-        var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") 
-            ?? configuration["Redis:Host"] 
-            ?? "localhost";
-        
-        var redisPort = Environment.GetEnvironmentVariable("REDIS_PORT") 
-            ?? configuration["Redis:Port"] 
-            ?? "6379";
-        
-        var mqttHost = Environment.GetEnvironmentVariable("MQTT_HOST") 
-            ?? configuration["Mqtt:Host"] 
-            ?? "localhost";
-        
-        var mqttPort = int.Parse(Environment.GetEnvironmentVariable("MQTT_PORT") 
-            ?? configuration["Mqtt:Port"] 
-            ?? "1883");
+        var siloId = Environment.GetEnvironmentVariable("SILO_ID")
+                     ?? configuration["Silo:Id"]
+                     ?? $"silo-{Guid.NewGuid():N}";
+
+        var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST")
+                        ?? configuration["Redis:Host"]
+                        ?? "localhost";
+
+        var redisPort = Environment.GetEnvironmentVariable("REDIS_PORT")
+                        ?? configuration["Redis:Port"]
+                        ?? "6379";
+
+        var mqttHost = Environment.GetEnvironmentVariable("MQTT_HOST")
+                       ?? configuration["Mqtt:Host"]
+                       ?? "localhost";
+
+        var mqttPort = int.Parse(Environment.GetEnvironmentVariable("MQTT_PORT")
+                                 ?? configuration["Mqtt:Port"]
+                                 ?? "1883");
 
         // Register core services
-        services.AddSingleton<IActorFactory, ActorFactory>();
-        services.AddSingleton<IClusterClient, InProcessClusterClient>();
-        
+        applicationBuilder.UseQuark(configure: options => { options.SiloId = siloId; }, siloConfigure: builder =>
+        {
+            builder.WithGrpcTransport();
+            builder.WithRedisClustering(connectionString: redisHost);
+            builder.WithStreaming();
+            
+            builder.WithServerlessActors();
+        });
+        var services = applicationBuilder.Services;
+
         // Register MQTT service
         services.AddSingleton<MqttService>(sp =>
         {
@@ -62,7 +71,7 @@ public class Program
             var activeActors = new Dictionary<string, IActor>(); // TODO: Share with cluster client
             return new MqttService(actorFactory, activeActors, mqttHost, mqttPort);
         });
-        
+
         services.AddHostedService<MqttHostedService>();
 
         // Store configuration for later use
@@ -86,7 +95,7 @@ public class Program
 
         // Display startup banner
         Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
-        Console.WriteLine("║       Awesome Pizza - Quark Silo Host                   ║");
+        Console.WriteLine("║       Awesome Pizza - Quark Silo Host                    ║");
         Console.WriteLine("║       Clean Architecture with WebSlimBuilder             ║");
         Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
         Console.WriteLine();
@@ -105,40 +114,5 @@ public class Program
         Console.WriteLine("   • Gateway = Uses IClusterClient to call actors");
         Console.WriteLine("   • MQTT = Uses IClusterClient to update actors");
         Console.WriteLine();
-    }
-}
-
-/// <summary>
-/// Silo configuration.
-/// </summary>
-public record SiloConfiguration
-{
-    public string SiloId { get; init; } = string.Empty;
-    public string RedisHost { get; init; } = string.Empty;
-    public string RedisPort { get; init; } = string.Empty;
-    public string MqttHost { get; init; } = string.Empty;
-    public int MqttPort { get; init; }
-}
-
-/// <summary>
-/// Hosted service for MQTT integration.
-/// </summary>
-public class MqttHostedService : IHostedService
-{
-    private readonly MqttService _mqttService;
-
-    public MqttHostedService(MqttService mqttService)
-    {
-        _mqttService = mqttService;
-    }
-
-    public async Task StartAsync(CancellationToken cancellationToken)
-    {
-        await _mqttService.StartAsync(cancellationToken);
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        await _mqttService.StopAsync();
     }
 }

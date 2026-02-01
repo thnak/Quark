@@ -2,7 +2,7 @@ using Quark.Abstractions;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
-namespace Quark.AwesomePizza.Shared.Actors;
+namespace Quark.AwesomePizza.Silo.Actors;
 
 /// <summary>
 /// Actor that manages an individual chef's workload and cooking tasks.

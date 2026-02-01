@@ -1,4 +1,3 @@
-using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Client;
-using Quark.Networking.Abstractions;
 
 namespace Quark.Extensions.DependencyInjection;
 

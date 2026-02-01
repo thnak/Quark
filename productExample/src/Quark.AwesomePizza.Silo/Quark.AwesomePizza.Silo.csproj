@@ -22,6 +22,7 @@
     <ProjectReference Include="../../../src/Quark.Hosting/Quark.Hosting.csproj" />
     <ProjectReference Include="../../../src/Quark.Clustering.Redis/Quark.Clustering.Redis.csproj" />
     <ProjectReference Include="../../../src/Quark.Storage.Redis/Quark.Storage.Redis.csproj" />
+    <ProjectReference Include="..\..\..\src\Quark.Extensions.DependencyInjection\Quark.Extensions.DependencyInjection.csproj" />
   </ItemGroup>
 
 </Project>
