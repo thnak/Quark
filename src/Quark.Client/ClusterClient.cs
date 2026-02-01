@@ -17,6 +17,7 @@ public sealed class ClusterClient : IClusterClient
     private readonly ILogger<ClusterClient> _logger;
     private readonly string _clientId;
     private bool _isConnected;
+    private CancellationTokenSource? _shutdownCts;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClusterClient"/> class.
@@ -54,6 +55,9 @@ public sealed class ClusterClient : IClusterClient
 
         try
         {
+            // Create cancellation token source for lifecycle management
+            _shutdownCts = new CancellationTokenSource();
+
             // Subscribe to silo membership changes to establish/teardown connections
             _clusterMembership.SiloJoined += OnSiloJoined;
             _clusterMembership.SiloLeft += OnSiloLeft;
@@ -123,6 +127,11 @@ public sealed class ClusterClient : IClusterClient
         try
         {
             _isConnected = false;
+
+            // Cancel any pending operations
+            _shutdownCts?.Cancel();
+            _shutdownCts?.Dispose();
+            _shutdownCts = null;
 
             // Unsubscribe from membership changes
             _clusterMembership.SiloJoined -= OnSiloJoined;
@@ -255,39 +264,54 @@ public sealed class ClusterClient : IClusterClient
     /// <summary>
     /// Handles the SiloJoined event by establishing a gRPC connection to the new silo.
     /// </summary>
-    private async void OnSiloJoined(object? sender, SiloInfo siloInfo)
+    private void OnSiloJoined(object? sender, SiloInfo siloInfo)
     {
-        try
+        // Fire and forget - don't block the event
+        _ = Task.Run(async () =>
         {
-            _logger.LogInformation("Silo {SiloId} joined the cluster at {Endpoint}, establishing connection",
-                siloInfo.SiloId, siloInfo.Endpoint);
+            try
+            {
+                _logger.LogInformation("Silo {SiloId} joined the cluster at {Endpoint}, establishing connection",
+                    siloInfo.SiloId, siloInfo.Endpoint);
 
-            await _transport.ConnectAsync(siloInfo, CancellationToken.None);
+                var cts = _shutdownCts;
+                if (cts == null || cts.IsCancellationRequested)
+                {
+                    _logger.LogDebug("Skipping connection to silo {SiloId} - client is shutting down", siloInfo.SiloId);
+                    return;
+                }
 
-            _logger.LogInformation("Successfully connected to silo {SiloId}", siloInfo.SiloId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to connect to newly joined silo {SiloId}", siloInfo.SiloId);
-        }
+                await _transport.ConnectAsync(siloInfo, cts.Token);
+
+                _logger.LogInformation("Successfully connected to silo {SiloId}", siloInfo.SiloId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to connect to newly joined silo {SiloId}", siloInfo.SiloId);
+            }
+        });
     }
 
     /// <summary>
     /// Handles the SiloLeft event by cleaning up the gRPC connection to the departed silo.
     /// </summary>
-    private async void OnSiloLeft(object? sender, SiloInfo siloInfo)
+    private void OnSiloLeft(object? sender, SiloInfo siloInfo)
     {
-        try
+        // Fire and forget - don't block the event
+        _ = Task.Run(async () =>
         {
-            _logger.LogInformation("Silo {SiloId} left the cluster, cleaning up connection", siloInfo.SiloId);
+            try
+            {
+                _logger.LogInformation("Silo {SiloId} left the cluster, cleaning up connection", siloInfo.SiloId);
 
-            await _transport.DisconnectAsync(siloInfo.SiloId);
+                await _transport.DisconnectAsync(siloInfo.SiloId);
 
-            _logger.LogInformation("Successfully disconnected from silo {SiloId}", siloInfo.SiloId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to disconnect from departed silo {SiloId}", siloInfo.SiloId);
-        }
+                _logger.LogInformation("Successfully disconnected from silo {SiloId}", siloInfo.SiloId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to disconnect from departed silo {SiloId}", siloInfo.SiloId);
+            }
+        });
     }
 }
