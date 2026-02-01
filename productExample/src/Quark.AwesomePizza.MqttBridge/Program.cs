@@ -25,8 +25,8 @@ internal class Program
     private static async Task Main(string[] args)
     {
         Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
-        Console.WriteLine("║       Awesome Pizza - MQTT Bridge Service               ║");
-        Console.WriteLine("║       Real-time IoT Integration with MQTTnet            ║");
+        Console.WriteLine("║       Awesome Pizza - MQTT Bridge Service                ║");
+        Console.WriteLine("║       Real-time IoT Integration with MQTTnet             ║");
         Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
         Console.WriteLine();
 

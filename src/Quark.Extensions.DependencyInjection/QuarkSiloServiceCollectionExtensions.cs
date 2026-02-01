@@ -6,7 +6,6 @@ using Quark.Abstractions;
 using Quark.Core.Actors;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
-using Quark.Extensions.DependencyInjection.SingletonStartupServices;
 using Quark.Hosting;
 
 namespace Quark.Extensions.DependencyInjection;

@@ -63,6 +63,8 @@ public sealed class ClusterClient : IClusterClient
                 var silos = await _clusterMembership.GetActiveSilosAsync(cancellationToken);
                 if (silos.Count > 0)
                 {
+                    _isConnected = true;
+                    _logger.LogInformation("Client {ClientId} connected to cluster successfully", _clientId);
                     _logger.LogInformation("Client {ClientId} discovered {Count} active silos", _clientId, silos.Count);
                     break;
                 }
@@ -79,8 +81,10 @@ public sealed class ClusterClient : IClusterClient
                 }
             }
 
-            _isConnected = true;
-            _logger.LogInformation("Client {ClientId} connected to cluster successfully", _clientId);
+            if (!_isConnected)
+            {
+                throw new InvalidOperationException("Failed to connect to cluster: no active silos found.");
+            }
         }
         catch (Exception ex)
         {

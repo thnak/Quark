@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Quark.Abstractions\Quark.Abstractions.csproj" />
+        <ProjectReference Include="..\Quark.Client\Quark.Client.csproj" />
         <ProjectReference Include="..\Quark.Core.Actors\Quark.Core.Actors.csproj" />
         <ProjectReference Include="..\Quark.Core.Reminders\Quark.Core.Reminders.csproj" />
         <ProjectReference Include="..\Quark.Core.Streaming\Quark.Core.Streaming.csproj" />

@@ -105,6 +105,10 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             // 6. Start heartbeat task
             _heartbeatTask = HeartbeatLoopAsync(_heartbeatCts.Token);
+            
+            // 7. Log active silos in cluster
+            var activeSilos = await _clusterMembership.GetActiveSilosAsync(cancellationToken);
+            _logger.LogInformation("Silo {SiloId} discovered {Count} active silos in cluster", SiloId, activeSilos.Count);
 
             _logger.LogInformation("Quark Silo {SiloId} started successfully", SiloId);
         }
