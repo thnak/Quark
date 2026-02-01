@@ -538,11 +538,46 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             // 5. Post message to mailbox for sequential processing
             var message = new ActorEnvelopeMessage(envelope);
-            _ = mailbox.PostAsync(message, CancellationToken.None);
-
-            _logger.LogTrace(
-                "Envelope {MessageId} posted to mailbox for actor {ActorId}",
-                envelope.MessageId, envelope.ActorId);
+            
+            // Fire and forget the posting (but log any failures)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var posted = await mailbox.PostAsync(message, CancellationToken.None);
+                    
+                    if (!posted)
+                    {
+                        _logger.LogWarning(
+                            "Failed to post envelope {MessageId} to mailbox for actor {ActorId} (channel may be closed)",
+                            envelope.MessageId, envelope.ActorId);
+                            
+                        var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                            envelope.MessageId,
+                            envelope.ActorId,
+                            envelope.ActorType,
+                            envelope.MethodName,
+                            Array.Empty<byte>(),
+                            envelope.CorrelationId)
+                        {
+                            IsError = true,
+                            ErrorMessage = "Failed to post message to mailbox"
+                        };
+                        
+                        _transport.SendResponse(errorResponse);
+                    }
+                    else
+                    {
+                        _logger.LogTrace(
+                            "Envelope {MessageId} posted to mailbox for actor {ActorId}",
+                            envelope.MessageId, envelope.ActorId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error posting message to mailbox for actor {ActorId}", envelope.ActorId);
+                }
+            });
         }
         catch (Exception ex)
         {

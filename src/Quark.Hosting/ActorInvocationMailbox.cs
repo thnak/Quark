@@ -93,8 +93,10 @@ internal sealed class ActorInvocationMailbox : IDisposable
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        // Signal the channel that no more messages will be written
         _channel.Writer.Complete();
 
+        // Wait for processing to complete
         if (_processingTask != null)
         {
             try
@@ -110,8 +112,6 @@ internal sealed class ActorInvocationMailbox : IDisposable
                 _processingTask = null;
             }
         }
-
-        await _cts.CancelAsync();
     }
 
     /// <summary>
@@ -202,20 +202,15 @@ internal sealed class ActorInvocationMailbox : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_processingTask != null && !_processingTask.IsCompleted)
-        {
-            _channel.Writer.Complete();
-            try
-            {
-                _processingTask.GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected when cancellation is requested
-            }
-        }
-
+        // Complete the channel to signal no more messages
+        _channel.Writer.Complete();
+        
+        // Cancel processing
         _cts.Cancel();
+        
+        // Don't wait for the task to complete in Dispose to avoid potential deadlocks
+        // The task will complete when the channel is drained
+        
         _cts.Dispose();
     }
 }
