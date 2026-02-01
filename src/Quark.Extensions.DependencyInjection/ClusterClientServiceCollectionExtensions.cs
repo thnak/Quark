@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Client;
 using Quark.Clustering.Redis;
+using Quark.Extensions.DependencyInjection.SingletonStartupServices;
 using StackExchange.Redis;
 
 namespace Quark.Extensions.DependencyInjection;
@@ -17,6 +18,7 @@ public static class ClusterClientServiceCollectionExtensions
     {
         var client = services.AddQuarkClient(configure);
         clientBuilderConfigure?.Invoke(client);
+        services.AddHostedService<StartClusterClientHostedService>();
     }
 
     /// <summary>

@@ -6,6 +6,7 @@ using Quark.Abstractions;
 using Quark.Core.Actors;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
+using Quark.Extensions.DependencyInjection.SingletonStartupServices;
 using Quark.Hosting;
 
 namespace Quark.Extensions.DependencyInjection;
@@ -27,6 +28,7 @@ public static class QuarkSiloServiceCollectionExtensions
         siloConfigure?.Invoke(siloBuilder);
         hostBuilder.Services.AddQuarkClient();
         hostBuilder.Services.AddActorActivityTracking();
+        hostBuilder.Services.AddHostedService<StartClusterClientHostedService>();
     }
 
     /// <summary>

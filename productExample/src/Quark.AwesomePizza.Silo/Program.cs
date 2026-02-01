@@ -1,4 +1,3 @@
-using Quark.Client;
 using Quark.Extensions.DependencyInjection;
 using Quark.Hosting;
 
@@ -21,7 +20,7 @@ public class Program
         var app = builder.Build();
 
         // Configure app
-        await ConfigureApp(app);
+        ConfigureApp(app);
 
         // Run the application
         await app.RunAsync();
@@ -45,22 +44,19 @@ public class Program
             builder.WithGrpcTransport();
             builder.WithRedisClustering(connectionString: redisHost);
             builder.WithStreaming();
-            
+
             builder.WithServerlessActors();
         });
         var services = applicationBuilder.Services;
 
-        
+
         services.AddLogging();
     }
 
-    private static async Task ConfigureApp(WebApplication app)
+    private static void ConfigureApp(WebApplication app)
     {
         var config = app.Services.GetRequiredService<QuarkSiloOptions>();
-        var clusterClient = app.Services.GetRequiredService<IClusterClient>();
 
-        // Connect to cluster (in-process for now)
-        await clusterClient.ConnectAsync();
 
         // Display startup banner
         Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
