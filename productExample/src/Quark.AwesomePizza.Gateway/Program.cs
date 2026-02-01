@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
-using Quark.Abstractions;
-using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Actors;
+using Quark.AwesomePizza.Shared.Interfaces;
+using Quark.Client;
+using Quark.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -13,6 +13,14 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     options.SerializerOptions.WriteIndented = true;
 });
+ConfigureServices(builder);
+
+void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
+{
+    // Add logging
+    webApplicationBuilder.Services.AddLogging();
+    webApplicationBuilder.Services.AddQuarkClient();
+}
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -20,32 +28,13 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 });
 
 var app = builder.Build();
 
-// ============================================
-// IMPORTANT: Gateway Architecture Pattern
-// ============================================
-// In the correct architecture:
-// 1. Gateway connects to Silo via IClusterClient or gRPC
-// 2. Gateway does NOT create actors locally
-// 3. All actors live in the Silo
-//
-// Current implementation (for demo):
-// - Using local actors for simplicity
-// - TODO: Replace with proper client-to-silo communication
-//
-// The proper pattern would be:
-//   var siloClient = new SiloClient("localhost:7000"); // gRPC endpoint
-//   var orderActor = await siloClient.GetActorAsync<OrderActor>(orderId);
-// ============================================
-
-var actorFactory = new ActorFactory();
-var activeActors = new ConcurrentDictionary<string, IActor>();
 
 app.UseCors();
 
@@ -59,29 +48,6 @@ Console.WriteLine("⚠️  NOTE: This gateway should connect to Silo");
 Console.WriteLine("    For now, it creates local actors (demo mode)");
 Console.WriteLine("    In production: Use IClusterClient or gRPC");
 Console.WriteLine();
-
-// Helper methods
-// TODO: Replace these with calls to Silo via IClusterClient or gRPC
-async Task<OrderActor> GetOrCreateOrderActorAsync(string orderId)
-{
-    if (!activeActors.TryGetValue(orderId, out var actorBase))
-    {
-        return null!;
-    }
-    return actorBase as OrderActor ?? null!;
-}
-
-async Task<DriverActor> GetOrCreateDriverActorAsync(string driverId)
-{
-    if (!activeActors.TryGetValue(driverId, out var actorBase))
-    {
-        var actor = actorFactory.CreateActor<DriverActor>(driverId);
-        await actor.OnActivateAsync();
-        activeActors[driverId] = actor;
-        return actor;
-    }
-    return actorBase as DriverActor ?? null!;
-}
 
 // ===== Root Endpoint =====
 
@@ -112,14 +78,13 @@ app.MapGet("/", () => Results.Ok(new
 /// <summary>
 /// Create a new pizza order
 /// </summary>
-app.MapPost("/api/orders", async (CreateOrderRequest request) =>
+app.MapPost("/api/orders", async (CreateOrderRequest request, HttpContext ctx) =>
 {
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+
     var orderId = $"order-{Guid.NewGuid():N}";
-    var actor = actorFactory.CreateActor<OrderActor>(orderId);
-    
-    await actor.OnActivateAsync();
-    activeActors[orderId] = actor;
-    
+    var actor = cluster.GetActor<OrderActor>(orderId);
+
     var response = await actor.CreateOrderAsync(request);
     return Results.Created($"/api/orders/{orderId}", response);
 });
@@ -127,12 +92,11 @@ app.MapPost("/api/orders", async (CreateOrderRequest request) =>
 /// <summary>
 /// Get order details
 /// </summary>
-app.MapGet("/api/orders/{orderId}", async (string orderId) =>
+app.MapGet("/api/orders/{orderId}", async (string orderId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor = cluster.GetActor<OrderActor>(orderId);
+
     var order = await actor.GetOrderAsync();
     return order != null ? Results.Ok(order) : Results.NotFound();
 });
@@ -140,12 +104,12 @@ app.MapGet("/api/orders/{orderId}", async (string orderId) =>
 /// <summary>
 /// Confirm an order (send to kitchen)
 /// </summary>
-app.MapPost("/api/orders/{orderId}/confirm", async (string orderId) =>
+app.MapPost("/api/orders/{orderId}/confirm", async (string orderId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor = cluster.GetActor<OrderActor>(orderId);
+   
+
     var order = await actor.ConfirmOrderAsync();
     return Results.Ok(order);
 });
@@ -153,12 +117,11 @@ app.MapPost("/api/orders/{orderId}/confirm", async (string orderId) =>
 /// <summary>
 /// Assign a driver to an order
 /// </summary>
-app.MapPost("/api/orders/{orderId}/assign-driver", async (string orderId, string driverId) =>
+app.MapPost("/api/orders/{orderId}/assign-driver", async (string orderId, string driverId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor = cluster.GetActor<OrderActor>(orderId);
+
     var order = await actor.AssignDriverAsync(driverId);
     return Results.Ok(order);
 });
@@ -166,12 +129,12 @@ app.MapPost("/api/orders/{orderId}/assign-driver", async (string orderId, string
 /// <summary>
 /// Start delivery (driver picked up the order)
 /// </summary>
-app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId) =>
+app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor = cluster.GetActor<OrderActor>(orderId);
+ 
+
     var order = await actor.StartDeliveryAsync();
     return Results.Ok(order);
 });
@@ -179,12 +142,11 @@ app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId) =>
 /// <summary>
 /// Complete delivery (mark as delivered)
 /// </summary>
-app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId) =>
+app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor  = cluster.GetActor<OrderActor>(orderId); 
+
     var order = await actor.CompleteDeliveryAsync();
     return Results.Ok(order);
 });
@@ -192,12 +154,11 @@ app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId) =>
 /// <summary>
 /// Cancel an order
 /// </summary>
-app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason) =>
+app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor  = cluster.GetActor<OrderActor>(orderId); 
+
     var order = await actor.CancelOrderAsync(reason);
     return Results.Ok(order);
 });
@@ -205,26 +166,25 @@ app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason
 /// <summary>
 /// Real-time order tracking using Server-Sent Events (SSE)
 /// </summary>
-app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext context) =>
+app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateOrderActorAsync(orderId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Order {orderId} not found" });
-    
-    var response = context.Response;
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor  = cluster.GetActor<OrderActor>(orderId); 
+
+    var response = ctx.Response;
     response.Headers.Append("Content-Type", "text/event-stream");
     response.Headers.Append("Cache-Control", "no-cache");
     response.Headers.Append("Connection", "keep-alive");
-    
+
     void OnUpdate(OrderStatusUpdate update)
     {
         var json = JsonSerializer.Serialize(update);
         response.WriteAsync($"data: {json}\n\n").GetAwaiter().GetResult();
         response.Body.FlushAsync().GetAwaiter().GetResult();
     }
-    
+
     actor.Subscribe(OnUpdate);
-    
+
     try
     {
         // Send initial state
@@ -237,14 +197,14 @@ app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext con
                 DateTime.UtcNow,
                 currentState.CurrentDriverLocation,
                 "Connected to order tracking");
-            
+
             var json = JsonSerializer.Serialize(initialUpdate);
             await response.WriteAsync($"data: {json}\n\n");
             await response.Body.FlushAsync();
         }
-        
+
         // Keep connection alive
-        await Task.Delay(Timeout.Infinite, context.RequestAborted);
+        await Task.Delay(Timeout.Infinite, ctx.RequestAborted);
     }
     catch (OperationCanceledException)
     {
@@ -254,7 +214,7 @@ app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext con
     {
         actor.Unsubscribe(OnUpdate);
     }
-    
+
     return Results.Empty;
 });
 
@@ -265,22 +225,15 @@ app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext con
 /// </summary>
 app.MapPost("/api/drivers", async (string driverId, string name) =>
 {
-    var actor = await GetOrCreateDriverActorAsync(driverId);
-    var driver = await actor.InitializeAsync(name);
-    return Results.Created($"/api/drivers/{driverId}", driver);
+  
 });
 
 /// <summary>
 /// Get driver status
 /// </summary>
-app.MapGet("/api/drivers/{driverId}", async (string driverId) =>
+app.MapGet("/api/drivers/{driverId}", async (string driverId, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateDriverActorAsync(driverId);
-    if (actor == null)
-        return Results.NotFound(new { message = $"Driver {driverId} not found" });
-    
-    var driver = await actor.GetStateAsync();
-    return driver != null ? Results.Ok(driver) : Results.NotFound();
+
 });
 
 /// <summary>
@@ -288,23 +241,18 @@ app.MapGet("/api/drivers/{driverId}", async (string driverId) =>
 /// </summary>
 app.MapPost("/api/drivers/{driverId}/location", async (
     string driverId,
-    UpdateDriverLocationRequest request) =>
+    UpdateDriverLocationRequest request, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateDriverActorAsync(driverId);
-    var driver = await actor.UpdateLocationAsync(
-        request.Latitude,
-        request.Longitude,
-        request.Timestamp);
-    
-    return Results.Ok(driver);
+  
 });
 
 /// <summary>
 /// Update driver status
 /// </summary>
-app.MapPost("/api/drivers/{driverId}/status", async (string driverId, DriverStatus status) =>
+app.MapPost("/api/drivers/{driverId}/status", async (string driverId, DriverStatus status, HttpContext ctx) =>
 {
-    var actor = await GetOrCreateDriverActorAsync(driverId);
+    var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
+    var actor  = cluster.GetActor<IDriverActor>(driverId); 
     var driver = await actor.UpdateStatusAsync(status);
     return Results.Ok(driver);
 });
@@ -316,7 +264,7 @@ app.MapGet("/health", () => Results.Ok(new
     status = "healthy",
     timestamp = DateTime.UtcNow,
     service = "Awesome Pizza Gateway",
-    activeActors = activeActors.Count
+    // activeActors = activeActors.Count
 }));
 
 // Start the application

@@ -12,6 +12,7 @@
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../../src/Quark.Client/Quark.Client.csproj" />
+    <ProjectReference Include="..\..\..\src\Quark.Extensions.DependencyInjection\Quark.Extensions.DependencyInjection.csproj" />
   </ItemGroup>
 
 </Project>
