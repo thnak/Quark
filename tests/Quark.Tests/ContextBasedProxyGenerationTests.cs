@@ -55,7 +55,7 @@ public class ContextBasedProxyGenerationTests
         var expectedResult = 30;
         
         // Create a response envelope with serialized response
-        var responseMessage = new Generated.CalculateAsyncResponse { Result = expectedResult };
+        var responseMessage = new Generated.IExternalLibraryActor_CalculateAsyncResponse { Result = expectedResult };
         byte[] responsePayload;
         using (var ms = new MemoryStream())
         {
@@ -92,7 +92,7 @@ public class ContextBasedProxyGenerationTests
         // Verify the request was serialized correctly
         using (var ms = new MemoryStream(capturedEnvelope.Payload))
         {
-            var request = ProtoBuf.Serializer.Deserialize<Generated.CalculateAsyncRequest>(ms);
+            var request = ProtoBuf.Serializer.Deserialize<Generated.IExternalLibraryActor_CalculateAsyncRequest>(ms);
             Assert.Equal(x, request.X);
             Assert.Equal(y, request.Y);
         }
@@ -131,7 +131,7 @@ public class ContextBasedProxyGenerationTests
         // Verify the request was serialized correctly
         using (var ms = new MemoryStream(capturedEnvelope.Payload))
         {
-            var request = ProtoBuf.Serializer.Deserialize<Generated.PerformOperationAsyncRequest>(ms);
+            var request = ProtoBuf.Serializer.Deserialize<Generated.IExternalLibraryActor_PerformOperationAsyncRequest>(ms);
             Assert.Equal(operation, request.Operation);
         }
         
@@ -148,7 +148,7 @@ public class ContextBasedProxyGenerationTests
         var expectedData = "Sample Data";
 
         // Create a response envelope
-        var responseMessage = new Generated.GetDataAsyncResponse { Result = expectedData };
+        var responseMessage = new Generated.IExternalLibraryActor_GetDataAsyncResponse { Result = expectedData };
         byte[] responsePayload;
         using (var ms = new MemoryStream())
         {
