@@ -1,120 +1,103 @@
-// Copyright (c) Quark Framework. All rights reserved.
-
+using System.Threading.Channels;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Transport.Grpc;
 
-/// <summary>
-/// gRPC service implementation for Quark actor transport.
-/// Handles bi-directional streaming for actor invocations between silos.
-/// This is the server-side counterpart to GrpcQuarkTransport client.
-/// </summary>
 public class QuarkTransportService : QuarkTransport.QuarkTransportBase
 {
     private readonly IQuarkTransport _transport;
     private readonly ILogger<QuarkTransportService> _logger;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="QuarkTransportService"/> class.
-    /// </summary>
-    /// <param name="transport">The local transport implementation.</param>
-    /// <param name="logger">The logger instance.</param>
     public QuarkTransportService(IQuarkTransport transport, ILogger<QuarkTransportService> logger)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    /// <summary>
-    /// Handles bi-directional streaming for actor invocations.
-    /// Reads incoming requests from remote silos and writes responses back.
-    /// </summary>
     public override async Task ActorStream(
         IAsyncStreamReader<EnvelopeMessage> requestStream,
         IServerStreamWriter<EnvelopeMessage> responseStream,
         ServerCallContext context)
     {
-        var clientPeer = context.Peer; // For logging
+        var clientPeer = context.Peer;
         _logger.LogInformation("ActorStream connection established from {Peer}", clientPeer);
+
+        // Create a channel to queue outgoing messages. 
+        // This ensures thread-safe, sequential writes to the gRPC stream.
+        var outgoingMessages = Channel.CreateUnbounded<EnvelopeMessage>(new UnboundedChannelOptions
+        {
+            SingleReader = true, // Only the writing loop will read
+            SingleWriter = false // Many actors might push responses
+        });
+
+        // 1. The Writing Loop: Reads from the channel and writes to gRPC
+        var writeTask = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var message in outgoingMessages.Reader.ReadAllAsync(context.CancellationToken))
+                {
+                    message.ResponsePayload ??= Google.Protobuf.ByteString.Empty;
+                    await responseStream.WriteAsync(message);
+                    _logger.LogTrace("Response sent for message {MessageId}", message.MessageId);
+                }
+            }
+            catch (OperationCanceledException) { /* Normal shutdown */ }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in gRPC writing loop for {Peer}", clientPeer);
+            }
+        });
+
+        // 2. The Event Handler: Pushes responses into the local channel
+        void OnEnvelopeReceived(object? sender, QuarkEnvelope envelope)
+        {
+            // Only handle messages that have a response payload or are errors
+            // (Assuming this stream handles responses to requests)
+            var protoMessage = ToProtoMessage(envelope);
+            if (!outgoingMessages.Writer.TryWrite(protoMessage))
+            {
+                _logger.LogWarning("Failed to queue response for {MessageId}", envelope.MessageId);
+            }
+        }
+
+        _transport.EnvelopeReceived += OnEnvelopeReceived;
 
         try
         {
-            // Subscribe to EnvelopeReceived event to send responses back
-            // This handles responses from local actor invocations
-            void OnEnvelopeReceived(object? sender, QuarkEnvelope envelope)
+            // 3. The Reading Loop: Processes incoming requests from the client
+            await foreach (var message in requestStream.ReadAllAsync(context.CancellationToken))
             {
-                // Only send responses back through this stream
-                // (responses to requests that came through this connection)
-                var protoMessage = ToProtoMessage(envelope);
-                
-                // Write async in a fire-and-forget manner
-                // The response stream is thread-safe in gRPC
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    var envelope = FromProtoMessage(message);
+                    
+                    if (_transport is GrpcQuarkTransport grpcTransport)
                     {
-                        await responseStream.WriteAsync(protoMessage);
-                        _logger.LogTrace("Response sent for message {MessageId}", envelope.MessageId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to send response for message {MessageId}", envelope.MessageId);
-                    }
-                });
-            }
-
-            _transport.EnvelopeReceived += OnEnvelopeReceived;
-
-            try
-            {
-                // Read incoming requests from the client stream
-                await foreach (var message in requestStream.ReadAllAsync(context.CancellationToken))
-                {
-                    try
-                    {
-                        var envelope = FromProtoMessage(message);
-                        _logger.LogTrace("Received message {MessageId} for actor {ActorId}", 
-                            envelope.MessageId, envelope.ActorId);
-
-                        // Raise the EnvelopeReceived event for local processing
-                        // This will be handled by QuarkSilo to invoke the target actor
-                        if (_transport is GrpcQuarkTransport grpcTransport)
-                        {
-                            grpcTransport.RaiseEnvelopeReceived(envelope);
-                        }
-                        else
-                        {
-                            _logger.LogWarning("Transport is not GrpcQuarkTransport, cannot raise EnvelopeReceived event");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error processing incoming message");
-                        
-                        // Send error response back to client
-                        var errorResponse = new EnvelopeMessage
-                        {
-                            MessageId = message.MessageId,
-                            IsError = true,
-                            ErrorMessage = ex.Message
-                        };
-                        await responseStream.WriteAsync(errorResponse);
+                        grpcTransport.RaiseEnvelopeReceived(envelope);
                     }
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing incoming message");
+                    outgoingMessages.Writer.TryWrite(new EnvelopeMessage
+                    {
+                        MessageId = message.MessageId,
+                        IsError = true,
+                        ErrorMessage = ex.Message
+                    });
+                }
             }
-            finally
-            {
-                _transport.EnvelopeReceived -= OnEnvelopeReceived;
-            }
-
-            _logger.LogInformation("ActorStream connection closed from {Peer}", clientPeer);
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogError(ex, "Error in ActorStream from {Peer}", clientPeer);
-            throw;
+            // Cleanup
+            _transport.EnvelopeReceived -= OnEnvelopeReceived;
+            outgoingMessages.Writer.TryComplete();
+            await writeTask; // Wait for the writer to finish draining
+            _logger.LogInformation("ActorStream connection closed from {Peer}", clientPeer);
         }
     }
 
@@ -123,10 +106,10 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
         return new EnvelopeMessage
         {
             MessageId = envelope.MessageId,
-            ActorId = envelope.ActorId,
-            ActorType = envelope.ActorType,
-            MethodName = envelope.MethodName,
-            Payload = Google.Protobuf.ByteString.CopyFrom(envelope.Payload),
+            ActorId = envelope.ActorId ?? string.Empty,
+            ActorType = envelope.ActorType ?? string.Empty,
+            MethodName = envelope.MethodName ?? string.Empty,
+            Payload = Google.Protobuf.ByteString.CopyFrom(envelope.Payload ?? Array.Empty<byte>()),
             CorrelationId = envelope.CorrelationId,
             Timestamp = envelope.Timestamp.ToUnixTimeMilliseconds(),
             ResponsePayload = envelope.ResponsePayload != null
