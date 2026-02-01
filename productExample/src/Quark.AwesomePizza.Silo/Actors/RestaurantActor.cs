@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
@@ -9,7 +10,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Demonstrates multi-stream aggregation pattern.
 /// </summary>
 [Actor(Name = "Restaurant", Reentrant = false)]
-public class RestaurantActor : ActorBase
+public class RestaurantActor : ActorBase, IRestaurantActor
 {
     private RestaurantMetrics? _metrics;
     private readonly List<string> _activeOrderIds = new();
