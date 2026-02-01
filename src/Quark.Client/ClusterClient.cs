@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Quark.Abstractions;
+using Quark.Abstractions.Clustering;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;
@@ -16,6 +17,8 @@ public sealed class ClusterClient : IClusterClient
     private readonly ILogger<ClusterClient> _logger;
     private readonly string _clientId;
     private bool _isConnected;
+    private CancellationTokenSource? _shutdownCts;
+    private readonly object _shutdownLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClusterClient"/> class.
@@ -53,9 +56,16 @@ public sealed class ClusterClient : IClusterClient
 
         try
         {
+            // Create cancellation token source for lifecycle management
+            _shutdownCts = new CancellationTokenSource();
+
             // Start cluster membership monitoring to discover silos
             await _clusterMembership.StartAsync(cancellationToken);
             _logger.LogInformation("Cluster membership monitoring started for client {ClientId}", _clientId);
+
+            // Subscribe to silo membership changes AFTER starting to avoid race conditions
+            _clusterMembership.SiloJoined += OnSiloJoined;
+            _clusterMembership.SiloLeft += OnSiloLeft;
 
             // Wait for at least one silo to be available
             var retries = 0;
@@ -67,6 +77,22 @@ public sealed class ClusterClient : IClusterClient
                     _isConnected = true;
                     _logger.LogInformation("Client {ClientId} connected to cluster successfully", _clientId);
                     _logger.LogInformation("Client {ClientId} discovered {Count} active silos", _clientId, silos.Count);
+
+                    // Establish gRPC connections to all discovered silos
+                    foreach (var silo in silos)
+                    {
+                        try
+                        {
+                            await _transport.ConnectAsync(silo, cancellationToken);
+                            _logger.LogInformation("Client {ClientId} established connection to silo {SiloId} at {Endpoint}",
+                                _clientId, silo.SiloId, silo.Endpoint);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Client {ClientId} failed to connect to silo {SiloId} at {Endpoint}",
+                                _clientId, silo.SiloId, silo.Endpoint);
+                        }
+                    }
                     break;
                 }
 
@@ -102,6 +128,18 @@ public sealed class ClusterClient : IClusterClient
         try
         {
             _isConnected = false;
+
+            // Cancel any pending operations in thread-safe manner
+            lock (_shutdownLock)
+            {
+                _shutdownCts?.Cancel();
+                _shutdownCts?.Dispose();
+                _shutdownCts = null;
+            }
+
+            // Unsubscribe from membership changes
+            _clusterMembership.SiloJoined -= OnSiloJoined;
+            _clusterMembership.SiloLeft -= OnSiloLeft;
 
             // Stop cluster membership monitoring
             await _clusterMembership.StopAsync(cancellationToken);
@@ -225,5 +263,68 @@ public sealed class ClusterClient : IClusterClient
     public void Dispose()
     {
         _transport.Dispose();
+    }
+
+    /// <summary>
+    /// Handles the SiloJoined event by establishing a gRPC connection to the new silo.
+    /// </summary>
+    private void OnSiloJoined(object? sender, SiloInfo siloInfo)
+    {
+        // Fire and forget - don't block the event
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _logger.LogInformation("Silo {SiloId} joined the cluster at {Endpoint}, establishing connection",
+                    siloInfo.SiloId, siloInfo.Endpoint);
+
+                // Get cancellation token in thread-safe manner
+                CancellationToken cancellationToken;
+                lock (_shutdownLock)
+                {
+                    if (_shutdownCts == null || _shutdownCts.IsCancellationRequested)
+                    {
+                        _logger.LogDebug("Skipping connection to silo {SiloId} - client is shutting down", siloInfo.SiloId);
+                        return;
+                    }
+                    cancellationToken = _shutdownCts.Token;
+                }
+
+                await _transport.ConnectAsync(siloInfo, cancellationToken);
+
+                _logger.LogInformation("Successfully connected to silo {SiloId}", siloInfo.SiloId);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Connection to silo {SiloId} was cancelled", siloInfo.SiloId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to connect to newly joined silo {SiloId}", siloInfo.SiloId);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Handles the SiloLeft event by cleaning up the gRPC connection to the departed silo.
+    /// </summary>
+    private void OnSiloLeft(object? sender, SiloInfo siloInfo)
+    {
+        // Fire and forget - don't block the event
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _logger.LogInformation("Silo {SiloId} left the cluster, cleaning up connection", siloInfo.SiloId);
+
+                await _transport.DisconnectAsync(siloInfo.SiloId);
+
+                _logger.LogInformation("Successfully disconnected from silo {SiloId}", siloInfo.SiloId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to disconnect from departed silo {SiloId}", siloInfo.SiloId);
+            }
+        });
     }
 }
