@@ -119,7 +119,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
         SourceProductionContext context)
     {
         var allInterfaceSymbols = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        var proxyFactoryMethods = new StringBuilder();
+        var proxyRegistrations = new StringBuilder();
 
         // Process interfaces inheriting from IQuarkActor
         foreach (var interfaceDeclaration in actorInterfaces)
@@ -180,6 +180,11 @@ public class ProxySourceGenerator : IIncrementalGenerator
             var interfaceName = interfaceSymbol.Name;
             var fullInterfaceName = interfaceSymbol.ToDisplayString();
             var namespaceName = interfaceSymbol.ContainingNamespace.ToDisplayString();
+            
+            // Remove 'I' prefix from interface name for proxy class name
+            var proxyClassName = interfaceName.StartsWith("I") && interfaceName.Length > 1
+                ? interfaceName.Substring(1) + "Proxy"
+                : interfaceName + "Proxy";
 
             // Check if the interface inherits from IQuarkActor
             bool implementsIQuarkActor = InheritsFromIQuarkActor(interfaceSymbol);
@@ -194,18 +199,16 @@ public class ProxySourceGenerator : IIncrementalGenerator
             GenerateMessageContracts(context, interfaceName, fullInterfaceName, namespaceName, methods);
 
             // Generate client-side proxy class
-            GenerateProxyClass(context, interfaceName, fullInterfaceName, namespaceName, methods, implementsIQuarkActor);
+            GenerateProxyClass(context, interfaceName, proxyClassName, fullInterfaceName, namespaceName, methods, implementsIQuarkActor);
 
-            // Add to proxy factory registration
-            proxyFactoryMethods.AppendLine(
-                $"            if (typeof(TActorInterface) == typeof({fullInterfaceName}))");
-            proxyFactoryMethods.AppendLine(
-                $"                return (TActorInterface)(object)new {namespaceName}.Generated.{interfaceName}Proxy(client, actorId);");
-            proxyFactoryMethods.AppendLine();
+            // Add to proxy registration
+            proxyRegistrations.AppendLine(
+                $"            ActorProxyFactory.RegisterProxyFactory<{fullInterfaceName}>((client, actorId) => new {namespaceName}.Generated.{proxyClassName}(client, actorId));");
         }
 
-        // Generate the ActorProxyFactory partial implementation
-        GenerateProxyFactory(context, proxyFactoryMethods.ToString());
+        // Generate the registration class
+        var assemblyName = compilation.AssemblyName?.Replace(".", "") ?? "Assembly";
+        GenerateRegistrationClass(context, assemblyName, proxyRegistrations.ToString());
     }
 
     private static List<IMethodSymbol> GetActorMethods(INamedTypeSymbol interfaceSymbol)
@@ -322,6 +325,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
     private static void GenerateProxyClass(
         SourceProductionContext context,
         string interfaceName,
+        string proxyClassName,
         string fullInterfaceName,
         string namespaceName,
         List<IMethodSymbol> methods,
@@ -347,18 +351,18 @@ public class ProxySourceGenerator : IIncrementalGenerator
         // If the interface doesn't inherit from IQuarkActor, explicitly implement it in the proxy
         if (implementsIQuarkActor)
         {
-            source.AppendLine($"    public sealed class {interfaceName}Proxy : {fullInterfaceName}");
+            source.AppendLine($"    public sealed class {proxyClassName} : {fullInterfaceName}");
         }
         else
         {
-            source.AppendLine($"    public sealed class {interfaceName}Proxy : {fullInterfaceName}, IQuarkActor");
+            source.AppendLine($"    public sealed class {proxyClassName} : {fullInterfaceName}, IQuarkActor");
         }
         
         source.AppendLine($"    {{");
         source.AppendLine($"        private readonly IClusterClient _client;");
         source.AppendLine($"        private readonly string _actorId;");
         source.AppendLine();
-        source.AppendLine($"        public {interfaceName}Proxy(IClusterClient client, string actorId)");
+        source.AppendLine($"        public {proxyClassName}(IClusterClient client, string actorId)");
         source.AppendLine($"        {{");
         source.AppendLine($"            _client = client ?? throw new ArgumentNullException(nameof(client));");
         source.AppendLine($"            _actorId = actorId ?? throw new ArgumentNullException(nameof(actorId));");
@@ -390,7 +394,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
         source.AppendLine($"    }}");
         source.AppendLine("}");
 
-        context.AddSource($"{interfaceName}Proxy.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
+        context.AddSource($"{proxyClassName}.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
     }
 
     private static void GenerateProxyMethod(StringBuilder source, string interfaceName, string fullInterfaceName, IMethodSymbol method)
@@ -506,32 +510,42 @@ public class ProxySourceGenerator : IIncrementalGenerator
         source.AppendLine();
     }
 
-    private static void GenerateProxyFactory(SourceProductionContext context, string factoryMethods)
+    private static void GenerateRegistrationClass(SourceProductionContext context, string assemblyName, string registrations)
     {
         var source = $$"""
                        // <auto-generated/>
                        #nullable enable
                        using Quark.Abstractions;
                        using Quark.Client;
-                       using Quark.Networking.Abstractions;
                        
-                       namespace Quark.Client
+                       namespace Quark.Generated
                        {
-                           internal static partial class ActorProxyFactory
+                           /// <summary>
+                           /// Auto-generated registration class for actor proxies.
+                           /// Call RegisterAll() to register all actor proxy factories for this assembly.
+                           /// </summary>
+                           public static class {{assemblyName}}ActorProxyFactoryRegistration
                            {
-                               public static TActorInterface CreateProxy<TActorInterface>(IClusterClient client, string actorId)
-                                   where TActorInterface : class
+                               private static bool _registered = false;
+                               
+                               /// <summary>
+                               /// Registers all actor proxy factories for this assembly.
+                               /// This method is idempotent and can be called multiple times safely.
+                               /// </summary>
+                               public static void RegisterAll()
                                {
-                       {{factoryMethods}}
-                                   throw new InvalidOperationException(
-                                       $"No proxy factory registered for actor interface type '{typeof(TActorInterface).FullName}'. " +
-                                       "Ensure the interface inherits from IQuarkActor or is registered via QuarkActorContext, and the ProxySourceGenerator is properly referenced.");
+                                   if (_registered)
+                                       return;
+                                   
+                                   _registered = true;
+                                   
+                       {{registrations}}
                                }
                            }
                        }
                        """;
 
-        context.AddSource("ActorProxyFactory.g.cs", SourceText.From(source, Encoding.UTF8));
+        context.AddSource($"{assemblyName}ActorProxyFactoryRegistration.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 
     private static bool IsTaskWithResult(INamedTypeSymbol taskType, out string resultType)

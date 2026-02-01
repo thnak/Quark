@@ -15,8 +15,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 ConfigureServices(builder);
 
-// Demo API
-ActorProxyFactory.RegisterProxyFactory<IOrderActor>((x, s) => new IOrderActorProxy(x, s));
+// Demo API - Register proxy manually (or use generated registration class)
+ActorProxyFactory.RegisterProxyFactory<IOrderActor>((x, s) => new OrderActorProxy(x, s));
 
 void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
 {
