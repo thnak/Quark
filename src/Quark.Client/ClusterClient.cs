@@ -14,7 +14,6 @@ public sealed class ClusterClient : IClusterClient
     private readonly IQuarkTransport _transport;
     private readonly ClusterClientOptions _options;
     private readonly ILogger<ClusterClient> _logger;
-    private readonly IActorFactory _actorFactory;
     private readonly string _clientId;
     private bool _isConnected;
 
@@ -25,19 +24,16 @@ public sealed class ClusterClient : IClusterClient
     /// <param name="transport">The transport layer.</param>
     /// <param name="options">Configuration options.</param>
     /// <param name="logger">Logger instance.</param>
-    /// <param name="actorFactory"></param>
     public ClusterClient(
         IQuarkClusterMembership clusterMembership,
         IQuarkTransport transport,
         ClusterClientOptions options,
-        ILogger<ClusterClient> logger,
-        IActorFactory actorFactory)
+        ILogger<ClusterClient> logger)
     {
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _actorFactory = actorFactory;
         _clientId = options.ClientId ?? Guid.NewGuid().ToString("N");
     }
 
@@ -202,16 +198,30 @@ public sealed class ClusterClient : IClusterClient
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// IMPORTANT: This method is a placeholder to satisfy the IClusterClient interface.
+    /// In practice, consumers should call ActorProxyFactory.CreateProxy&lt;TActorInterface&gt;(client, actorId) directly,
+    /// which is generated at compile-time by the ProxySourceGenerator for each IQuarkActor interface.
+    /// 
+    /// Example usage:
+    /// <code>
+    /// var proxy = ActorProxyFactory.CreateProxy&lt;IMyActor&gt;(clusterClient, "actor-1");
+    /// await proxy.DoSomethingAsync();
+    /// </code>
+    /// 
+    /// This design ensures zero-reflection, AOT-compatible proxy creation and avoids
+    /// the "reference leak" problem in Virtual Actor frameworks where clients must never
+    /// get direct actor references.
+    /// </remarks>
+    /// <exception cref="NotImplementedException">
+    /// This method is not directly implemented. Use ActorProxyFactory.CreateProxy&lt;T&gt;() instead.
+    /// </exception>
     public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IActor
     {
-        if (string.IsNullOrWhiteSpace(actorId))
-        {
-            throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actorId));
-        }
-
-        // Delegate to the generated proxy factory
-        // This will be implemented by the ProxySourceGenerator
-        return _actorFactory.GetOrCreateActor<TActorInterface>(actorId);
+        throw new NotImplementedException(
+            $"ClusterClient.GetActor<{typeof(TActorInterface).Name}>() is not directly implemented. " +
+            "Use ActorProxyFactory.CreateProxy<TActorInterface>(clusterClient, actorId) instead. " +
+            "This method is generated at compile-time by the ProxySourceGenerator for each IQuarkActor interface.");
     }
 
     /// <inheritdoc />

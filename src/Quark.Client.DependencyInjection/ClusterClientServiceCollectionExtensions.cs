@@ -46,6 +46,8 @@ public static class ClusterClientServiceCollectionExtensions
         services.AddSingleton(options);
 
         // Register client
+        // NOTE: ClusterClient uses ActorProxyFactory.CreateProxy<T>() directly (generated at compile-time)
+        // No IActorFactory needed - clients should use IClusterClient.GetActor<T>() to get proxies
         services.TryAddSingleton<IClusterClient, ClusterClient>();
 
         return new ClusterClientBuilder(services, options);
