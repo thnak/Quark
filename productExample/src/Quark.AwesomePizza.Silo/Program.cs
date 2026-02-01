@@ -1,8 +1,6 @@
-using Quark.Abstractions;
-using Quark.AwesomePizza.Silo.BackgroundServices;
-using Quark.AwesomePizza.Silo.Configs;
 using Quark.Client;
 using Quark.Extensions.DependencyInjection;
+using Quark.Hosting;
 
 namespace Quark.AwesomePizza.Silo;
 
@@ -41,18 +39,6 @@ public class Program
                         ?? configuration["Redis:Host"]
                         ?? "localhost";
 
-        var redisPort = Environment.GetEnvironmentVariable("REDIS_PORT")
-                        ?? configuration["Redis:Port"]
-                        ?? "6379";
-
-        var mqttHost = Environment.GetEnvironmentVariable("MQTT_HOST")
-                       ?? configuration["Mqtt:Host"]
-                       ?? "localhost";
-
-        var mqttPort = int.Parse(Environment.GetEnvironmentVariable("MQTT_PORT")
-                                 ?? configuration["Mqtt:Port"]
-                                 ?? "1883");
-
         // Register core services
         applicationBuilder.UseQuark(configure: options => { options.SiloId = siloId; }, siloConfigure: builder =>
         {
@@ -64,30 +50,13 @@ public class Program
         });
         var services = applicationBuilder.Services;
 
-        // Register MQTT service
-        services.AddSingleton<MqttService>(sp =>
-        {
-            var actorFactory = sp.GetRequiredService<IActorFactory>();
-            var activeActors = new Dictionary<string, IActor>(); // TODO: Share with cluster client
-            return new MqttService(actorFactory, activeActors, mqttHost, mqttPort);
-        });
-
-        services.AddHostedService<MqttHostedService>();
-
-        // Store configuration for later use
-        services.AddSingleton(new SiloConfiguration
-        {
-            SiloId = siloId,
-            RedisHost = redisHost,
-            RedisPort = redisPort,
-            MqttHost = mqttHost,
-            MqttPort = mqttPort
-        });
+        
+        services.AddLogging();
     }
 
     private static async Task ConfigureApp(WebApplication app)
     {
-        var config = app.Services.GetRequiredService<SiloConfiguration>();
+        var config = app.Services.GetRequiredService<QuarkSiloOptions>();
         var clusterClient = app.Services.GetRequiredService<IClusterClient>();
 
         // Connect to cluster (in-process for now)
@@ -100,8 +69,6 @@ public class Program
         Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
         Console.WriteLine();
         Console.WriteLine($"🏭 Silo ID: {config.SiloId}");
-        Console.WriteLine($"🔌 Redis:   {config.RedisHost}:{config.RedisPort}");
-        Console.WriteLine($"🔌 MQTT:    {config.MqttHost}:{config.MqttPort}");
         Console.WriteLine($"⚡ Clean Architecture: Enabled");
         Console.WriteLine($"🚀 Started at: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
         Console.WriteLine();
