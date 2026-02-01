@@ -15,6 +15,7 @@
     <ProjectReference Include="../../../src/Quark.Generators.Logging/Quark.Generators.Logging.csproj" 
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\..\src\Quark.Networking.Abstractions\Quark.Networking.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

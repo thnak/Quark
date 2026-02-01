@@ -1,3 +1,4 @@
+using Quark.Abstractions;
 using Quark.AwesomePizza.Shared.Models;
 
 namespace Quark.AwesomePizza.Shared.Interfaces;
@@ -6,7 +7,7 @@ namespace Quark.AwesomePizza.Shared.Interfaces;
 /// Interface for Driver Actor - manages delivery driver state and location.
 /// This is exposed to Gateway and MQTT for actor proxy calls via IClusterClient.
 /// </summary>
-public interface IDriverActor
+public interface IDriverActorProxy : IQuarkActor
 {
     /// <summary>
     /// Initializes a new driver.

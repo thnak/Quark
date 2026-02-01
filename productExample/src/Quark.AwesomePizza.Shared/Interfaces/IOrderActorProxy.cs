@@ -1,3 +1,4 @@
+using Quark.Abstractions;
 using Quark.AwesomePizza.Shared.Models;
 
 namespace Quark.AwesomePizza.Shared.Interfaces;
@@ -6,7 +7,7 @@ namespace Quark.AwesomePizza.Shared.Interfaces;
 /// Interface for Order Actor - manages pizza order lifecycle.
 /// This is exposed to Gateway and MQTT for actor proxy calls via IClusterClient.
 /// </summary>
-public interface IOrderActor
+public interface IOrderActorProxy : IQuarkActor
 {
     /// <summary>
     /// Creates a new pizza order.
