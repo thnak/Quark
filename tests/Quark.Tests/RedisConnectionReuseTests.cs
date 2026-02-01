@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Quark.Abstractions.Clustering;
 using Quark.Abstractions.Persistence;
 using Quark.Abstractions.Reminders;
+using Quark.Client.DependencyInjection;
 using Quark.Clustering.Redis;
 using Quark.Extensions.DependencyInjection;
 using Quark.Hosting;

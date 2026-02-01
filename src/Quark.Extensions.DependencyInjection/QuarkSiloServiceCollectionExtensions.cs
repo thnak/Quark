@@ -16,6 +16,14 @@ namespace Quark.Extensions.DependencyInjection;
 /// </summary>
 public static class QuarkSiloServiceCollectionExtensions
 {
+    /// <summary>
+    /// Configures a Quark Silo in the host application builder.
+    /// For co-hosted scenarios where the silo also acts as a client, reference Quark.Client.DependencyInjection
+    /// and call UseQuarkClient() separately.
+    /// </summary>
+    /// <param name="hostBuilder">The host application builder.</param>
+    /// <param name="configure">Optional action to configure silo options.</param>
+    /// <param name="siloConfigure">Optional action to configure the silo builder (clustering, transport, etc.).</param>
     public static void UseQuark(this IHostApplicationBuilder hostBuilder, Action<QuarkSiloOptions>? configure = null,
         Action<IQuarkSiloBuilder>? siloConfigure = null)
     {
@@ -26,9 +34,7 @@ public static class QuarkSiloServiceCollectionExtensions
 
         var siloBuilder = hostBuilder.Services.AddQuarkSilo(configure);
         siloConfigure?.Invoke(siloBuilder);
-        hostBuilder.Services.AddQuarkClient();
         hostBuilder.Services.AddActorActivityTracking();
-        hostBuilder.Services.AddHostedService<StartClusterClientHostedService>();
     }
 
     /// <summary>

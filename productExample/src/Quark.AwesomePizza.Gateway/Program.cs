@@ -2,7 +2,7 @@ using System.Text.Json;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Client;
-using Quark.Extensions.DependencyInjection;
+using Quark.Client.DependencyInjection;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 

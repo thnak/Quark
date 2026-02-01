@@ -12,34 +12,10 @@ using StackExchange.Redis;
 namespace Quark.Extensions.DependencyInjection;
 
 /// <summary>
-/// Extension methods for configuring Redis-based clustering and storage with connection optimization.
+/// Extension methods for configuring Redis-based clustering and storage.
 /// </summary>
 public static class RedisClusteringExtensions
 {
-    /// <summary>
-    /// Adds Redis clustering to the Cluster Client with shared connection support.
-    /// This method allows you to provide an existing IConnectionMultiplexer to avoid duplicate connections.
-    /// </summary>
-    /// <param name="builder">The client builder.</param>
-    /// <param name="connectionMultiplexer">Optional shared Redis connection. If null, a new connection will be created using the connectionString.</param>
-    /// <param name="connectionString">Connection string for Redis. Required if connectionMultiplexer is null.</param>
-    /// <param name="options">Optional configuration options for Redis connection.</param>
-    /// <param name="enableHealthMonitoring">Whether to enable connection health monitoring. Defaults to true.</param>
-    /// <param name="configureHealthOptions">Optional action to configure health monitoring options.</param>
-    /// <returns>The builder for chaining.</returns>
-    public static IClusterClientBuilder WithRedisClustering(
-        this IClusterClientBuilder builder,
-        IConnectionMultiplexer? connectionMultiplexer = null,
-        string? connectionString = null,
-        ConfigurationOptions? options = null,
-        bool enableHealthMonitoring = true,
-        Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
-    {
-        builder.Services.WithRedisClustering(connectionMultiplexer, connectionString, options, enableHealthMonitoring,
-            configureHealthOptions);
-        return builder;
-    }
-
     /// <summary>
     /// Adds Redis clustering to the Quark Silo with shared connection support.
     /// This method allows you to provide an existing IConnectionMultiplexer to avoid duplicate connections.
