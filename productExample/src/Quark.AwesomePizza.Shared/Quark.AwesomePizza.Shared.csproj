@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../src/Quark.Core/Quark.Core.csproj" />
+    <ProjectReference Include="../../../src/Quark.Client/Quark.Client.csproj" />
     <ProjectReference Include="../../../src/Quark.Generators/Quark.Generators.csproj" 
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />
