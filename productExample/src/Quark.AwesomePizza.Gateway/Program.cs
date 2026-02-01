@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Quark.AwesomePizza.Shared.Models;
-using Quark.AwesomePizza.Shared.Actors;
 using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Client;
 using Quark.Extensions.DependencyInjection;
@@ -95,7 +94,7 @@ app.MapPost("/api/orders", async (CreateOrderRequest request, HttpContext ctx) =
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
 
     var orderId = $"order-{Guid.NewGuid():N}";
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
     var response = await actor.CreateOrderAsync(request);
     return Results.Created($"/api/orders/{orderId}", response);
@@ -107,7 +106,7 @@ app.MapPost("/api/orders", async (CreateOrderRequest request, HttpContext ctx) =
 app.MapGet("/api/orders/{orderId}", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
     var order = await actor.GetOrderAsync();
     return order != null ? Results.Ok(order) : Results.NotFound();
@@ -119,7 +118,7 @@ app.MapGet("/api/orders/{orderId}", async (string orderId, HttpContext ctx) =>
 app.MapPost("/api/orders/{orderId}/confirm", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
 
     var order = await actor.ConfirmOrderAsync();
@@ -132,7 +131,7 @@ app.MapPost("/api/orders/{orderId}/confirm", async (string orderId, HttpContext 
 app.MapPost("/api/orders/{orderId}/assign-driver", async (string orderId, string driverId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
     var order = await actor.AssignDriverAsync(driverId);
     return Results.Ok(order);
@@ -144,7 +143,7 @@ app.MapPost("/api/orders/{orderId}/assign-driver", async (string orderId, string
 app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
 
     var order = await actor.StartDeliveryAsync();
@@ -157,7 +156,7 @@ app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId, HttpC
 app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
     var order = await actor.CompleteDeliveryAsync();
     return Results.Ok(order);
@@ -169,7 +168,7 @@ app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId, Ht
 app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
     var order = await actor.CancelOrderAsync(reason);
     return Results.Ok(order);
@@ -181,7 +180,7 @@ app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason
 app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor = cluster.GetActor<OrderActor>(orderId);
+    var actor = cluster.GetActor<IOrderActor>(orderId);
 
     var response = ctx.Response;
     response.Headers.Append("Content-Type", "text/event-stream");

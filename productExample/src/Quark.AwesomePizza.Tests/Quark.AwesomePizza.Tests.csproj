@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../Quark.AwesomePizza.Shared/Quark.AwesomePizza.Shared.csproj" />
+    <ProjectReference Include="..\Quark.AwesomePizza.Silo\Quark.AwesomePizza.Silo.csproj" />
   </ItemGroup>
 
   <ItemGroup>

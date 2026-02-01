@@ -1,5 +1,5 @@
-using Quark.AwesomePizza.Shared.Actors;
 using Quark.AwesomePizza.Shared.Models;
+using Quark.AwesomePizza.Silo.Actors;
 
 namespace Quark.AwesomePizza.Tests;
 

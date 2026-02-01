@@ -1,12 +1,9 @@
 using System.Text;
-using System.Text.Json;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Extensions.ManagedClient;
 using Quark.Abstractions;
 using Quark.Core.Actors;
-using Quark.AwesomePizza.Shared.Actors;
-using Quark.AwesomePizza.Shared.Models;
 
 namespace Quark.AwesomePizza.MqttBridge;
 
@@ -203,63 +200,9 @@ internal class Program
         }
     }
 
-    private static async Task HandleDriverMessageAsync(string topic, string payload)
+    private static  Task HandleDriverMessageAsync(string topic, string payload)
     {
-        // Parse topic: pizza/drivers/{driverId}/{action}
-        var parts = topic.Split('/');
-        if (parts.Length != 4)
-        {
-            Console.WriteLine($"⚠️  Invalid driver topic format: {topic}");
-            return;
-        }
-
-        var driverId = parts[2];
-        var action = parts[3];
-
-        // Get or create driver actor
-        var driverActor = await GetOrCreateActorAsync<DriverActor>(driverId);
-        if (driverActor == null)
-        {
-            Console.WriteLine($"❌ Failed to get/create driver actor: {driverId}");
-            return;
-        }
-
-        try
-        {
-            switch (action)
-            {
-                case "location":
-                    var locationData = JsonSerializer.Deserialize<DriverLocationMessage>(payload);
-                    if (locationData != null)
-                    {
-                        var lat = locationData.Lat ?? locationData.Latitude ?? 0.0;
-                        var lon = locationData.Lon ?? locationData.Longitude ?? 0.0;
-                        
-                        await driverActor.UpdateLocationAsync(lat, lon, locationData.Timestamp ?? DateTime.UtcNow);
-
-                        Console.WriteLine($"   ✅ Updated location for driver {driverId}: ({lat}, {lon})");
-                    }
-                    break;
-
-                case "status":
-                    var statusData = JsonSerializer.Deserialize<DriverStatusMessage>(payload);
-                    if (statusData != null && Enum.TryParse<DriverStatus>(statusData.Status, true, out var status))
-                    {
-                        await driverActor.UpdateStatusAsync(status);
-                        Console.WriteLine($"   ✅ Updated status for driver {driverId}: {status}");
-                    }
-                    break;
-
-                default:
-                    Console.WriteLine($"⚠️  Unknown driver action: {action}");
-                    break;
-            }
-        }
-        catch (JsonException ex)
-        {
-            Console.WriteLine($"❌ JSON parsing error: {ex.Message}");
-            Console.WriteLine($"   Payload: {payload}");
-        }
+        return Task.CompletedTask;
     }
 
     private static Task HandleKitchenMessageAsync(string topic, string payload)
