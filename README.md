@@ -480,6 +480,7 @@ dotnet test -v normal
 ## Documentation
 
 ### Essential Guides (`docs/`)
+- **[Virtual Actor Principles](docs/VIRTUAL_ACTOR_PRINCIPLES.md)** - Understanding proxies and avoiding reference leaks
 - **[Source Generator Setup](docs/SOURCE_GENERATOR_SETUP.md)** - Critical setup guide for using Quark actors
 - **[Zero Reflection Achievement](docs/ZERO_REFLECTION_ACHIEVEMENT.md)** - How we achieved 100% reflection-free operation
 - **[Quick Reference](docs/QUICK_REFERENCE.md)** - Quick API reference
