@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
@@ -9,7 +10,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Handles order assignments and tracks cooking progress.
 /// </summary>
 [Actor(Name = "Chef", Reentrant = false)]
-public class ChefActor : ActorBase
+public class ChefActor : ActorBase, IChefActor
 {
     private ChefState? _state;
 
@@ -67,6 +68,11 @@ public class ChefActor : ActorBase
         // TODO: await SaveStateAsync()
         // TODO: Register timer to check cooking progress
         return Task.FromResult(_state);
+    }
+
+    public Task<ChefState> CompleteOrderAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
     }
 
     /// <summary>

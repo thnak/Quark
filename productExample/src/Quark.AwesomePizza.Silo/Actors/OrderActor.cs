@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
@@ -10,7 +11,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// This is the core actor for the Awesome Pizza system.
 /// </summary>
 [Actor(Name = "Order", Reentrant = false)]
-public class OrderActor : ActorBase
+public class OrderActor : ActorBase, IOrderActor
 {
     private OrderState? _state;
     private readonly List<Action<OrderStatusUpdate>> _subscribers = new();
@@ -143,7 +144,7 @@ public class OrderActor : ActorBase
     /// Updates the driver's GPS location.
     /// Called by the MQTT bridge when driver device sends location updates.
     /// </summary>
-    public Task<OrderState> UpdateDriverLocationAsync(
+    public Task UpdateDriverLocationAsync(
         GpsLocation location,
         CancellationToken cancellationToken = default)
     {
@@ -162,7 +163,7 @@ public class OrderActor : ActorBase
         };
 
         NotifySubscribers($"Driver location updated: {location.Latitude}, {location.Longitude}");
-        return Task.FromResult(_state);
+        return Task.CompletedTask;
     }
 
     /// <summary>
