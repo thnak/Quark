@@ -8,9 +8,22 @@ Console.WriteLine();
 var factory = new ActorFactory();
 Console.WriteLine("✓ Actor factory created");
 
+// Show registered actor types
+Console.WriteLine();
+Console.WriteLine("Registered Actor Types:");
+foreach (var (actorTypeName, actorType) in ActorFactoryRegistry.GetAllActorTypes())
+{
+    Console.WriteLine($"  • {actorTypeName} → {actorType.Name}");
+}
+Console.WriteLine();
+
 // Create a counter actor
 var counter = factory.CreateActor<CounterActor>("counter-1");
 Console.WriteLine($"✓ Counter actor created with ID: {counter.ActorId}");
+
+// Verify the actor type name
+var registeredName = ActorFactoryRegistry.GetActorTypeName(typeof(CounterActor));
+Console.WriteLine($"✓ Actor registered as: {registeredName}");
 
 // Activate the actor
 await counter.OnActivateAsync();

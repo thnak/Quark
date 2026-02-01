@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
@@ -9,7 +10,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Tracks ingredient stock levels and triggers reorder reminders.
 /// </summary>
 [Actor(Name = "Inventory", Reentrant = false)]
-public class InventoryActor : ActorBase
+public class InventoryActor : ActorBase, IInventoryActor
 {
     private InventoryState? _state;
 

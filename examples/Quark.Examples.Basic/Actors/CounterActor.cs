@@ -5,6 +5,7 @@ namespace Quark.Examples.Basic.Actors;
 
 /// <summary>
 /// A simple counter actor that demonstrates basic actor functionality.
+/// This example uses Name instead of InterfaceType since it's a local-only actor.
 /// </summary>
 [Actor(Name = "Counter", Reentrant = false)]
 public class CounterActor : ActorBase

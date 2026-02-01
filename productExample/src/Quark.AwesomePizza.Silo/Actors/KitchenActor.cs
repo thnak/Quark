@@ -1,4 +1,5 @@
 using Quark.Abstractions;
+using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 
@@ -9,7 +10,7 @@ namespace Quark.AwesomePizza.Silo.Actors;
 /// Demonstrates supervision pattern by managing ChefActors.
 /// </summary>
 [Actor(Name = "Kitchen", Reentrant = false)]
-public class KitchenActor : ActorBase
+public class KitchenActor : ActorBase, IKitchenActor
 {
     private KitchenState? _state;
 

@@ -94,7 +94,7 @@ public class ProxyGenerationTests
         // Assert
         Assert.NotNull(capturedEnvelope);
         Assert.Equal(actorId, capturedEnvelope.ActorId);
-        Assert.Equal("TestProxyActor", capturedEnvelope.ActorType);
+        Assert.Equal("Quark.Tests.ITestProxyActor", capturedEnvelope.ActorType);
         Assert.Equal("IncrementAsync", capturedEnvelope.MethodName);
         Assert.NotEmpty(capturedEnvelope.Payload); // Protobuf serialized request
         

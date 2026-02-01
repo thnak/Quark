@@ -46,6 +46,9 @@ public static class ClusterClientServiceCollectionExtensions
         services.AddSingleton(options);
 
         // Register client
+        // NOTE: ClusterClient.GetActor<T>() throws NotImplementedException
+        // Clients should call ActorProxyFactory.CreateProxy<T>(clusterClient, actorId) directly
+        // This method is generated at compile-time per consuming assembly by ProxySourceGenerator
         services.TryAddSingleton<IClusterClient, ClusterClient>();
 
         return new ClusterClientBuilder(services, options);
