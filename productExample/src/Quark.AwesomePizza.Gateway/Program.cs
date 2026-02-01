@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Interfaces;
-using Quark.AwesomePizza.Shared.Interfaces.Generated;
 using Quark.Client;
 using Quark.Client.DependencyInjection;
+using Quark.Generated;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -15,8 +15,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 ConfigureServices(builder);
 
-// Demo API - Register proxy manually (or use generated registration class)
-ActorProxyFactory.RegisterProxyFactory<IOrderActor>((x, s) => new OrderActorProxy(x, s));
+// Register proxy manually (or use generated registration class)
+QuarkAwesomePizzaSharedActorProxyFactoryRegistration.RegisterAll();
 
 void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
 {
