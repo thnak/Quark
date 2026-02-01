@@ -5,6 +5,7 @@ using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
 using Quark.Abstractions.Migration;
 using Quark.Client;
+using Quark.Core.Actors;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
 using Quark.Networking.Abstractions;
@@ -421,26 +422,72 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                     "Processing envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
                     envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
 
-                // Check if this is a stream message (stream messages have specific method patterns)
-                // For now, we'll focus on basic actor invocation handling
-                // StreamBroker integration would go here for [QuarkStream] attributed actors
-
-                // TODO: Full actor invocation dispatch would go here
-                // This is a placeholder that demonstrates the integration point
-                // In a complete implementation, this would:
-                // 1. Deserialize the payload to get method arguments
-                // 2. Get or create the actor instance via _actorFactory
-                // 3. Invoke the method on the actor
-                // 4. Serialize the result
-                // 5. Send the response back via _transport.SendResponse(responseEnvelope)
-
-                // For streaming scenarios with StreamBroker:
-                if (_streamBroker != null)
+                // 1. Look up the dispatcher for this actor type
+                var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher(envelope.ActorType);
+                if (dispatcher == null)
                 {
-                    // Example: If this is a stream publish operation, notify StreamBroker
-                    // The StreamBroker would then dispatch to all implicit subscribers
-                    // await _streamBroker.NotifyImplicitSubscribersAsync(streamId, message, cancellationToken);
+                    _logger.LogWarning(
+                        "No dispatcher found for actor type {ActorType}. Message {MessageId} cannot be processed.",
+                        envelope.ActorType, envelope.MessageId);
+                    
+                    throw new InvalidOperationException(
+                        $"No dispatcher registered for actor type '{envelope.ActorType}'. " +
+                        $"Ensure the actor is decorated with [Actor] attribute and the source generator has run.");
                 }
+
+                // 2. Get the actual Type from the actor type name
+                var actorType = ActorFactoryRegistry.GetActorType(envelope.ActorType);
+                if (actorType == null)
+                {
+                    _logger.LogError(
+                        "No factory registered for actor type {ActorType}",
+                        envelope.ActorType);
+                    
+                    throw new InvalidOperationException(
+                        $"No factory registered for actor type '{envelope.ActorType}'");
+                }
+
+                // 3. Create the actor using reflection (we need to call generic method dynamically)
+                // We use the factory's generic method via reflection as a bridge
+                var getOrCreateMethod = typeof(IActorFactory).GetMethod(nameof(IActorFactory.GetOrCreateActor))!
+                    .MakeGenericMethod(actorType);
+                
+                var actor = (IActor)getOrCreateMethod.Invoke(_actorFactory, new object[] { envelope.ActorId })!;
+
+                if (actor == null)
+                {
+                    _logger.LogError(
+                        "Failed to create actor {ActorId} of type {ActorType}",
+                        envelope.ActorId, envelope.ActorType);
+                    
+                    throw new InvalidOperationException(
+                        $"Failed to create actor '{envelope.ActorId}' of type '{envelope.ActorType}'");
+                }
+
+                // 4. Register actor in silo's registry (if not already registered)
+                RegisterActor(envelope.ActorId, actor);
+
+                // 5. Invoke the method via dispatcher
+                var responsePayload = await dispatcher.InvokeAsync(
+                    actor,
+                    envelope.MethodName,
+                    envelope.Payload,
+                    CancellationToken.None);
+
+                // 6. Send successful response back
+                var response = new Networking.Abstractions.QuarkEnvelope(
+                    envelope.MessageId,
+                    envelope.ActorId,
+                    envelope.ActorType,
+                    envelope.MethodName,
+                    Array.Empty<byte>(),
+                    envelope.CorrelationId)
+                {
+                    ResponsePayload = responsePayload,
+                    IsError = false
+                };
+
+                _transport.SendResponse(response);
 
                 _logger.LogTrace(
                     "Envelope {MessageId} processed successfully",
