@@ -216,7 +216,7 @@ public sealed class ClusterClient : IClusterClient
     /// <exception cref="NotImplementedException">
     /// This method is not directly implemented. Use ActorProxyFactory.CreateProxy&lt;T&gt;() instead.
     /// </exception>
-    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IActor
+    public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IQuarkActor
     {
         throw new NotImplementedException(
             $"ClusterClient.GetActor<{typeof(TActorInterface).Name}>() is not directly implemented. " +

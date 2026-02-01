@@ -76,5 +76,5 @@ public interface IClusterClient : IDisposable
     /// for more details on avoiding reference leaks.
     /// </para>
     /// </remarks>
-    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IActor;
+    TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IQuarkActor;
 }
