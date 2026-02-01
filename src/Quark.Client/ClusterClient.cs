@@ -218,10 +218,7 @@ public sealed class ClusterClient : IClusterClient
     /// </exception>
     public TActorInterface GetActor<TActorInterface>(string actorId) where TActorInterface : IQuarkActor
     {
-        throw new NotImplementedException(
-            $"ClusterClient.GetActor<{typeof(TActorInterface).Name}>() is not directly implemented. " +
-            "Use ActorProxyFactory.CreateProxy<TActorInterface>(clusterClient, actorId) instead. " +
-            "This method is generated at compile-time by the ProxySourceGenerator for each IQuarkActor interface.");
+        return ActorProxyFactory.CreateProxy<TActorInterface>(this, actorId);
     }
 
     /// <inheritdoc />
