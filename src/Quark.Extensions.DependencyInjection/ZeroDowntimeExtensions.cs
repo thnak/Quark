@@ -60,12 +60,10 @@ public static class ZeroDowntimeExtensions
                 var clusterLogger = sp.GetRequiredService<ILogger<ClusterVersionTracker>>();
                 return new ClusterVersionTracker(clusterLogger, clusterMembership);
             }
-            else
-            {
-                // No cluster membership - use local-only version tracking
-                var localLogger = sp.GetRequiredService<ILogger<VersionTracker>>();
-                return new VersionTracker(localLogger);
-            }
+
+            // No cluster membership - use local-only version tracking
+            var localLogger = sp.GetRequiredService<ILogger<VersionTracker>>();
+            return new VersionTracker(localLogger);
         });
         
         services.TryAddSingleton<IVersionCompatibilityChecker, VersionCompatibilityChecker>();

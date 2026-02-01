@@ -5,7 +5,7 @@ using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Actors;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateSlimBuilder(args);
 
 // Configure JSON options for AOT
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -27,8 +27,23 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// In-memory actor registry (simulates cluster client)
-// In a real distributed system, this would use Quark.Client with Redis clustering
+// ============================================
+// IMPORTANT: Gateway Architecture Pattern
+// ============================================
+// In the correct architecture:
+// 1. Gateway connects to Silo via IClusterClient or gRPC
+// 2. Gateway does NOT create actors locally
+// 3. All actors live in the Silo
+//
+// Current implementation (for demo):
+// - Using local actors for simplicity
+// - TODO: Replace with proper client-to-silo communication
+//
+// The proper pattern would be:
+//   var siloClient = new SiloClient("localhost:7000"); // gRPC endpoint
+//   var orderActor = await siloClient.GetActorAsync<OrderActor>(orderId);
+// ============================================
+
 var actorFactory = new ActorFactory();
 var activeActors = new ConcurrentDictionary<string, IActor>();
 
@@ -37,11 +52,16 @@ app.UseCors();
 // Banner
 Console.WriteLine("╔══════════════════════════════════════╗");
 Console.WriteLine("║  Awesome Pizza - Gateway API         ║");
-Console.WriteLine("║  REST API + Real-time SSE            ║");
+Console.WriteLine("║  REST API connecting to Silo         ║");
 Console.WriteLine("╚══════════════════════════════════════╝");
+Console.WriteLine();
+Console.WriteLine("⚠️  NOTE: This gateway should connect to Silo");
+Console.WriteLine("    For now, it creates local actors (demo mode)");
+Console.WriteLine("    In production: Use IClusterClient or gRPC");
 Console.WriteLine();
 
 // Helper methods
+// TODO: Replace these with calls to Silo via IClusterClient or gRPC
 async Task<OrderActor> GetOrCreateOrderActorAsync(string orderId)
 {
     if (!activeActors.TryGetValue(orderId, out var actorBase))

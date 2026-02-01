@@ -7,7 +7,6 @@ using Quark.Core.Actors;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
 using Quark.Hosting;
-using Quark.Networking.Abstractions;
 
 namespace Quark.Extensions.DependencyInjection;
 
@@ -16,6 +15,20 @@ namespace Quark.Extensions.DependencyInjection;
 /// </summary>
 public static class QuarkSiloServiceCollectionExtensions
 {
+    public static void UseQuark(this IHostApplicationBuilder hostBuilder, Action<QuarkSiloOptions>? configure = null,
+        Action<IQuarkSiloBuilder>? siloConfigure = null)
+    {
+        if (hostBuilder == null)
+        {
+            throw new ArgumentNullException(nameof(hostBuilder));
+        }
+
+        var siloBuilder = hostBuilder.Services.AddQuarkSilo(configure);
+        siloConfigure?.Invoke(siloBuilder);
+        hostBuilder.Services.AddQuarkClient();
+        hostBuilder.Services.AddActorActivityTracking();
+    }
+
     /// <summary>
     /// Adds a Quark Silo to the service collection with full actor hosting capabilities.
     /// </summary>
@@ -67,7 +80,8 @@ public static class QuarkSiloServiceCollectionExtensions
             var reminderTable = sp.GetRequiredService<Abstractions.Reminders.IReminderTable>();
             var options = sp.GetRequiredService<QuarkSiloOptions>();
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ReminderTickManager>>();
-            return new ReminderTickManager(reminderTable, options.SiloId ?? Guid.NewGuid().ToString("N"), logger, tickInterval);
+            return new ReminderTickManager(reminderTable, options.SiloId ?? Guid.NewGuid().ToString("N"), logger,
+                tickInterval);
         });
 
         return builder;

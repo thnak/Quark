@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Quark.Abstractions;
 using Quark.Networking.Abstractions;
 
 namespace Quark.Client;

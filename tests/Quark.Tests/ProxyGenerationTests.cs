@@ -1,5 +1,4 @@
 using Moq;
-using Quark.Abstractions;
 using Quark.Client;
 using Quark.Networking.Abstractions;
 

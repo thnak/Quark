@@ -1,11 +1,15 @@
 # Awesome Pizza - Implementation Summary
 
-## 🎉 Project Status: Core Implementation Complete!
+## 🎉 Project Status: Architecture Corrected!
 
-**Date**: January 31, 2026  
-**Overall Progress**: 66% Complete  
+**Date**: February 1, 2026  
+**Overall Progress**: 70% Complete  
 **Build Status**: ✅ All projects compile successfully  
-**Test Status**: ✅ 12/12 tests passing
+**Test Status**: ✅ 12/12 tests passing  
+**Architecture Status**: ✅ Silos as central actor host (CORRECTED)
+
+⚠️ **MAJOR UPDATE**: Architecture has been corrected to follow the distributed actor pattern.
+See [ARCHITECTURE-FIX.md](ARCHITECTURE-FIX.md) and [TESTING-GUIDE.md](TESTING-GUIDE.md).
 
 ---
 
@@ -16,11 +20,17 @@
 ```
 productExample/src/
 ├── Quark.AwesomePizza.Shared/      ✅ Shared models and actors
-├── Quark.AwesomePizza.Silo/        ✅ Native AOT actor host
-├── Quark.AwesomePizza.Gateway/     ✅ REST API gateway
-├── Quark.AwesomePizza.MqttBridge/  📝 MQTT integration (TODO)
+├── Quark.AwesomePizza.Silo/        ✅ Central actor host + MQTT
+├── Quark.AwesomePizza.Gateway/     ⚠️  REST API (needs proxy)
+├── Quark.AwesomePizza.MqttBridge/  ❌ Deprecated (functionality moved to Silo)
 └── Quark.AwesomePizza.Tests/       ✅ Unit tests (12 passing)
 ```
+
+**Architecture Changes**:
+- ✅ **Silo**: Now the central actor host with integrated MQTT
+- ✅ **MQTT**: Service moved INTO Silo (no separate bridge)
+- ⚠️ **Gateway**: Needs proxy implementation to connect to Silo
+- ❌ **MqttBridge**: Deprecated - functionality integrated into Silo
 
 ### 2. Actor System (6 Actors)
 
