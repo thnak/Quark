@@ -45,6 +45,36 @@ public sealed class ActorFactory : IActorFactory
         var key = (typeof(TActor), actorId);
         return (TActor)_actors.GetOrAdd(key, _ => CreateActor<TActor>(actorId));
     }
+
+    /// <summary>
+    ///     Gets an existing actor or creates a new one if it doesn't exist (non-generic version for runtime dispatch).
+    /// </summary>
+    /// <param name="actorTypeName">The actor type name (from QuarkEnvelope).</param>
+    /// <param name="actorId">The unique identifier for the actor.</param>
+    /// <returns>The actor instance.</returns>
+    public IActor GetOrCreateActorByName(string actorTypeName, string actorId)
+    {
+        // Look up the Type from the type name
+        var actorType = ActorFactoryRegistry.GetActorType(actorTypeName);
+        if (actorType == null)
+        {
+            throw new InvalidOperationException(
+                $"No actor type registered with name '{actorTypeName}'. " +
+                "Ensure the actor is marked with [Actor] attribute.");
+        }
+
+        var key = (actorType, actorId);
+        return _actors.GetOrAdd(key, _ =>
+        {
+            // Create a new service scope for this actor instance
+            IServiceScope? serviceScope = null;
+            if (_serviceProvider != null)
+                serviceScope = _serviceProvider.CreateScope();
+
+            // Call the factory method via the registry
+            return ActorFactoryRegistry.CreateActorByName(actorTypeName, actorId, this, serviceScope);
+        });
+    }
 }
 
 /// <summary>
@@ -128,6 +158,40 @@ public static class ActorFactoryRegistry
     public static string? GetActorTypeName(Type actorType)
     {
         return ActorNamesByType.TryGetValue(actorType, out var name) ? name : null;
+    }
+
+    /// <summary>
+    ///     Creates an actor using the registered factory method (non-generic version for runtime dispatch).
+    /// </summary>
+    /// <param name="actorTypeName">The actor type name.</param>
+    /// <param name="actorId">The unique actor instance ID.</param>
+    /// <param name="actorFactory">Optional actor factory for spawning children.</param>
+    /// <param name="serviceScope">Optional DI service scope.</param>
+    /// <returns>The created actor instance.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when no factory is registered for the type.</exception>
+    public static IActor CreateActorByName(
+        string actorTypeName, 
+        string actorId, 
+        IActorFactory? actorFactory, 
+        IServiceScope? serviceScope)
+    {
+        // Look up the type by name
+        if (!ActorTypesByName.TryGetValue(actorTypeName, out var actorType))
+        {
+            throw new InvalidOperationException(
+                $"No actor type registered with name '{actorTypeName}'. " +
+                "Ensure the actor is marked with [Actor] attribute for source generation.");
+        }
+
+        // Look up the factory function
+        if (Factories.TryGetValue(actorType, out var factory))
+        {
+            return factory(actorId, actorFactory, serviceScope);
+        }
+
+        throw new InvalidOperationException(
+            $"No factory registered for actor type {actorType.Name}. " +
+            "Ensure the actor is marked with [Actor] attribute for source generation.");
     }
 
     /// <summary>

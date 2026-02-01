@@ -274,13 +274,32 @@ public class ActorSourceGenerator : IIncrementalGenerator
                      && m.Name != "OnDeactivateAsync"
                      && m.Name != "Subscribe"
                      && m.Name != "Unsubscribe")
-            .GroupBy(m => m.Name)  // Group by method name to handle overloads
-            .Select(g => g.First())  // Take first overload (for now, simplified approach)
             .ToList();
+
+        // Check for overloads and report diagnostic
+        var overloadGroups = methods.GroupBy(m => m.Name).Where(g => g.Count() > 1).ToList();
+        if (overloadGroups.Any())
+        {
+            foreach (var group in overloadGroups)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    new DiagnosticDescriptor(
+                        "QUARK100",
+                        "Method Overloading Not Fully Supported",
+                        $"Actor '{className}' has multiple overloads of method '{group.Key}'. Only the first overload will be dispatched. Consider using unique method names.",
+                        "Quark.Generators",
+                        DiagnosticSeverity.Warning,
+                        true),
+                    Location.None));
+            }
+        }
+
+        // Take only first overload for each method name
+        var uniqueMethods = methods.GroupBy(m => m.Name).Select(g => g.First()).ToList();
 
         var dispatchCases = new StringBuilder();
         
-        foreach (var method in methods)
+        foreach (var method in uniqueMethods)
         {
             var methodName = method.Name;
             var returnType = method.ReturnType.ToDisplayString();
@@ -290,22 +309,54 @@ public class ActorSourceGenerator : IIncrementalGenerator
             // Build parameter deserialization
             var parameterCode = new StringBuilder();
             var invokeArgs = new List<string>();
+            var nonCancellationParams = method.Parameters.Where(p => 
+                p.Type.ToDisplayString() != "System.Threading.CancellationToken").ToList();
             
-            for (int i = 0; i < method.Parameters.Length; i++)
+            if (nonCancellationParams.Count == 0)
             {
-                var param = method.Parameters[i];
+                // No parameters - payload should be empty
+                parameterCode.AppendLine("                    // No parameters");
+            }
+            else if (nonCancellationParams.Count == 1)
+            {
+                // Single parameter - deserialize directly
+                var param = nonCancellationParams[0];
                 var paramType = param.Type.ToDisplayString();
                 var paramName = param.Name;
                 
-                // Skip CancellationToken - we'll pass it directly
-                if (paramType == "System.Threading.CancellationToken")
+                if (param.NullableAnnotation == NullableAnnotation.Annotated)
                 {
-                    invokeArgs.Add("cancellationToken");
-                    continue;
+                    parameterCode.AppendLine($"                    var {paramName} = payload.Length > 0 ? System.Text.Json.JsonSerializer.Deserialize<{paramType}>(payload) : default;");
                 }
+                else
+                {
+                    parameterCode.AppendLine($"                    var {paramName} = System.Text.Json.JsonSerializer.Deserialize<{paramType}>(payload);");
+                    parameterCode.AppendLine($"                    if ({paramName} == null) throw new ArgumentNullException(nameof({paramName}), \"Deserialized parameter cannot be null\");");
+                }
+                invokeArgs.Add(paramName);
+            }
+            else
+            {
+                // Multiple parameters - deserialize as array
+                parameterCode.AppendLine("                    var paramArray = System.Text.Json.JsonSerializer.Deserialize<object[]>(payload);");
+                parameterCode.AppendLine("                    if (paramArray == null || paramArray.Length != " + nonCancellationParams.Count + ")");
+                parameterCode.AppendLine("                        throw new ArgumentException(\"Invalid parameter count\");");
                 
-                parameterCode.AppendLine($"                var {paramName} = System.Text.Json.JsonSerializer.Deserialize<{paramType}>(payload);");
-                invokeArgs.Add(paramName + "!");
+                for (int i = 0; i < nonCancellationParams.Count; i++)
+                {
+                    var param = nonCancellationParams[i];
+                    var paramType = param.Type.ToDisplayString();
+                    var paramName = param.Name;
+                    
+                    parameterCode.AppendLine($"                    var {paramName} = ({paramType})System.Text.Json.JsonSerializer.Deserialize<{paramType}>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(paramArray[{i}]));");
+                    invokeArgs.Add(paramName);
+                }
+            }
+            
+            // Add CancellationToken if the method expects it
+            if (method.Parameters.Any(p => p.Type.ToDisplayString() == "System.Threading.CancellationToken"))
+            {
+                invokeArgs.Add("cancellationToken");
             }
             
             var invokeArgsStr = string.Join(", ", invokeArgs);

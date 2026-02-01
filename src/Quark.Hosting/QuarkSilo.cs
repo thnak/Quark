@@ -435,24 +435,14 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                         $"Ensure the actor is decorated with [Actor] attribute and the source generator has run.");
                 }
 
-                // 2. Get the actual Type from the actor type name
-                var actorType = ActorFactoryRegistry.GetActorType(envelope.ActorType);
-                if (actorType == null)
+                // 2. Get or create the actor instance (reflection-free)
+                if (_actorFactory is not ActorFactory concreteFactory)
                 {
-                    _logger.LogError(
-                        "No factory registered for actor type {ActorType}",
-                        envelope.ActorType);
-                    
                     throw new InvalidOperationException(
-                        $"No factory registered for actor type '{envelope.ActorType}'");
+                        "ActorFactory must be an instance of Quark.Core.Actors.ActorFactory to support runtime dispatch");
                 }
 
-                // 3. Create the actor using reflection (we need to call generic method dynamically)
-                // We use the factory's generic method via reflection as a bridge
-                var getOrCreateMethod = typeof(IActorFactory).GetMethod(nameof(IActorFactory.GetOrCreateActor))!
-                    .MakeGenericMethod(actorType);
-                
-                var actor = (IActor)getOrCreateMethod.Invoke(_actorFactory, new object[] { envelope.ActorId })!;
+                var actor = concreteFactory.GetOrCreateActorByName(envelope.ActorType, envelope.ActorId);
 
                 if (actor == null)
                 {
@@ -464,23 +454,23 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                         $"Failed to create actor '{envelope.ActorId}' of type '{envelope.ActorType}'");
                 }
 
-                // 4. Register actor in silo's registry (if not already registered)
+                // 3. Register actor in silo's registry (if not already registered)
                 RegisterActor(envelope.ActorId, actor);
 
-                // 5. Invoke the method via dispatcher
+                // 4. Invoke the method via dispatcher
                 var responsePayload = await dispatcher.InvokeAsync(
                     actor,
                     envelope.MethodName,
                     envelope.Payload,
                     CancellationToken.None);
 
-                // 6. Send successful response back
+                // 5. Send successful response back (with empty Payload, result in ResponsePayload)
                 var response = new Networking.Abstractions.QuarkEnvelope(
                     envelope.MessageId,
                     envelope.ActorId,
                     envelope.ActorType,
                     envelope.MethodName,
-                    Array.Empty<byte>(),
+                    Array.Empty<byte>(),  // Empty payload - response data is in ResponsePayload
                     envelope.CorrelationId)
                 {
                     ResponsePayload = responsePayload,
