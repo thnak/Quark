@@ -17,3 +17,5 @@ QUARK008 | Quark.Performance | Warning | Blocking call detected in actor method
 QUARK009 | Quark.Performance | Warning | Synchronous I/O detected in actor method
 QUARK010 | Quark.Actors | Warning | Multiple classes implement the same IQuarkActor interface
 QUARK011 | Quark.Actors | Info | Deep inheritance chain detected for IQuarkActor implementation
+QUARK012 | Quark.Actors | Error | Actor method returns unsupported IEnumerable or IAsyncEnumerable
+QUARK013 | Quark.Actors | Error | Actor interface property exposes unsupported IEnumerable or IAsyncEnumerable

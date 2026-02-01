@@ -109,8 +109,8 @@ public class ProxyGenerationTests
         var actorId = "counter-2";
         var expectedCount = 123;
 
-        // Create a response envelope with serialized GetCountAsyncResponse
-        var responseMessage = new Generated.GetCountAsyncResponse { Result = expectedCount };
+        // Create a response envelope with serialized ITestProxyActor_GetCountAsyncResponse
+        var responseMessage = new Generated.ITestProxyActor_GetCountAsyncResponse { Result = expectedCount };
         byte[] responsePayload;
         using (var ms = new MemoryStream())
         {
@@ -150,7 +150,7 @@ public class ProxyGenerationTests
         var expectedResponse = "Processed: Hello, World!";
 
         // Create a response envelope
-        var responseMessage = new Generated.ProcessMessageAsyncResponse { Result = expectedResponse };
+        var responseMessage = new Generated.ITestProxyActor_ProcessMessageAsyncResponse { Result = expectedResponse };
         byte[] responsePayload;
         using (var ms = new MemoryStream())
         {
@@ -185,7 +185,7 @@ public class ProxyGenerationTests
         // Verify the request was serialized correctly
         using (var ms = new MemoryStream(capturedEnvelope.Payload))
         {
-            var request = ProtoBuf.Serializer.Deserialize<Generated.ProcessMessageAsyncRequest>(ms);
+            var request = ProtoBuf.Serializer.Deserialize<Generated.ITestProxyActor_ProcessMessageAsyncRequest>(ms);
             Assert.Equal(message, request.Message);
             Assert.Equal(priority, request.Priority);
         }

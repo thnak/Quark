@@ -226,11 +226,20 @@ public class ProxySourceGenerator : IIncrementalGenerator
                 if (method.MethodKind == MethodKind.PropertyGet || method.MethodKind == MethodKind.PropertySet)
                     continue;
 
+                // Include all methods (async and sync) - we'll handle them differently in proxy generation
                 methods.Add(method);
             }
         }
 
         return methods;
+    }
+
+    private static bool IsAsyncReturnType(string returnTypeString)
+    {
+        return returnTypeString == "System.Threading.Tasks.Task" ||
+               returnTypeString == "System.Threading.Tasks.ValueTask" ||
+               returnTypeString.StartsWith("System.Threading.Tasks.Task<") ||
+               returnTypeString.StartsWith("System.Threading.Tasks.ValueTask<");
     }
 
     private static void GenerateMessageContracts(
@@ -251,20 +260,29 @@ public class ProxySourceGenerator : IIncrementalGenerator
         foreach (var method in methods)
         {
             var methodName = method.Name;
+            var returnType = method.ReturnType.ToDisplayString();
 
-            // Generate request message if method has parameters
-            if (method.Parameters.Length > 0)
+            // Skip non-async methods - they don't need message contracts
+            if (!IsAsyncReturnType(returnType))
+                continue;
+
+            // Generate request message if method has parameters (excluding CancellationToken)
+            var serializableParams = method.Parameters
+                .Where(p => p.Type.ToDisplayString() != "System.Threading.CancellationToken")
+                .ToList();
+
+            if (serializableParams.Count > 0)
             {
                 source.AppendLine($"    /// <summary>");
                 source.AppendLine($"    /// Protobuf message contract for {fullInterfaceName}.{methodName} request.");
                 source.AppendLine($"    /// </summary>");
                 source.AppendLine($"    [ProtoContract]");
-                source.AppendLine($"    public struct {methodName}Request");
+                source.AppendLine($"    public struct {interfaceName}_{methodName}Request");
                 source.AppendLine($"    {{");
 
-                for (int i = 0; i < method.Parameters.Length; i++)
+                for (int i = 0; i < serializableParams.Count; i++)
                 {
-                    var param = method.Parameters[i];
+                    var param = serializableParams[i];
                     var paramType = param.Type.ToDisplayString();
                     var paramName = ToPascalCase(param.Name);
 
@@ -279,14 +297,14 @@ public class ProxySourceGenerator : IIncrementalGenerator
             }
 
             // Generate response message if method returns a value
-            var returnType = method.ReturnType as INamedTypeSymbol;
-            if (returnType != null && IsTaskWithResult(returnType, out var resultType))
+            var returnTypeSymbol = method.ReturnType as INamedTypeSymbol;
+            if (returnTypeSymbol != null && IsTaskWithResult(returnTypeSymbol, out var resultType))
             {
                 source.AppendLine($"    /// <summary>");
                 source.AppendLine($"    /// Protobuf message contract for {fullInterfaceName}.{methodName} response.");
                 source.AppendLine($"    /// </summary>");
                 source.AppendLine($"    [ProtoContract]");
-                source.AppendLine($"    public struct {methodName}Response");
+                source.AppendLine($"    public struct {interfaceName}_{methodName}Response");
                 source.AppendLine($"    {{");
                 source.AppendLine($"        /// <summary>Gets or sets the return value.</summary>");
                 source.AppendLine($"        [ProtoMember(1)]");
@@ -385,12 +403,29 @@ public class ProxySourceGenerator : IIncrementalGenerator
         source.AppendLine($"        public {returnType} {methodName}({parameters})");
         source.AppendLine($"        {{");
 
-        // Serialize request parameters to Protobuf
-        if (method.Parameters.Length > 0)
+        // Check if this is an async method
+        if (!IsAsyncReturnType(returnType))
         {
-            source.AppendLine($"            var request = new {methodName}Request");
+            // For non-async methods (like Subscribe/Unsubscribe), throw NotSupportedException
+            source.AppendLine($"            throw new NotSupportedException(");
+            source.AppendLine($"                \"Method '{methodName}' cannot be called remotely through a proxy. \" +");
+            source.AppendLine($"                \"Only async methods (returning Task or Task<T>) are supported for remote actor calls.\");");
+            source.AppendLine($"        }}");
+            source.AppendLine();
+            return;
+        }
+
+        // Get serializable parameters (excluding CancellationToken)
+        var serializableParams = method.Parameters
+            .Where(p => p.Type.ToDisplayString() != "System.Threading.CancellationToken")
+            .ToList();
+
+        // Serialize request parameters to Protobuf
+        if (serializableParams.Count > 0)
+        {
+            source.AppendLine($"            var protoRequest = new {interfaceName}_{methodName}Request");
             source.AppendLine($"            {{");
-            foreach (var param in method.Parameters)
+            foreach (var param in serializableParams)
             {
                 source.AppendLine($"                {ToPascalCase(param.Name)} = {param.Name},");
             }
@@ -399,7 +434,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
             source.AppendLine($"            byte[] payload;");
             source.AppendLine($"            using (var ms = new System.IO.MemoryStream())");
             source.AppendLine($"            {{");
-            source.AppendLine($"                Serializer.Serialize(ms, request);");
+            source.AppendLine($"                Serializer.Serialize(ms, protoRequest);");
             source.AppendLine($"                payload = ms.ToArray();");
             source.AppendLine($"            }}");
         }
@@ -448,7 +483,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
             source.AppendLine($"                }}");
             source.AppendLine();
             source.AppendLine($"                using var ms = new System.IO.MemoryStream(response.ResponsePayload);");
-            source.AppendLine($"                var result = Serializer.Deserialize<{methodName}Response>(ms);");
+            source.AppendLine($"                var result = Serializer.Deserialize<{interfaceName}_{methodName}Response>(ms);");
             source.AppendLine($"                return result.Result;");
             source.AppendLine($"            }}");
         }
@@ -479,6 +514,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
                        #nullable enable
                        using Quark.Abstractions;
                        using Quark.Client;
+                       using Quark.Networking.Abstractions;
                        
                        namespace Quark.Client
                        {
