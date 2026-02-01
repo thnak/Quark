@@ -1,15 +1,21 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Client;
-using Quark.Extensions.DependencyInjection.SingletonStartupServices;
 
-namespace Quark.Extensions.DependencyInjection;
+namespace Quark.Client.DependencyInjection;
 
 /// <summary>
 /// Extension methods for configuring Quark Cluster Client services.
 /// </summary>
 public static class ClusterClientServiceCollectionExtensions
 {
+    /// <summary>
+    /// Adds and starts a lightweight Quark Cluster Client to the service collection.
+    /// The client connects to a Quark cluster without hosting actors locally.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">Optional action to configure client options.</param>
+    /// <param name="clientBuilderConfigure">Optional action to configure the client builder (clustering, transport).</param>
     public static void UseQuarkClient(this IServiceCollection services,
         Action<ClusterClientOptions>? configure = null,
         Action<IClusterClientBuilder>? clientBuilderConfigure = null)

@@ -8,6 +8,7 @@
     </Folder>
     <Folder Name="/examples/">
         <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
+        <Project Path="examples/Quark.Examples.ClientOnly/Quark.Examples.ClientOnly.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Api/Quark.Examples.PizzaTracker.Api.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Console/Quark.Examples.PizzaTracker.Console.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Shared/Quark.Examples.PizzaTracker.Shared.csproj" />
@@ -24,6 +25,7 @@
     <Folder Name="/src/">
         <Project Path="src/Quark.Analyzers/Quark.Analyzers.csproj" />
         <Project Path="src/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" />
+        <Project Path="src/Quark.Client.DependencyInjection/Quark.Client.DependencyInjection.csproj" />
         <Project Path="src/Quark.Client/Quark.Client.csproj" />
         <Project Path="src/Quark.EventSourcing/Quark.EventSourcing.csproj" />
         <Project Path="src/Quark.Profiling.Abstractions/Quark.Profiling.Abstractions.csproj" />

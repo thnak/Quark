@@ -3,7 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <RootNamespace>Quark.Extensions.DependencyInjection</RootNamespace>
-        <Description>Dependency injection extensions for configuring Quark silos and clients with Microsoft.Extensions.DependencyInjection.</Description>
+        <Description>Dependency injection extensions for configuring Quark silos with Microsoft.Extensions.DependencyInjection. For client-only configurations, use Quark.Client.DependencyInjection instead.</Description>
     </PropertyGroup>
 
     <ItemGroup>

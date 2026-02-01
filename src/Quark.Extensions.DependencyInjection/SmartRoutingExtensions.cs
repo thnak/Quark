@@ -7,41 +7,10 @@ using Quark.Networking.Abstractions;
 namespace Quark.Extensions.DependencyInjection;
 
 /// <summary>
-/// Extension methods for configuring smart routing services.
+/// Extension methods for configuring smart routing services for Quark silos.
 /// </summary>
 public static class SmartRoutingExtensions
 {
-    /// <summary>
-    /// Adds smart routing with local bypass optimization to the service collection.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configure">Optional configuration action.</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddSmartRouting(
-        this IServiceCollection services,
-        Action<SmartRoutingOptions>? configure = null)
-    {
-        if (services == null)
-        {
-            throw new ArgumentNullException(nameof(services));
-        }
-
-        // Register options
-        if (configure != null)
-        {
-            services.Configure(configure);
-        }
-        else
-        {
-            services.Configure<SmartRoutingOptions>(_ => { });
-        }
-
-        // Register smart router
-        services.TryAddSingleton<ISmartRouter, SmartRouter>();
-
-        return services;
-    }
-
     /// <summary>
     /// Adds smart routing with a specific local silo ID for co-hosted scenarios.
     /// </summary>
