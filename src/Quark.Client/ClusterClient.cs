@@ -59,13 +59,13 @@ public sealed class ClusterClient : IClusterClient
             // Create cancellation token source for lifecycle management
             _shutdownCts = new CancellationTokenSource();
 
-            // Subscribe to silo membership changes to establish/teardown connections
-            _clusterMembership.SiloJoined += OnSiloJoined;
-            _clusterMembership.SiloLeft += OnSiloLeft;
-
             // Start cluster membership monitoring to discover silos
             await _clusterMembership.StartAsync(cancellationToken);
             _logger.LogInformation("Cluster membership monitoring started for client {ClientId}", _clientId);
+
+            // Subscribe to silo membership changes AFTER starting to avoid race conditions
+            _clusterMembership.SiloJoined += OnSiloJoined;
+            _clusterMembership.SiloLeft += OnSiloLeft;
 
             // Wait for at least one silo to be available
             var retries = 0;
