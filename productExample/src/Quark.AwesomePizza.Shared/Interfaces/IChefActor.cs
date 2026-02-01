@@ -7,7 +7,7 @@ namespace Quark.AwesomePizza.Shared.Interfaces;
 /// Interface for Chef Actor - manages individual chef workload.
 /// This is exposed to Gateway and MQTT for actor proxy calls via IClusterClient.
 /// </summary>
-public interface IChefActorProxy : IQuarkActor
+public interface IChefActor : IQuarkActor
 {
     /// <summary>
     /// Initializes a new chef.
