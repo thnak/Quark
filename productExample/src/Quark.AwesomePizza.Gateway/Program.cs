@@ -5,7 +5,7 @@ using Quark.Core.Actors;
 using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Actors;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateSlimBuilder(args);
 
 // Configure JSON options for AOT
 builder.Services.ConfigureHttpJsonOptions(options =>
