@@ -8,6 +8,7 @@
     </Folder>
     <Folder Name="/examples/">
         <Project Path="examples/Quark.Examples.Basic/Quark.Examples.Basic.csproj" />
+        <Project Path="examples/Quark.Examples.ClientOnly/Quark.Examples.ClientOnly.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Api/Quark.Examples.PizzaTracker.Api.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Console/Quark.Examples.PizzaTracker.Console.csproj" />
         <Project Path="examples/Quark.Examples.PizzaTracker.Shared/Quark.Examples.PizzaTracker.Shared.csproj" />
