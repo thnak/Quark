@@ -17,9 +17,21 @@ ConfigureServices(builder);
 
 void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
 {
+    var configuration = webApplicationBuilder.Configuration;
+    var siloId = Environment.GetEnvironmentVariable("SILO_ID")
+                 ?? configuration["Silo:Id"]
+                 ?? $"silo-{Guid.NewGuid():N}";
+
+    var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST")
+                    ?? configuration["Redis:Host"]
+                    ?? "localhost";
     // Add logging
     webApplicationBuilder.Services.AddLogging();
-    webApplicationBuilder.Services.AddQuarkClient();
+    webApplicationBuilder.Services.UseQuarkClient(
+        configure: options => options.ClientId = siloId,
+        clientBuilderConfigure: clientBuilderConfigure =>
+            clientBuilderConfigure.WithRedisClustering(connectionString: redisHost)
+                .WithGrpcTransport());
 }
 
 // Add CORS
@@ -108,7 +120,7 @@ app.MapPost("/api/orders/{orderId}/confirm", async (string orderId, HttpContext 
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
     var actor = cluster.GetActor<OrderActor>(orderId);
-   
+
 
     var order = await actor.ConfirmOrderAsync();
     return Results.Ok(order);
@@ -133,7 +145,7 @@ app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId, HttpC
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
     var actor = cluster.GetActor<OrderActor>(orderId);
- 
+
 
     var order = await actor.StartDeliveryAsync();
     return Results.Ok(order);
@@ -145,7 +157,7 @@ app.MapPost("/api/orders/{orderId}/start-delivery", async (string orderId, HttpC
 app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor  = cluster.GetActor<OrderActor>(orderId); 
+    var actor = cluster.GetActor<OrderActor>(orderId);
 
     var order = await actor.CompleteDeliveryAsync();
     return Results.Ok(order);
@@ -157,7 +169,7 @@ app.MapPost("/api/orders/{orderId}/complete-delivery", async (string orderId, Ht
 app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor  = cluster.GetActor<OrderActor>(orderId); 
+    var actor = cluster.GetActor<OrderActor>(orderId);
 
     var order = await actor.CancelOrderAsync(reason);
     return Results.Ok(order);
@@ -169,7 +181,7 @@ app.MapPost("/api/orders/{orderId}/cancel", async (string orderId, string reason
 app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor  = cluster.GetActor<OrderActor>(orderId); 
+    var actor = cluster.GetActor<OrderActor>(orderId);
 
     var response = ctx.Response;
     response.Headers.Append("Content-Type", "text/event-stream");
@@ -223,18 +235,12 @@ app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext ctx
 /// <summary>
 /// Register a new driver
 /// </summary>
-app.MapPost("/api/drivers", async (string driverId, string name) =>
-{
-  
-});
+app.MapPost("/api/drivers", async (string driverId, string name) => { });
 
 /// <summary>
 /// Get driver status
 /// </summary>
-app.MapGet("/api/drivers/{driverId}", async (string driverId, HttpContext ctx) =>
-{
-
-});
+app.MapGet("/api/drivers/{driverId}", async (string driverId, HttpContext ctx) => { });
 
 /// <summary>
 /// Update driver location (typically called by MQTT bridge)
@@ -243,7 +249,6 @@ app.MapPost("/api/drivers/{driverId}/location", async (
     string driverId,
     UpdateDriverLocationRequest request, HttpContext ctx) =>
 {
-  
 });
 
 /// <summary>
@@ -252,7 +257,7 @@ app.MapPost("/api/drivers/{driverId}/location", async (
 app.MapPost("/api/drivers/{driverId}/status", async (string driverId, DriverStatus status, HttpContext ctx) =>
 {
     var cluster = ctx.RequestServices.GetRequiredService<IClusterClient>();
-    var actor  = cluster.GetActor<IDriverActor>(driverId); 
+    var actor = cluster.GetActor<IDriverActor>(driverId);
     var driver = await actor.UpdateStatusAsync(status);
     return Results.Ok(driver);
 });

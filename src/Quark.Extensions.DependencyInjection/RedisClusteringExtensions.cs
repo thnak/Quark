@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Abstractions.Clustering;
 using Quark.Abstractions.Persistence;
 using Quark.Abstractions.Reminders;
-using Quark.Client;
 using Quark.Clustering.Redis;
 using Quark.Hosting;
 using Quark.Networking.Abstractions;
@@ -17,6 +16,30 @@ namespace Quark.Extensions.DependencyInjection;
 /// </summary>
 public static class RedisClusteringExtensions
 {
+    /// <summary>
+    /// Adds Redis clustering to the Cluster Client with shared connection support.
+    /// This method allows you to provide an existing IConnectionMultiplexer to avoid duplicate connections.
+    /// </summary>
+    /// <param name="builder">The client builder.</param>
+    /// <param name="connectionMultiplexer">Optional shared Redis connection. If null, a new connection will be created using the connectionString.</param>
+    /// <param name="connectionString">Connection string for Redis. Required if connectionMultiplexer is null.</param>
+    /// <param name="options">Optional configuration options for Redis connection.</param>
+    /// <param name="enableHealthMonitoring">Whether to enable connection health monitoring. Defaults to true.</param>
+    /// <param name="configureHealthOptions">Optional action to configure health monitoring options.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IClusterClientBuilder WithRedisClustering(
+        this IClusterClientBuilder builder,
+        IConnectionMultiplexer? connectionMultiplexer = null,
+        string? connectionString = null,
+        ConfigurationOptions? options = null,
+        bool enableHealthMonitoring = true,
+        Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
+    {
+        builder.Services.WithRedisClustering(connectionMultiplexer, connectionString, options, enableHealthMonitoring,
+            configureHealthOptions);
+        return builder;
+    }
+
     /// <summary>
     /// Adds Redis clustering to the Quark Silo with shared connection support.
     /// This method allows you to provide an existing IConnectionMultiplexer to avoid duplicate connections.
@@ -36,13 +59,20 @@ public static class RedisClusteringExtensions
         bool enableHealthMonitoring = true,
         Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
     {
-        if (builder == null)
-        {
-            throw new ArgumentNullException(nameof(builder));
-        }
+        builder.Services.WithRedisClustering(connectionMultiplexer, connectionString, options, enableHealthMonitoring,
+            configureHealthOptions);
+        return builder;
+    }
 
+    public static void WithRedisClustering(this IServiceCollection services,
+        IConnectionMultiplexer? connectionMultiplexer = null,
+        string? connectionString = null,
+        ConfigurationOptions? options = null,
+        bool enableHealthMonitoring = true,
+        Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
+    {
         // Register the IConnectionMultiplexer
-        builder.Services.TryAddSingleton<IConnectionMultiplexer>(sp =>
+        services.TryAddSingleton<IConnectionMultiplexer>(sp =>
         {
             // Use provided multiplexer or create a new one
             if (connectionMultiplexer != null)
@@ -65,7 +95,7 @@ public static class RedisClusteringExtensions
         });
 
         // Register Redis cluster membership
-        builder.Services.TryAddSingleton<IClusterMembership>(sp =>
+        services.TryAddSingleton<IClusterMembership>(sp =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var siloOptions = sp.GetRequiredService<QuarkSiloOptions>();
@@ -73,7 +103,7 @@ public static class RedisClusteringExtensions
 
             return new RedisClusterMembership(redis, siloId);
         });
-        builder.Services.TryAddSingleton<IQuarkClusterMembership>(sp =>
+        services.TryAddSingleton<IQuarkClusterMembership>(sp =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
             var siloOptions = sp.GetRequiredService<QuarkSiloOptions>();
@@ -85,7 +115,7 @@ public static class RedisClusteringExtensions
         // Register health monitor if enabled
         if (enableHealthMonitoring)
         {
-            builder.Services.TryAddSingleton(sp =>
+            services.TryAddSingleton(sp =>
             {
                 var redis = sp.GetRequiredService<IConnectionMultiplexer>();
                 var healthOptions = new RedisConnectionHealthOptions();
@@ -95,8 +125,6 @@ public static class RedisClusteringExtensions
                 return new RedisConnectionHealthMonitor(redis, healthOptions, logger);
             });
         }
-
-        return builder;
     }
 
     /// <summary>
@@ -151,80 +179,6 @@ public static class RedisClusteringExtensions
 
             return new RedisReminderTable(db, hashRing);
         });
-
-        return builder;
-    }
-
-    /// <summary>
-    /// Adds Redis clustering to the Cluster Client with shared connection support.
-    /// This method allows you to provide an existing IConnectionMultiplexer to avoid duplicate connections.
-    /// </summary>
-    /// <param name="builder">The client builder.</param>
-    /// <param name="connectionMultiplexer">Optional shared Redis connection. If null, a new connection will be created using the connectionString.</param>
-    /// <param name="connectionString">Connection string for Redis. Required if connectionMultiplexer is null.</param>
-    /// <param name="options">Optional configuration options for Redis connection.</param>
-    /// <param name="enableHealthMonitoring">Whether to enable connection health monitoring. Defaults to true.</param>
-    /// <param name="configureHealthOptions">Optional action to configure health monitoring options.</param>
-    /// <returns>The builder for chaining.</returns>
-    public static IClusterClientBuilder WithRedisClustering(
-        this IClusterClientBuilder builder,
-        IConnectionMultiplexer? connectionMultiplexer = null,
-        string? connectionString = null,
-        ConfigurationOptions? options = null,
-        bool enableHealthMonitoring = true,
-        Action<RedisConnectionHealthOptions>? configureHealthOptions = null)
-    {
-        if (builder == null)
-        {
-            throw new ArgumentNullException(nameof(builder));
-        }
-
-        // Register the IConnectionMultiplexer
-        builder.Services.TryAddSingleton<IConnectionMultiplexer>(sp =>
-        {
-            // Use provided multiplexer or create a new one
-            if (connectionMultiplexer != null)
-            {
-                return connectionMultiplexer;
-            }
-
-            if (!string.IsNullOrEmpty(connectionString))
-            {
-                return ConnectionMultiplexer.Connect(connectionString);
-            }
-
-            if (options != null)
-            {
-                return ConnectionMultiplexer.Connect(options);
-            }
-
-            throw new InvalidOperationException(
-                "Either connectionMultiplexer, connectionString, or options must be provided.");
-        });
-
-        // Register cluster membership for client
-        builder.Services.TryAddSingleton<IClusterMembership>(sp =>
-        {
-            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            var clientOptions = sp.GetRequiredService<ClusterClientOptions>();
-            var clientId = clientOptions.ClientId ?? Guid.NewGuid().ToString("N");
-
-            return new RedisClusterMembership(redis, clientId);
-        });
-
-        // Register health monitor if enabled
-        if (enableHealthMonitoring)
-        {
-            builder.Services.TryAddSingleton(sp =>
-            {
-                var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-                var healthOptions = new RedisConnectionHealthOptions();
-                configureHealthOptions?.Invoke(healthOptions);
-                var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<RedisConnectionHealthMonitor>>();
-
-                return new RedisConnectionHealthMonitor(redis, healthOptions, logger);
-            });
-        }
 
         return builder;
     }

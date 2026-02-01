@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Client;
+using Quark.Clustering.Redis;
+using StackExchange.Redis;
 
 namespace Quark.Extensions.DependencyInjection;
 
@@ -9,6 +11,14 @@ namespace Quark.Extensions.DependencyInjection;
 /// </summary>
 public static class ClusterClientServiceCollectionExtensions
 {
+    public static void UseQuarkClient(this IServiceCollection services,
+        Action<ClusterClientOptions>? configure = null,
+        Action<IClusterClientBuilder>? clientBuilderConfigure = null)
+    {
+        var client = services.AddQuarkClient(configure);
+        clientBuilderConfigure?.Invoke(client);
+    }
+
     /// <summary>
     /// Adds a lightweight Quark Cluster Client to the service collection.
     /// The client can connect to a Quark cluster without hosting actors locally.
