@@ -165,7 +165,6 @@ public class GrpcTransportTests
         // Arrange
         var transport = new GrpcQuarkTransport("test-silo", "localhost:5000");
         var receivedEnvelopes = new List<QuarkEnvelope>();
-        var receivedCount = 0;
         var lockObj = new object();
 
         // Act - Subscribe to event
@@ -174,13 +173,17 @@ public class GrpcTransportTests
             lock (lockObj)
             {
                 receivedEnvelopes.Add(envelope);
-                receivedCount++;
             }
         };
 
-        // This test validates that the event subscription mechanism works
+        // This test validates that the event subscription mechanism works.
         // The actual concurrent write protection is handled in QuarkTransportService
-        // which uses a SemaphoreSlim to serialize writes to the gRPC response stream
+        // which uses a SemaphoreSlim to serialize writes to the gRPC response stream.
+        //
+        // Note: The RaiseEnvelopeReceived method is internal and only accessible
+        // from within the Quark.Transport.Grpc assembly, so we cannot directly
+        // test concurrent event firing from here. The synchronization is thoroughly
+        // covered by the SemaphoreSlim implementation in QuarkTransportService.
 
         // Assert - Event handler registered successfully
         Assert.Empty(receivedEnvelopes); // No envelopes received yet
