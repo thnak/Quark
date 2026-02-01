@@ -95,14 +95,6 @@ public static class RedisClusteringExtensions
         });
 
         // Register Redis cluster membership
-        services.TryAddSingleton<IClusterMembership>(sp =>
-        {
-            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-            var siloOptions = sp.GetRequiredService<QuarkSiloOptions>();
-            var siloId = siloOptions.SiloId ?? Guid.NewGuid().ToString("N");
-
-            return new RedisClusterMembership(redis, siloId);
-        });
         services.TryAddSingleton<IQuarkClusterMembership>(sp =>
         {
             var redis = sp.GetRequiredService<IConnectionMultiplexer>();
@@ -110,6 +102,11 @@ public static class RedisClusteringExtensions
             var siloId = siloOptions.SiloId ?? Guid.NewGuid().ToString("N");
 
             return new RedisClusterMembership(redis, siloId);
+        });
+        services.TryAddSingleton<IClusterMembership>(sp =>
+        {
+            var quarkClusterMembership = sp.GetRequiredService<IQuarkClusterMembership>();
+            return quarkClusterMembership;
         });
 
         // Register health monitor if enabled
