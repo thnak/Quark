@@ -19,8 +19,8 @@ Quark is a **Virtual Actor framework** similar to Microsoft Orleans. This docume
 
 ```csharp
 // ❌ WRONG: Getting a direct actor reference (reference leak!)
-var actor = actorFactory.GetOrCreateActor<MyActor>("actor-1");
-await actor.DoSomethingAsync(); // This bypasses the transport layer!
+var actorReference = actorFactory.GetOrCreateActor<MyActor>("actor-1");
+await actorReference.DoSomethingAsync(); // This bypasses the transport layer!
 ```
 
 When you have a direct reference:
@@ -82,8 +82,8 @@ On the server side (silos), actors are **real instances**:
 ```csharp
 // In a silo, actors are created by ActorFactory
 var factory = serviceProvider.GetRequiredService<IActorFactory>();
-var actor = factory.CreateActor<CounterActor>("counter-1");
-await actor.OnActivateAsync(); // Real actor activation
+var actorInstance = factory.CreateActor<CounterActor>("counter-1");
+await actorInstance.OnActivateAsync(); // Real actor activation
 ```
 
 ### Local Calls on Silo
@@ -146,10 +146,10 @@ If you were using `client.GetActor<T>()`, change to:
 
 ```csharp
 // Before (won't work)
-var actor = client.GetActor<IMyActor>("actor-1");
+var actorReference = client.GetActor<IMyActor>("actor-1");
 
 // After (correct)
-var actor = ActorProxyFactory.CreateProxy<IMyActor>(client, "actor-1");
+var proxy = ActorProxyFactory.CreateProxy<IMyActor>(client, "actor-1");
 ```
 
 ## Architecture Diagrams
