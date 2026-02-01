@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
 using Quark.Abstractions.Migration;
+using Quark.Client;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
 using Quark.Networking.Abstractions;
@@ -24,6 +25,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     private readonly StreamBroker? _streamBroker;
     private readonly IActorMigrationCoordinator? _migrationCoordinator;
     private readonly IActorActivityTracker? _activityTracker;
+    private readonly IClusterClient? _clusterClient;
     private readonly QuarkSiloOptions _options;
     private readonly ILogger<QuarkSilo> _logger;
     private readonly ConcurrentDictionary<string, IActor> _actorRegistry = new();
@@ -44,7 +46,8 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         ReminderTickManager? reminderTickManager = null,
         StreamBroker? streamBroker = null,
         IActorMigrationCoordinator? migrationCoordinator = null,
-        IActorActivityTracker? activityTracker = null)
+        IActorActivityTracker? activityTracker = null,
+        IClusterClient? clusterClient = null)
     {
         _actorFactory = actorFactory ?? throw new ArgumentNullException(nameof(actorFactory));
         _clusterMembership = clusterMembership ?? throw new ArgumentNullException(nameof(clusterMembership));
@@ -55,6 +58,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         _streamBroker = streamBroker;
         _migrationCoordinator = migrationCoordinator;
         _activityTracker = activityTracker;
+        _clusterClient = clusterClient;
 
         var siloId = options.SiloId ?? Guid.NewGuid().ToString("N");
         _siloInfo = new SiloInfo(siloId, options.Address, options.Port, SiloStatus.Joining);
@@ -110,6 +114,13 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             var activeSilos = await _clusterMembership.GetActiveSilosAsync(cancellationToken);
             _logger.LogInformation("Silo {SiloId} discovered {Count} active silos in cluster", SiloId, activeSilos.Count);
 
+            // 8. Optionally connect cluster client for silo-internal operations
+            if (_clusterClient != null)
+            {
+                await _clusterClient.ConnectAsync(cancellationToken);
+                _logger.LogInformation("Cluster client connected for silo {SiloId}", SiloId);
+            }
+            
             _logger.LogInformation("Quark Silo {SiloId} started successfully", SiloId);
         }
         catch (Exception ex)

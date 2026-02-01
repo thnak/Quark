@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quark.Abstractions;
+using Quark.Client;
 using Quark.Core.Actors;
 using Quark.Core.Reminders;
 using Quark.Core.Streaming;
@@ -34,6 +35,11 @@ public static class QuarkSiloServiceCollectionExtensions
         var siloBuilder = hostBuilder.Services.AddQuarkSilo(configure);
         siloConfigure?.Invoke(siloBuilder);
         hostBuilder.Services.AddActorActivityTracking();
+        ClusterClientOptions clusterClientOptions = new ClusterClientOptions();
+        clusterClientOptions.ClientId = "Quark";
+        hostBuilder.Services.AddSingleton(clusterClientOptions);
+      
+        hostBuilder.Services.AddSingleton<IClusterClient, ClusterClient>();
     }
 
     /// <summary>
