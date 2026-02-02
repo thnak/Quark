@@ -55,7 +55,13 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
         void OnEnvelopeReceived(object? sender, QuarkEnvelope envelope)
         {
             // Only handle messages that have a response payload or are errors
-            // (Assuming this stream handles responses to requests)
+            // Filter out incoming requests to prevent echo loop - only send actual responses
+            if (envelope.ResponsePayload == null && !envelope.IsError)
+            {
+                // This is an incoming request, not a response - don't echo it back
+                return;
+            }
+            
             var protoMessage = ToProtoMessage(envelope);
             if (!outgoingMessages.Writer.TryWrite(protoMessage))
             {
