@@ -178,11 +178,15 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     /// <inheritdoc />
     public void SendResponse(QuarkEnvelope responseEnvelope)
     {
-        // Complete the pending request with the response
+        // Complete the pending request with the response (for local calls)
         if (_pendingRequests.TryRemove(responseEnvelope.MessageId, out var tcs))
         {
             tcs.SetResult(responseEnvelope);
         }
+        
+        // Also raise the event so subscribers (like QuarkTransportService) can send the response
+        // over gRPC streams for remote calls
+        EnvelopeReceived?.Invoke(this, responseEnvelope);
     }
 
     /// <summary>

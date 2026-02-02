@@ -10,9 +10,11 @@ When an actor encountered an error during method invocation, the system experien
 
 ## Root Cause Analysis
 
-The issue was identified in `QuarkTransportService.ActorStream`, specifically in the `OnEnvelopeReceived` event handler.
+### Issue #1: Echo Loop in QuarkTransportService
 
-### The Echo Loop
+The first issue was identified in `QuarkTransportService.ActorStream`, specifically in the `OnEnvelopeReceived` event handler.
+
+#### The Echo Loop
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -30,7 +32,7 @@ The issue was identified in `QuarkTransportService.ActorStream`, specifically in
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### The Buggy Code
+#### The Buggy Code (Issue #1)
 
 In `src/Quark.Transport.Grpc/QuarkTransportService.cs` (lines 55-64):
 
@@ -49,19 +51,47 @@ void OnEnvelopeReceived(object? sender, QuarkEnvelope envelope)
 
 **The Bug**: The comment says "Only handle messages that have a response payload or are errors", but the code **did not check for this condition**. It wrote ALL envelopes to the outgoing stream, including incoming request envelopes.
 
-### Why This Caused Flooding
+### Issue #2: SendResponse Doesn't Raise Event for Remote Calls
 
-When an actor method throws an exception:
+After fixing Issue #1, a second issue was revealed: clients were stuck waiting for responses (especially error responses) because `SendResponse` doesn't raise the `EnvelopeReceived` event.
 
-1. The error is caught in `ActorInvocationMailbox.ProcessMessagesAsync`
-2. An error response envelope is created with the same MessageId but a NEW Timestamp
-3. The error response is sent via `_transport.SendResponse(errorResponse)`
-4. For local calls, this triggers the `EnvelopeReceived` event again
-5. The buggy handler writes it back to the stream
-6. The client receives it and might resend, creating a loop
-7. Each iteration creates a new envelope with a different timestamp
+#### The Missing Event
 
-## The Fix
+```
+Remote Client Request
+  ↓
+QuarkTransportService receives via gRPC
+  ↓
+RaiseEnvelopeReceived(request) → triggers event
+  ↓
+QuarkSilo.OnEnvelopeReceived processes request
+  ↓
+_transport.SendResponse(errorResponse)
+  ↓
+SendResponse only completes TCS (does nothing for remote calls!)
+  ↓
+❌ Response never sent back to client! Client waits forever!
+```
+
+In `src/Quark.Transport.Grpc/GrpcQuarkTransport.cs`:
+
+```csharp
+public void SendResponse(QuarkEnvelope responseEnvelope)
+{
+    // Complete the pending request with the response
+    if (_pendingRequests.TryRemove(responseEnvelope.MessageId, out var tcs))
+    {
+        tcs.SetResult(responseEnvelope);
+    }
+    // Missing: EnvelopeReceived?.Invoke(this, responseEnvelope);
+}
+```
+
+**The Bug**: `SendResponse` only completes the TaskCompletionSource (TCS), which works for local calls but does nothing for remote calls. The response needs to be raised as an event so `QuarkTransportService.OnEnvelopeReceived` can write it to the gRPC stream.
+
+## The Fixes
+
+### Fix #1: Filter Out Request Envelopes
 
 Added a filter in `QuarkTransportService.OnEnvelopeReceived` to check if the envelope is actually a response before writing it:
 
@@ -84,34 +114,73 @@ void OnEnvelopeReceived(object? sender, QuarkEnvelope envelope)
 }
 ```
 
-### Key Changes
+#### Filter Logic Verification
 
-1. **Added filter check**: `if (envelope.ResponsePayload == null && !envelope.IsError)`
-2. **Early return**: If it's an incoming request (no response payload and not an error), return immediately
-3. **Only responses are written**: Only envelopes that are actual responses (have ResponsePayload or IsError=true) are written to the outgoing stream
+| Envelope Type | ResponsePayload | IsError | Filter Result |
+|---------------|-----------------|---------|---------------|
+| Request | null | false | `true && true = TRUE` → **FILTERED** ✓ |
+| Success Response | \<data\> | false | `false && true = FALSE` → **ALLOWED** ✓ |
+| Error Response | null | true | `true && false = FALSE` → **ALLOWED** ✓ |
+| Error with Data | \<data\> | true | `false && false = FALSE` → **ALLOWED** ✓ |
+
+### Fix #2: Raise Event in SendResponse
+
+Modified `SendResponse` to raise the `EnvelopeReceived` event so responses can be sent to remote clients:
+
+```csharp
+public void SendResponse(QuarkEnvelope responseEnvelope)
+{
+    // Complete the pending request with the response (for local calls)
+    if (_pendingRequests.TryRemove(responseEnvelope.MessageId, out var tcs))
+    {
+        tcs.SetResult(responseEnvelope);
+    }
+    
+    // Also raise the event so subscribers (like QuarkTransportService) can send the response
+    // over gRPC streams for remote calls
+    EnvelopeReceived?.Invoke(this, responseEnvelope);
+}
+```
+
+#### How This Works
+
+**For Local Calls:**
+1. `SendAsync` creates TCS and raises event
+2. Processing happens
+3. `SendResponse` completes TCS → client gets response ✓
+4. Event is raised but filter blocks it (no ResponsePayload yet on local optimization path)
+
+**For Remote Calls:**
+1. Client sends via gRPC
+2. Server processes request
+3. `SendResponse` raises event
+4. `QuarkTransportService.OnEnvelopeReceived` writes response to gRPC stream
+5. Client receives response ✓
 
 ## Verification
 
 ### Tests Passed
 
 - ✅ All 9 ClientSiloMailboxActorFlowTests pass
+- ✅ All 4 ActorMethodDispatcherTests pass
 - ✅ All 19 Quark.AwesomePizza.Tests pass
 - ✅ Build succeeds with 0 errors
 - ✅ No regressions detected
 
-### Expected Behavior After Fix
+### Expected Behavior After Fixes
 
 1. **No echo loop**: Incoming request envelopes are not echoed back to the client
-2. **Proper error handling**: Error responses are still sent correctly
-3. **No duplicate messages**: Each message is processed exactly once
-4. **Correct timestamps**: Each unique message has a single timestamp
+2. **Responses are delivered**: Both success and error responses are sent to clients
+3. **No client stuck waiting**: Clients receive responses (including errors) and don't wait forever
+4. **No duplicate messages**: Each message is processed exactly once
+5. **Correct timestamps**: Each unique message has a single timestamp
 
 ## Related Code
 
-- `src/Quark.Transport.Grpc/QuarkTransportService.cs` - The fixed file
-- `src/Quark.Hosting/ActorInvocationMailbox.cs` - Mailbox processing
+- `src/Quark.Transport.Grpc/GrpcQuarkTransport.cs` - SendResponse fixed to raise event
+- `src/Quark.Transport.Grpc/QuarkTransportService.cs` - OnEnvelopeReceived filter added
+- `src/Quark.Hosting/ActorInvocationMailbox.cs` - Mailbox processing and error handling
 - `src/Quark.Hosting/QuarkSilo.cs` - Silo event handling
-- `src/Quark.Transport.Grpc/GrpcQuarkTransport.cs` - Transport layer
 
 ## Testing Recommendations
 
@@ -121,6 +190,8 @@ When testing error handling in actors:
 2. **Check timestamp consistency**: Verify timestamps are consistent for the same message
 3. **Monitor mailbox depth**: Ensure the mailbox doesn't accumulate messages
 4. **Test error responses**: Verify error responses are delivered correctly without triggering loops
+5. **Test remote calls**: Ensure remote clients receive responses and don't hang
+6. **Test local calls**: Ensure local optimization still works correctly
 
 ## Future Improvements
 
@@ -130,3 +201,4 @@ Consider adding:
 2. **Dead letter queue**: Move persistently failing messages to a dead letter queue
 3. **Circuit breaker**: Implement circuit breaker pattern for repeatedly failing actors
 4. **Metrics**: Add metrics for message processing rates and error rates
+5. **Response timeout**: Add timeout mechanism to detect stuck clients
