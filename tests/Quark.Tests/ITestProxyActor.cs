@@ -43,6 +43,7 @@ public class ObjectClassValue
     public DateTime Time { get; set; }
     public List<string> Tags { get; set; } = new List<string>();
     public List<Info> Infos { get; set; } = new List<Info>();
+    public List<string> EmptyList { get; set; } = new List<string>();
 }
 
 public struct Info

@@ -268,6 +268,7 @@ public class ProxyGenerationTests
         Assert.Equal(expectedOutputObject.Time, result.Time);
         Assert.Equal(expectedOutputObject.Tags, result.Tags);
         Assert.Equal(expectedOutputObject.Infos.Count, result.Infos.Count);
+        Assert.Equal(expectedOutputObject.EmptyList.Count, result.EmptyList.Count);
         for (int i = 0; i < expectedOutputObject.Infos.Count; i++)
         {
             Assert.Equal(expectedOutputObject.Infos[i].Id, result.Infos[i].Id);
