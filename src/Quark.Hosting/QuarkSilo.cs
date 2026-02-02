@@ -474,7 +474,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                     "No dispatcher found for actor type {ActorType}. Message {MessageId} cannot be processed.",
                     envelope.ActorType, envelope.MessageId);
                 
-                var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                var errorResponse = new QuarkEnvelope(
                     envelope.MessageId,
                     envelope.ActorId,
                     envelope.ActorType,
@@ -495,7 +495,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             {
                 _logger.LogError("ActorFactory must be an instance of Quark.Core.Actors.ActorFactory");
                 
-                var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                var errorResponse = new QuarkEnvelope(
                     envelope.MessageId,
                     envelope.ActorId,
                     envelope.ActorType,

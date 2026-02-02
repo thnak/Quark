@@ -134,7 +134,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         if (_connections.TryRemove(siloId, out var connection))
         {
             await connection.Call.RequestStream.CompleteAsync();
-            
+
             // Only dispose channel if not managed by pool
             if (!connection.IsPooled)
             {
@@ -158,7 +158,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         foreach (var connection in _connections.Values)
         {
             await connection.Call.RequestStream.CompleteAsync();
-            
+
             // Only dispose channel if not managed by pool
             if (!connection.IsPooled)
             {
@@ -183,9 +183,10 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         {
             tcs.SetResult(responseEnvelope);
         }
-        
+
         // Also raise the event so subscribers (like QuarkTransportService) can send the response
         // over gRPC streams for remote calls
+        responseEnvelope.IsRequest = true;
         EnvelopeReceived?.Invoke(this, responseEnvelope);
     }
 
@@ -210,7 +211,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
                 // Check if this is a response to our request
                 if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
                     tcs.SetResult(envelope);
-                else
+                if (envelope.IsRequest)
                     // This is a new request from remote
                     EnvelopeReceived?.Invoke(this, envelope);
             }
@@ -236,7 +237,8 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
                 ? ByteString.CopyFrom(envelope.ResponsePayload)
                 : ByteString.Empty,
             IsError = envelope.IsError,
-            ErrorMessage = envelope.ErrorMessage ?? string.Empty
+            ErrorMessage = envelope.ErrorMessage ?? string.Empty,
+            IsRequest = envelope.IsRequest
         };
     }
 
@@ -248,7 +250,8 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             message.ActorType,
             message.MethodName,
             message.Payload.ToByteArray(),
-            message.CorrelationId)
+            message.CorrelationId,
+            message.IsRequest)
         {
             ResponsePayload = message.ResponsePayload.Length > 0 ? message.ResponsePayload.ToByteArray() : null,
             IsError = message.IsError,
