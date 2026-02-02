@@ -446,7 +446,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     /// Handles incoming envelope events from the transport layer.
     /// Posts messages to actor mailboxes for sequential processing.
     /// </summary>
-    private void OnEnvelopeReceived(object? sender, Networking.Abstractions.QuarkEnvelope envelope)
+    private void OnEnvelopeReceived(object? sender, QuarkEnvelope envelope)
     {
         try
         {
