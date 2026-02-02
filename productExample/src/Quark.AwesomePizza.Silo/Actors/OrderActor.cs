@@ -40,19 +40,21 @@ public class OrderActor : ActorBase, IOrderActor
         var totalAmount = request.Items.Sum(item => item.Price * item.Quantity);
         var estimatedDeliveryTime = DateTime.UtcNow.AddMinutes(45);
 
-        _state = new OrderState(
-            OrderId: ActorId,
-            CustomerId: request.CustomerId,
-            RestaurantId: request.RestaurantId,
-            Items: request.Items,
-            Status: OrderStatus.Created,
-            CreatedAt: DateTime.UtcNow,
-            LastUpdated: DateTime.UtcNow,
-            EstimatedDeliveryTime: estimatedDeliveryTime,
-            DeliveryAddress: request.DeliveryAddress,
-            TotalAmount: totalAmount,
-            SpecialInstructions: request.SpecialInstructions,
-            ETag: Guid.NewGuid().ToString());
+        _state = new OrderState
+        {
+            OrderId = ActorId,
+            CustomerId = request.CustomerId,
+            RestaurantId = request.RestaurantId,
+            Items = request.Items,
+            Status = OrderStatus.Created,
+            CreatedAt = DateTime.UtcNow,
+            LastUpdated = DateTime.UtcNow,
+            EstimatedDeliveryTime = estimatedDeliveryTime,
+            DeliveryAddress = request.DeliveryAddress,
+            TotalAmount = totalAmount,
+            SpecialInstructions = request.SpecialInstructions,
+            ETag = Guid.NewGuid().ToString()
+        };
 
         NotifySubscribers("Order created successfully");
 
@@ -61,10 +63,12 @@ public class OrderActor : ActorBase, IOrderActor
         // - await RegisterReminderAsync("CheckOrderProgress", TimeSpan.FromMinutes(10))
         // - await PublishToStreamAsync("orders/created", new OrderCreatedEvent(...))
 
-        return Task.FromResult(new CreateOrderResponse(
-            ActorId,
-            _state,
-            estimatedDeliveryTime));
+        return Task.FromResult(new CreateOrderResponse
+        {
+            OrderId = ActorId,
+            State = _state,
+            EstimatedDeliveryTime = estimatedDeliveryTime
+        });
     }
 
     /// <summary>

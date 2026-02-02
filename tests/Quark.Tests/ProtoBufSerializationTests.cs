@@ -13,16 +13,24 @@ public class ProtoBufSerializationTests
     public void CreateOrderRequest_SerializesAndDeserializes()
     {
         // Arrange
-        var original = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var original = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new PizzaItem("Margherita", "Large", new List<string> { "Cheese", "Tomato" }, 2, 15.99m)
+                new PizzaItem 
+                { 
+                    PizzaType = "Margherita", 
+                    Size = "Large", 
+                    Toppings = new List<string> { "Cheese", "Tomato" }, 
+                    Quantity = 2, 
+                    Price = 15.99m 
+                }
             },
-            DeliveryAddress: new GpsLocation(37.7749, -122.4194, DateTime.UtcNow, 10.0),
-            SpecialInstructions: "Ring doorbell"
-        );
+            DeliveryAddress = new GpsLocation(37.7749, -122.4194, DateTime.UtcNow, 10.0),
+            SpecialInstructions = "Ring doorbell"
+        };
 
         // Act
         using var ms = new MemoryStream();
@@ -43,21 +51,29 @@ public class ProtoBufSerializationTests
     public void OrderState_SerializesAndDeserializes()
     {
         // Arrange
-        var original = new OrderState(
-            OrderId: "order-1",
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var original = new OrderState
+        {
+            OrderId = "order-1",
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new PizzaItem("Pepperoni", "Medium", new List<string> { "Cheese", "Pepperoni" }, 1, 12.99m)
+                new PizzaItem 
+                { 
+                    PizzaType = "Pepperoni", 
+                    Size = "Medium", 
+                    Toppings = new List<string> { "Cheese", "Pepperoni" }, 
+                    Quantity = 1, 
+                    Price = 12.99m 
+                }
             },
-            Status: OrderStatus.Created,
-            CreatedAt: DateTime.UtcNow,
-            LastUpdated: DateTime.UtcNow,
-            EstimatedDeliveryTime: DateTime.UtcNow.AddMinutes(30),
-            TotalAmount: 12.99m,
-            ETag: "v1"
-        );
+            Status = OrderStatus.Created,
+            CreatedAt = DateTime.UtcNow,
+            LastUpdated = DateTime.UtcNow,
+            EstimatedDeliveryTime = DateTime.UtcNow.AddMinutes(30),
+            TotalAmount = 12.99m,
+            ETag = "v1"
+        };
 
         // Act
         using var ms = new MemoryStream();
@@ -101,13 +117,14 @@ public class ProtoBufSerializationTests
     public void PizzaItem_SerializesAndDeserializes()
     {
         // Arrange
-        var original = new PizzaItem(
-            PizzaType: "Hawaiian",
-            Size: "Large",
-            Toppings: new List<string> { "Ham", "Pineapple", "Cheese" },
-            Quantity: 3,
-            Price: 18.99m
-        );
+        var original = new PizzaItem
+        {
+            PizzaType = "Hawaiian",
+            Size = "Large",
+            Toppings = new List<string> { "Ham", "Pineapple", "Cheese" },
+            Quantity = 3,
+            Price = 18.99m
+        };
 
         // Act
         using var ms = new MemoryStream();
@@ -128,13 +145,14 @@ public class ProtoBufSerializationTests
     public void ChefState_SerializesAndDeserializes()
     {
         // Arrange
-        var original = new ChefState(
-            ChefId: "chef-1",
-            Name: "Gordon Ramsay",
-            Status: ChefStatus.Available,
-            CurrentOrders: new List<string> { "order-1", "order-2" },
-            CompletedToday: 15
-        );
+        var original = new ChefState
+        {
+            ChefId = "chef-1",
+            Name = "Gordon Ramsay",
+            Status = ChefStatus.Available,
+            CurrentOrders = new List<string> { "order-1", "order-2" },
+            CompletedToday = 15
+        };
 
         // Act
         using var ms = new MemoryStream();
@@ -155,15 +173,16 @@ public class ProtoBufSerializationTests
     public void DriverState_SerializesAndDeserializes()
     {
         // Arrange
-        var original = new DriverState(
-            DriverId: "driver-1",
-            Name: "Fast Eddie",
-            Status: DriverStatus.Available,
-            CurrentLocation: new GpsLocation(37.7749, -122.4194, DateTime.UtcNow),
-            CurrentOrderId: "order-1",
-            LastUpdated: DateTime.UtcNow,
-            DeliveredToday: 8
-        );
+        var original = new DriverState
+        {
+            DriverId = "driver-1",
+            Name = "Fast Eddie",
+            Status = DriverStatus.Available,
+            CurrentLocation = new GpsLocation(37.7749, -122.4194, DateTime.UtcNow),
+            CurrentOrderId = "order-1",
+            LastUpdated = DateTime.UtcNow,
+            DeliveredToday = 8
+        };
 
         // Act
         using var ms = new MemoryStream();
@@ -185,8 +204,13 @@ public class ProtoBufSerializationTests
     {
         // Test CreateOrderRequest
         {
-            var original = new CreateOrderRequest("c1", "r1", new List<PizzaItem>(), 
-                new GpsLocation(0, 0, DateTime.UtcNow));
+            var original = new CreateOrderRequest 
+            { 
+                CustomerId = "c1", 
+                RestaurantId = "r1", 
+                Items = new List<PizzaItem>(), 
+                DeliveryAddress = new GpsLocation(0, 0, DateTime.UtcNow)
+            };
             using var ms = new MemoryStream();
             Serializer.Serialize(ms, original);
             ms.Position = 0;
@@ -196,10 +220,21 @@ public class ProtoBufSerializationTests
 
         // Test CreateOrderResponse
         {
-            var original = new CreateOrderResponse("o1", 
-                new OrderState("o1", "c1", "r1", new List<PizzaItem>(), 
-                    OrderStatus.Created, DateTime.UtcNow, DateTime.UtcNow), 
-                DateTime.UtcNow);
+            var original = new CreateOrderResponse 
+            { 
+                OrderId = "o1", 
+                State = new OrderState 
+                { 
+                    OrderId = "o1", 
+                    CustomerId = "c1", 
+                    RestaurantId = "r1", 
+                    Items = new List<PizzaItem>(), 
+                    Status = OrderStatus.Created, 
+                    CreatedAt = DateTime.UtcNow, 
+                    LastUpdated = DateTime.UtcNow 
+                }, 
+                EstimatedDeliveryTime = DateTime.UtcNow
+            };
             using var ms = new MemoryStream();
             Serializer.Serialize(ms, original);
             ms.Position = 0;
@@ -239,7 +274,13 @@ public class ProtoBufSerializationTests
 
         // Test KitchenState
         {
-            var original = new KitchenState("k1", "r1", new List<KitchenQueueItem>(), new List<string>());
+            var original = new KitchenState 
+            { 
+                KitchenId = "k1", 
+                RestaurantId = "r1", 
+                Queue = new List<KitchenQueueItem>(), 
+                AvailableChefs = new List<string>()
+            };
             using var ms = new MemoryStream();
             Serializer.Serialize(ms, original);
             ms.Position = 0;
@@ -249,7 +290,12 @@ public class ProtoBufSerializationTests
 
         // Test KitchenQueueItem
         {
-            var original = new KitchenQueueItem("o1", new List<PizzaItem>(), DateTime.UtcNow);
+            var original = new KitchenQueueItem 
+            { 
+                OrderId = "o1", 
+                Items = new List<PizzaItem>(), 
+                OrderTime = DateTime.UtcNow
+            };
             using var ms = new MemoryStream();
             Serializer.Serialize(ms, original);
             ms.Position = 0;

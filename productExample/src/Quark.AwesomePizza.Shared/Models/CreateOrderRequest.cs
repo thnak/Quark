@@ -5,10 +5,21 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Request to create a new order.
 /// </summary>
-[ProtoContract(SkipConstructor = true)]
-public record CreateOrderRequest(
-    [property: ProtoMember(1)] string CustomerId,
-    [property: ProtoMember(2)] string RestaurantId,
-    [property: ProtoMember(3)] List<PizzaItem> Items,
-    [property: ProtoMember(4)] GpsLocation DeliveryAddress,
-    [property: ProtoMember(5)] string? SpecialInstructions = null);
+[ProtoContract]
+public record CreateOrderRequest
+{
+    [ProtoMember(1)]
+    public string CustomerId { get; set; } = "";
+    
+    [ProtoMember(2)]
+    public string RestaurantId { get; set; } = "";
+    
+    [ProtoMember(3)]
+    public List<PizzaItem> Items { get; set; } = new();
+    
+    [ProtoMember(4)]
+    public GpsLocation? DeliveryAddress { get; set; }
+    
+    [ProtoMember(5)]
+    public string? SpecialInstructions { get; set; }
+}
