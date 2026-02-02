@@ -263,7 +263,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     {
         try
         {
-            await mailbox.StopAsync(cancellationToken);
+            await mailbox.StopAsync();
             mailbox.Dispose();
             _logger.LogDebug("Mailbox for actor {ActorId} stopped", actorId);
         }
@@ -520,7 +520,6 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             {
                 var newMailbox = new ActorInvocationMailbox(actor, dispatcher, _transport, _logger);
                 // Start the mailbox processing immediately
-                _ = newMailbox.StartAsync();
                 _logger.LogDebug("Created and started mailbox for actor {ActorId}", actorId);
                 return newMailbox;
             });
@@ -529,44 +528,41 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             var message = new ActorEnvelopeMessage(envelope);
             
             // Fire and forget the posting (but log any failures)
-            _ = Task.Run(async () =>
+            try
             {
-                try
-                {
-                    var posted = await mailbox.PostAsync(message, CancellationToken.None);
+                var posted =  mailbox.Post(message);
                     
-                    if (!posted)
-                    {
-                        _logger.LogWarning(
-                            "Failed to post envelope {MessageId} to mailbox for actor {ActorId} (channel may be closed)",
-                            envelope.MessageId, envelope.ActorId);
-                            
-                        var errorResponse = new Networking.Abstractions.QuarkEnvelope(
-                            envelope.MessageId,
-                            envelope.ActorId,
-                            envelope.ActorType,
-                            envelope.MethodName,
-                            Array.Empty<byte>(),
-                            envelope.CorrelationId)
-                        {
-                            IsError = true,
-                            ErrorMessage = "Failed to post message to mailbox"
-                        };
-                        
-                        _transport.SendResponse(errorResponse);
-                    }
-                    else
-                    {
-                        _logger.LogTrace(
-                            "Envelope {MessageId} posted to mailbox for actor {ActorId}",
-                            envelope.MessageId, envelope.ActorId);
-                    }
-                }
-                catch (Exception ex)
+                if (!posted)
                 {
-                    _logger.LogError(ex, "Error posting message to mailbox for actor {ActorId}", envelope.ActorId);
+                    _logger.LogWarning(
+                        "Failed to post envelope {MessageId} to mailbox for actor {ActorId} (channel may be closed)",
+                        envelope.MessageId, envelope.ActorId);
+                            
+                    var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                        envelope.MessageId,
+                        envelope.ActorId,
+                        envelope.ActorType,
+                        envelope.MethodName,
+                        Array.Empty<byte>(),
+                        envelope.CorrelationId)
+                    {
+                        IsError = true,
+                        ErrorMessage = "Failed to post message to mailbox"
+                    };
+                        
+                    _transport.SendResponse(errorResponse);
                 }
-            });
+                else
+                {
+                    _logger.LogTrace(
+                        "Envelope {MessageId} posted to mailbox for actor {ActorId}",
+                        envelope.MessageId, envelope.ActorId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error posting message to mailbox for actor {ActorId}", envelope.ActorId);
+            }
         }
         catch (Exception ex)
         {

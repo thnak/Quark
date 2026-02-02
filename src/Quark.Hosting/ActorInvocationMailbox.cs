@@ -7,7 +7,7 @@ namespace Quark.Hosting;
 
 /// <summary>
 /// Mailbox for processing actor method invocations sequentially.
-/// Ensures that each actor processes one message at a time (turn-based execution).
+/// Ensures turn-based, single-threaded execution per actor.
 /// </summary>
 internal sealed class ActorInvocationMailbox : IDisposable
 {
@@ -17,7 +17,12 @@ internal sealed class ActorInvocationMailbox : IDisposable
     private readonly ILogger _logger;
     private readonly Channel<ActorEnvelopeMessage> _channel;
     private readonly CancellationTokenSource _cts;
-    private Task? _processingTask;
+
+    // 0 = idle, 1 = running
+    private int _isProcessing;
+
+    // Optional fairness control
+    private const int MaxMessagesPerTurn = 100;
 
     public ActorInvocationMailbox(
         IActor actor,
@@ -42,161 +47,123 @@ internal sealed class ActorInvocationMailbox : IDisposable
         _channel = Channel.CreateBounded<ActorEnvelopeMessage>(options);
     }
 
-    /// <summary>
-    /// Gets the actor instance this mailbox belongs to.
-    /// </summary>
     public IActor Actor => _actor;
-
-    /// <summary>
-    /// Gets the actor ID this mailbox belongs to.
-    /// </summary>
     public string ActorId => _actor.ActorId;
 
-    /// <summary>
-    /// Gets the current number of messages in the mailbox.
-    /// </summary>
     public int MessageCount => _channel.Reader.Count;
 
     /// <summary>
-    /// Gets whether the mailbox is currently processing messages.
+    /// Enqueues a message into the mailbox.
     /// </summary>
-    public bool IsProcessing => _processingTask != null && !_processingTask.IsCompleted;
-
-    /// <summary>
-    /// Posts an envelope message to the mailbox for sequential processing.
-    /// </summary>
-    public async ValueTask<bool> PostAsync(ActorEnvelopeMessage message, CancellationToken cancellationToken = default)
+    public bool Post(
+        ActorEnvelopeMessage message)
     {
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
-
-        try
-        {
-            await _channel.Writer.WriteAsync(message, cancellationToken);
-            return true;
-        }
-        catch (ChannelClosedException)
-        {
-            return false;
-        }
+        var result = _channel.Writer.TryWrite(message);
+        TrySchedule();
+        return result;
     }
 
     /// <summary>
-    /// Starts processing messages from the mailbox.
+    /// Attempts to schedule mailbox execution.
     /// </summary>
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public void TrySchedule()
     {
-        if (_processingTask != null)
-            throw new InvalidOperationException("Mailbox is already processing messages.");
+        // Acquire execution token
+        if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) != 0)
+            return;
 
-        _processingTask = ProcessMessagesAsync(_cts.Token);
-        return Task.CompletedTask;
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static state =>
+            {
+                var mailbox = (ActorInvocationMailbox)state!;
+                _ = mailbox.ProcessMessagesAsync(mailbox._cts.Token);
+            },
+            this);
     }
 
     /// <summary>
-    /// Stops processing messages from the mailbox.
+    /// Stops the mailbox gracefully.
     /// </summary>
-    public async Task StopAsync(CancellationToken cancellationToken = default)
+    public async Task StopAsync()
     {
-        // Signal the channel that no more messages will be written
-        _channel.Writer.Complete();
-
-        // Wait for processing to complete
-        if (_processingTask != null)
-        {
-            try
-            {
-                await _processingTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected when cancellation is requested
-            }
-            finally
-            {
-                _processingTask = null;
-            }
-        }
+        _channel.Writer.TryComplete();
+        await _channel.Reader.Completion;
+        await _cts.CancelAsync();
     }
 
     /// <summary>
-    /// Processes messages from the mailbox sequentially.
-    /// Each message is dispatched to the actor, one at a time.
+    /// Main turn-based execution loop.
     /// </summary>
     private async Task ProcessMessagesAsync(CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Actor mailbox started processing for {ActorId}", ActorId);
+        _logger.LogDebug("Mailbox started for actor {ActorId}", ActorId);
 
-        await foreach (var message in _channel.Reader.ReadAllAsync(cancellationToken))
+        try
         {
-            try
-            {
-                await ProcessEnvelopeMessageAsync(message, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Error processing envelope {MessageId} for actor {ActorId}",
-                    message.MessageId, ActorId);
+            int processed = 0;
 
-                // Set exception on message so response can be sent
-                message.SetException(ex);
+            while (processed < MaxMessagesPerTurn &&
+                   _channel.Reader.TryRead(out var message))
+            {
+                processed++;
 
-                // Send error response
-                var errorResponse = new QuarkEnvelope(
-                    message.Envelope.MessageId,
-                    message.Envelope.ActorId,
-                    message.Envelope.ActorType,
-                    message.Envelope.MethodName,
-                    Array.Empty<byte>(),
-                    message.Envelope.CorrelationId)
+                try
                 {
-                    IsError = true,
-                    ErrorMessage = ex.Message
-                };
-
-                _transport.SendResponse(errorResponse);
+                    await ProcessEnvelopeMessageAsync(message, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    HandleMessageFailure(message, ex);
+                }
             }
         }
+        finally
+        {
+            // Release execution token
+            Volatile.Write(ref _isProcessing, 0);
 
-        _logger.LogDebug("Actor mailbox stopped processing for {ActorId}", ActorId);
+            // 🔑 CRITICAL: reschedule if messages arrived during execution
+            if (_channel.Reader.Count != 0 && !_cts.IsCancellationRequested)
+            {
+                TrySchedule();
+            }
+
+            _logger.LogDebug("Mailbox turn ended for actor {ActorId}", ActorId);
+        }
     }
 
-    /// <summary>
-    /// Processes a single envelope message by invoking the actor method.
-    /// </summary>
-    private async Task ProcessEnvelopeMessageAsync(ActorEnvelopeMessage message, CancellationToken cancellationToken)
+    private async Task ProcessEnvelopeMessageAsync(
+        ActorEnvelopeMessage message,
+        CancellationToken cancellationToken)
     {
         var envelope = message.Envelope;
 
         _logger.LogTrace(
             "Processing envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
-            envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
+            envelope.MessageId,
+            envelope.ActorId,
+            envelope.ActorType,
+            envelope.MethodName);
 
-        // Invoke the method via dispatcher
         var responsePayload = await _dispatcher.InvokeAsync(
             _actor,
             envelope.MethodName,
             envelope.Payload,
             cancellationToken);
 
-        // Create response envelope
         var response = new QuarkEnvelope(
             envelope.MessageId,
             envelope.ActorId,
             envelope.ActorType,
             envelope.MethodName,
-            Array.Empty<byte>(),  // Empty payload - response data is in ResponsePayload
+            Array.Empty<byte>(),
             envelope.CorrelationId)
         {
             ResponsePayload = responsePayload,
             IsError = false
         };
 
-        // Set response on message
         message.SetResponse(response);
-
-        // Send response via transport
         _transport.SendResponse(response);
 
         _logger.LogTrace(
@@ -204,18 +171,37 @@ internal sealed class ActorInvocationMailbox : IDisposable
             envelope.MessageId);
     }
 
-    /// <inheritdoc />
+    private void HandleMessageFailure(
+        ActorEnvelopeMessage message,
+        Exception ex)
+    {
+        _logger.LogError(
+            ex,
+            "Error processing envelope {MessageId} for actor {ActorId}",
+            message.MessageId,
+            ActorId);
+
+        message.SetException(ex);
+
+        var errorResponse = new QuarkEnvelope(
+            message.Envelope.MessageId,
+            message.Envelope.ActorId,
+            message.Envelope.ActorType,
+            message.Envelope.MethodName,
+            Array.Empty<byte>(),
+            message.Envelope.CorrelationId)
+        {
+            IsError = true,
+            ErrorMessage = ex.Message
+        };
+
+        _transport.SendResponse(errorResponse);
+    }
+
     public void Dispose()
     {
-        // Complete the channel to signal no more messages
-        _channel.Writer.Complete();
-        
-        // Cancel processing
+        _channel.Writer.TryComplete();
         _cts.Cancel();
-        
-        // Don't wait for the task to complete in Dispose to avoid potential deadlocks
-        // The task will complete when the channel is drained
-        
         _cts.Dispose();
     }
 }
