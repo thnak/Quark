@@ -14,7 +14,7 @@ public class KitchenActor : ActorBase, IKitchenActor
 {
     private KitchenState? _state;
 
-    public KitchenActor(string actorId, IActorFactory? actorFactory = null) 
+    public KitchenActor(string actorId, IActorFactory? actorFactory = null)
         : base(actorId, actorFactory)
     {
     }
@@ -39,11 +39,13 @@ public class KitchenActor : ActorBase, IKitchenActor
         if (_state != null)
             throw new InvalidOperationException($"Kitchen {ActorId} already initialized");
 
-        _state = new KitchenState(
-            KitchenId: ActorId,
-            RestaurantId: restaurantId,
-            Queue: new List<KitchenQueueItem>(),
-            AvailableChefs: chefIds);
+        _state = new KitchenState()
+        {
+            KitchenId = ActorId,
+            RestaurantId = restaurantId,
+            Queue = new List<KitchenQueueItem>(),
+            AvailableChefs = chefIds,
+        };
 
         // TODO: await SaveStateAsync()
         return Task.FromResult(_state);
@@ -63,17 +65,19 @@ public class KitchenActor : ActorBase, IKitchenActor
         if (_state == null)
             throw new InvalidOperationException($"Kitchen {ActorId} not initialized");
 
-        var queueItem = new KitchenQueueItem(
-            OrderId: orderId,
-            Items: items,
-            OrderTime: DateTime.UtcNow);
+        var queueItem = new KitchenQueueItem
+        {
+            OrderId = orderId,
+            Items = items,
+            OrderTime = DateTime.UtcNow
+        };
 
         var queue = new List<KitchenQueueItem>(_state.Queue) { queueItem };
 
         _state = _state with { Queue = queue };
 
         // TODO: await SaveStateAsync()
-        
+
         // Try to assign to an available chef immediately
         await TryAssignChefAsync(orderId, cancellationToken);
 
@@ -109,7 +113,7 @@ public class KitchenActor : ActorBase, IKitchenActor
             //     lowestWorkload = workload;
             //     bestChefId = chefId;
             // }
-            
+
             // For now, just assign to first available chef
             bestChefId = chefId;
             break;
@@ -165,7 +169,7 @@ public class KitchenActor : ActorBase, IKitchenActor
         };
 
         // TODO: await SaveStateAsync()
-        
+
         // Notify chef that order is complete
         if (queueItem.AssignedChefId != null)
         {
