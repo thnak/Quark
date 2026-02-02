@@ -6,7 +6,7 @@ namespace Quark.Networking.Abstractions;
 /// </summary>
 public sealed class QuarkEnvelope
 {
-    public bool IsRequest { get; set; }
+    public bool IsResponse { get; set; }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="QuarkEnvelope" /> class.
@@ -18,9 +18,9 @@ public sealed class QuarkEnvelope
         string methodName,
         byte[] payload,
         string? correlationId = null,
-        bool isRequest = false)
+        bool isResponse = false)
     {
-        IsRequest = isRequest;
+        IsResponse = isResponse;
         MessageId = messageId ?? throw new ArgumentNullException(nameof(messageId));
         ActorId = actorId ?? throw new ArgumentNullException(nameof(actorId));
         ActorType = actorType ?? throw new ArgumentNullException(nameof(actorType));

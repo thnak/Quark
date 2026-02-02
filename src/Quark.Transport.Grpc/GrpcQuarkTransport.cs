@@ -186,7 +186,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
         // Also raise the event so subscribers (like QuarkTransportService) can send the response
         // over gRPC streams for remote calls
-        responseEnvelope.IsRequest = false;
+        responseEnvelope.IsResponse = true;
         EnvelopeReceived?.Invoke(this, responseEnvelope);
     }
 
@@ -211,7 +211,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
                 // Check if this is a response to our request
                 if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
                     tcs.SetResult(envelope);
-                if (envelope.IsRequest)
+                if (!envelope.IsResponse)
                     // This is a new request from remote
                     EnvelopeReceived?.Invoke(this, envelope);
             }
@@ -238,7 +238,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
                 : ByteString.Empty,
             IsError = envelope.IsError,
             ErrorMessage = envelope.ErrorMessage ?? string.Empty,
-            IsRequest = envelope.IsRequest
+            IsResponse = envelope.IsResponse
         };
     }
 
@@ -251,7 +251,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             message.MethodName,
             message.Payload.ToByteArray(),
             message.CorrelationId,
-            message.IsRequest)
+            message.IsResponse)
         {
             ResponsePayload = message.ResponsePayload.Length > 0 ? message.ResponsePayload.ToByteArray() : null,
             IsError = message.IsError,
