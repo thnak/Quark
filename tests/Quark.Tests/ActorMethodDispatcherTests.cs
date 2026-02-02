@@ -1,4 +1,4 @@
-using System.Text.Json;
+using ProtoBuf;
 using Quark.Abstractions;
 using Quark.Core.Actors;
 using Xunit;
@@ -17,17 +17,20 @@ public class ActorMethodDispatcherTests
         // Arrange
         var actorId = "test-dispatcher-1";
         var actor = new MailboxTestActor(actorId);
-        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("Quark.Tests.MailboxTestActor");
+        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("MailboxTestActor");
         
         Assert.NotNull(dispatcher);
         
         // Act - invoke TestMethod via dispatcher
         var payload = Array.Empty<byte>(); // TestMethod has no parameters
         var resultBytes = await dispatcher.InvokeAsync(actor, "TestMethod", payload, default);
-        var result = JsonSerializer.Deserialize<string>(resultBytes);
         
-        // Assert
-        Assert.Equal("test result", result);
+        // Deserialize Protobuf response
+        using (var ms = new System.IO.MemoryStream(resultBytes))
+        {
+            var response = Serializer.Deserialize<MailboxTestActor_TestMethodResponse>(ms);
+            Assert.Equal("test result", response.Result);
+        }
     }
     
     [Fact]
@@ -38,7 +41,7 @@ public class ActorMethodDispatcherTests
         
         // Assert
         Assert.NotEmpty(registeredTypes);
-        Assert.Contains("Quark.Tests.MailboxTestActor", registeredTypes);
+        Assert.Contains("MailboxTestActor", registeredTypes);
     }
     
     [Fact]
@@ -47,7 +50,7 @@ public class ActorMethodDispatcherTests
         // Arrange
         var actorId = "test-dispatcher-2";
         var actor = new MailboxTestActor(actorId);
-        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("Quark.Tests.MailboxTestActor");
+        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("MailboxTestActor");
         
         Assert.NotNull(dispatcher);
         
@@ -65,7 +68,7 @@ public class ActorMethodDispatcherTests
         // Arrange
         var actorId = "test-dispatcher-3";
         var actor = new MailboxTestActor(actorId);
-        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("Quark.Tests.MailboxTestActor");
+        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("MailboxTestActor");
         
         // Create a different actor type
         var wrongActor = new CustomSupervisorActor("wrong-actor");
