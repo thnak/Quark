@@ -34,11 +34,13 @@ public class DriverActor : ActorBase, IDriverActor
         if (_state != null)
             throw new InvalidOperationException($"Driver {ActorId} already initialized");
 
-        _state = new DriverState(
-            DriverId: ActorId,
-            Name: name,
-            Status: DriverStatus.Available,
-            LastUpdated: DateTime.UtcNow);
+        _state = new DriverState()
+        {
+            DriverId = ActorId,
+            Name = name,
+            Status = DriverStatus.Available,
+            LastUpdated = DateTime.UtcNow
+        };
 
         // TODO: await SaveStateAsync()
         return Task.FromResult(_state);

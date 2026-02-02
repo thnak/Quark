@@ -15,14 +15,23 @@ public class OrderActorTests
         var actor = new OrderActor("test-order-1");
         await actor.OnActivateAsync();
 
-        var request = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var request = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new("Margherita", "Medium", new List<string> { "cheese", "tomato" }, 1, 12.99m)
+                new PizzaItem
+                {
+                    PizzaType = "Margherita",
+                    Size = "Medium",
+                    Toppings = new List<string> { "cheese", "tomato" },
+                    Quantity = 1,
+                    Price = 12.99m
+                }
             },
-            DeliveryAddress: new GpsLocation(40.7128, -74.0060, DateTime.UtcNow));
+            DeliveryAddress = new GpsLocation(40.7128, -74.0060, DateTime.UtcNow)
+        };
 
         // Act
         var response = await actor.CreateOrderAsync(request);
@@ -30,7 +39,7 @@ public class OrderActorTests
         // Assert
         Assert.NotNull(response);
         Assert.Equal("test-order-1", response.OrderId);
-        Assert.Equal(OrderStatus.Created, response.State.Status);
+        Assert.Equal(OrderStatus.Created, response.State!.Status);
         Assert.Equal("customer-1", response.State.CustomerId);
         Assert.Equal("restaurant-1", response.State.RestaurantId);
         Assert.Equal(12.99m, response.State.TotalAmount);
@@ -43,14 +52,23 @@ public class OrderActorTests
         var actor = new OrderActor("test-order-2");
         await actor.OnActivateAsync();
 
-        var request = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var request = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new("Margherita", "Medium", new List<string> { "cheese", "tomato" }, 1, 12.99m)
+                new PizzaItem
+                {
+                    PizzaType = "Margherita",
+                    Size = "Medium",
+                    Toppings = new List<string> { "cheese", "tomato" },
+                    Quantity = 1,
+                    Price = 12.99m
+                }
             },
-            DeliveryAddress: new GpsLocation(40.7128, -74.0060, DateTime.UtcNow));
+            DeliveryAddress = new GpsLocation(40.7128, -74.0060, DateTime.UtcNow)
+        };
 
         await actor.CreateOrderAsync(request);
 
@@ -66,14 +84,23 @@ public class OrderActorTests
         var actor = new OrderActor("test-order-3");
         await actor.OnActivateAsync();
 
-        var request = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var request = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new("Margherita", "Medium", new List<string> { "cheese", "tomato" }, 1, 12.99m)
+                new PizzaItem
+                {
+                    PizzaType = "Margherita",
+                    Size = "Medium",
+                    Toppings = new List<string> { "cheese", "tomato" },
+                    Quantity = 1,
+                    Price = 12.99m
+                }
             },
-            DeliveryAddress: new GpsLocation(40.7128, -74.0060, DateTime.UtcNow));
+            DeliveryAddress = new GpsLocation(40.7128, -74.0060, DateTime.UtcNow)
+        };
 
         await actor.CreateOrderAsync(request);
 
@@ -91,14 +118,23 @@ public class OrderActorTests
         var actor = new OrderActor("test-order-4");
         await actor.OnActivateAsync();
 
-        var request = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var request = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new("Margherita", "Medium", new List<string> { "cheese", "tomato" }, 1, 12.99m)
+                new PizzaItem
+                {
+                    PizzaType = "Margherita",
+                    Size = "Medium",
+                    Toppings = new List<string> { "cheese", "tomato" },
+                    Quantity = 1,
+                    Price = 12.99m
+                }
             },
-            DeliveryAddress: new GpsLocation(40.7128, -74.0060, DateTime.UtcNow));
+            DeliveryAddress = new GpsLocation(40.7128, -74.0060, DateTime.UtcNow)
+        };
 
         await actor.CreateOrderAsync(request);
 
@@ -115,14 +151,23 @@ public class OrderActorTests
         var actor = new OrderActor("test-order-5");
         await actor.OnActivateAsync();
 
-        var request = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var request = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new("Margherita", "Medium", new List<string> { "cheese", "tomato" }, 1, 12.99m)
+                new PizzaItem
+                {
+                    PizzaType = "Margherita",
+                    Size = "Medium",
+                    Toppings = new List<string> { "cheese", "tomato" },
+                    Quantity = 1,
+                    Price = 12.99m
+                }
             },
-            DeliveryAddress: new GpsLocation(40.7128, -74.0060, DateTime.UtcNow));
+            DeliveryAddress = new GpsLocation(40.7128, -74.0060, DateTime.UtcNow)
+        };
 
         await actor.CreateOrderAsync(request);
         await actor.ConfirmOrderAsync();
@@ -145,14 +190,23 @@ public class OrderActorTests
         var actor = new OrderActor("test-order-6");
         await actor.OnActivateAsync();
 
-        var request = new CreateOrderRequest(
-            CustomerId: "customer-1",
-            RestaurantId: "restaurant-1",
-            Items: new List<PizzaItem>
+        var request = new CreateOrderRequest
+        {
+            CustomerId = "customer-1",
+            RestaurantId = "restaurant-1",
+            Items = new List<PizzaItem>
             {
-                new("Margherita", "Medium", new List<string> { "cheese", "tomato" }, 1, 12.99m)
+                new PizzaItem
+                {
+                    PizzaType = "Margherita",
+                    Size = "Medium",
+                    Toppings = new List<string> { "cheese", "tomato" },
+                    Quantity = 1,
+                    Price = 12.99m
+                }
             },
-            DeliveryAddress: new GpsLocation(40.7128, -74.0060, DateTime.UtcNow));
+            DeliveryAddress = new GpsLocation(40.7128, -74.0060, DateTime.UtcNow)
+        };
 
         await actor.CreateOrderAsync(request);
 

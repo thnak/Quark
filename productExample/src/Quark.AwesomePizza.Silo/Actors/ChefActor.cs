@@ -34,11 +34,11 @@ public class ChefActor : ActorBase, IChefActor
         if (_state != null)
             throw new InvalidOperationException($"Chef {ActorId} already initialized");
 
-        _state = new ChefState(
-            ChefId: ActorId,
-            Name: name,
-            Status: ChefStatus.Available,
-            CurrentOrders: new List<string>());
+        _state = new ChefState()
+        {
+            Status = ChefStatus.Available,
+            ChefId = name
+        };
 
         // TODO: await SaveStateAsync()
         return Task.FromResult(_state);
