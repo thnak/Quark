@@ -29,7 +29,6 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     private readonly IClusterClient? _clusterClient;
     private readonly QuarkSiloOptions _options;
     private readonly ILogger<QuarkSilo> _logger;
-    private readonly ConcurrentDictionary<string, IActor> _actorRegistry = new();
     private readonly ConcurrentDictionary<string, ActorInvocationMailbox> _actorMailboxes = new();
     private readonly CancellationTokenSource _heartbeatCts = new();
     private Task? _heartbeatTask;
@@ -165,11 +164,11 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 await MigrateColdActorsAsync(cancellationToken);
             }
 
-            // 4. Stop all actor mailboxes (graceful shutdown)
-            await StopAllMailboxesAsync(cancellationToken);
-
-            // 5. Deactivate all active actors
+            // 4. Deactivate all active actors (while mailboxes are still running)
             await DeactivateAllActorsAsync(cancellationToken);
+
+            // 5. Stop all actor mailboxes (graceful shutdown)
+            await StopAllMailboxesAsync(cancellationToken);
 
             // 6. Stop ReminderTickManager
             if (_reminderTickManager != null)
@@ -215,25 +214,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     /// <inheritdoc />
     public IReadOnlyCollection<IActor> GetActiveActors()
     {
-        return _actorRegistry.Values.ToList();
-    }
-
-    /// <summary>
-    /// Registers an actor in the silo's actor registry.
-    /// </summary>
-    internal void RegisterActor(string actorId, IActor actor)
-    {
-        _actorRegistry.TryAdd(actorId, actor);
-        _logger.LogDebug("Actor {ActorId} registered in silo {SiloId}", actorId, SiloId);
-    }
-
-    /// <summary>
-    /// Unregisters an actor from the silo's actor registry.
-    /// </summary>
-    internal void UnregisterActor(string actorId)
-    {
-        _actorRegistry.TryRemove(actorId, out _);
-        _logger.LogDebug("Actor {ActorId} unregistered from silo {SiloId}", actorId, SiloId);
+        return _actorMailboxes.Values.Select(m => m.Actor).ToList();
     }
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
@@ -294,16 +275,15 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
     private async Task DeactivateAllActorsAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Deactivating {Count} actors for silo {SiloId}", _actorRegistry.Count, SiloId);
+        _logger.LogInformation("Deactivating {Count} actors for silo {SiloId}", _actorMailboxes.Count, SiloId);
 
         var tasks = new List<Task>();
-        foreach (var kvp in _actorRegistry)
+        foreach (var kvp in _actorMailboxes)
         {
-            tasks.Add(DeactivateActorAsync(kvp.Key, kvp.Value, cancellationToken));
+            tasks.Add(DeactivateActorAsync(kvp.Key, kvp.Value.Actor, cancellationToken));
         }
 
         await Task.WhenAll(tasks);
-        _actorRegistry.Clear();
 
         _logger.LogInformation("All actors deactivated for silo {SiloId}", SiloId);
     }
@@ -535,10 +515,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 return;
             }
 
-            // 3. Register actor in silo's registry (if not already registered)
-            RegisterActor(envelope.ActorId, actor);
-
-            // 4. Get or create mailbox for this actor
+            // 3. Get or create mailbox for this actor (this also registers the actor)
             var mailbox = _actorMailboxes.GetOrAdd(envelope.ActorId, actorId =>
             {
                 var newMailbox = new ActorInvocationMailbox(actor, dispatcher, _transport, _logger);
@@ -548,7 +525,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 return newMailbox;
             });
 
-            // 5. Post message to mailbox for sequential processing
+            // 4. Post message to mailbox for sequential processing
             var message = new ActorEnvelopeMessage(envelope);
             
             // Fire and forget the posting (but log any failures)

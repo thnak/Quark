@@ -43,6 +43,11 @@ internal sealed class ActorInvocationMailbox : IDisposable
     }
 
     /// <summary>
+    /// Gets the actor instance this mailbox belongs to.
+    /// </summary>
+    public IActor Actor => _actor;
+
+    /// <summary>
     /// Gets the actor ID this mailbox belongs to.
     /// </summary>
     public string ActorId => _actor.ActorId;
@@ -84,7 +89,7 @@ internal sealed class ActorInvocationMailbox : IDisposable
         if (_processingTask != null)
             throw new InvalidOperationException("Mailbox is already processing messages.");
 
-        _processingTask = Task.Run(() => ProcessMessagesAsync(_cts.Token), cancellationToken);
+        _processingTask = ProcessMessagesAsync(_cts.Token);
         return Task.CompletedTask;
     }
 
