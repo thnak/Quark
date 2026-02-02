@@ -1,13 +1,16 @@
-﻿namespace Quark.AwesomePizza.Shared.Models;
+using ProtoBuf;
+
+namespace Quark.AwesomePizza.Shared.Models;
 
 /// <summary>
 /// Represents driver state.
 /// </summary>
+[ProtoContract]
 public record DriverState(
-    string DriverId,
-    string Name,
-    DriverStatus Status,
-    GpsLocation? CurrentLocation = null,
-    string? CurrentOrderId = null,
-    DateTime LastUpdated = default,
-    int DeliveredToday = 0);
+    [property: ProtoMember(1)] string DriverId,
+    [property: ProtoMember(2)] string Name,
+    [property: ProtoMember(3)] DriverStatus Status,
+    [property: ProtoMember(4)] GpsLocation? CurrentLocation = null,
+    [property: ProtoMember(5)] string? CurrentOrderId = null,
+    [property: ProtoMember(6)] DateTime LastUpdated = default,
+    [property: ProtoMember(7)] int DeliveredToday = 0);
