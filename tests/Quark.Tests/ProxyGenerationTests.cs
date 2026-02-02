@@ -191,6 +191,90 @@ public class ProxyGenerationTests
         }
     }
 
+    /// <summary>
+    /// Tests that complex object serialization and deserialization works correctly.
+    /// </summary>
+    [Fact]
+    public async Task Proxy_ProcessComplexObjectAsync_SerializesAndDeserializesCorrectly()
+    {
+        // Arrange
+        var mockClient = new Mock<IClusterClient>();
+        var actorId = "complex-1";
+        var inputObject = new ObjectClassValue
+        {
+            Name = "TestObject",
+            Value = 99,
+            Time = DateTime.UtcNow,
+            Tags = new List<string> { "tag1", "tag2" },
+            Infos = new List<Info>
+            {
+                new Info { Id = 1, Description = "First" },
+                new Info { Id = 2, Description = "Second" }
+            }
+        };
+
+        var expectedOutputObject = new ObjectClassValue
+        {
+            Name = "ProcessedObject",
+            Value = 199,
+            Time = DateTime.UtcNow.AddHours(1),
+            Tags = new List<string> { "tag3", "tag4" },
+            Infos = new List<Info>
+            {
+                new Info { Id = 3, Description = "Third" },
+                new Info { Id = 4, Description = "Fourth" }
+            }
+        };
+
+        // Create a response envelope with serialized expected output
+        var responseMessage = new Generated.ITestProxyActor_ProcessComplexObjectAsyncResponse
+        {
+            Result = new ObjectClassValue
+            {
+                Name = expectedOutputObject.Name,
+                Value = expectedOutputObject.Value,
+                Time = expectedOutputObject.Time,
+                Tags = [..expectedOutputObject.Tags],
+                Infos = [..expectedOutputObject.Infos]
+            }
+        };
+
+        byte[] responsePayload;
+        using (var ms = new MemoryStream())
+        {
+            ProtoBuf.Serializer.Serialize(ms, responseMessage);
+            responsePayload = ms.ToArray();
+        }
+
+        mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((QuarkEnvelope env, CancellationToken ct) => new QuarkEnvelope(
+                Guid.NewGuid().ToString(),
+                actorId,
+                "TestProxyActor",
+                "ProcessComplexObjectAsync",
+                Array.Empty<byte>())
+            {
+                ResponsePayload = responsePayload
+            });
+
+        var proxy = ActorProxyFactory.CreateProxy<ITestProxyActor>(mockClient.Object, actorId);
+
+        // Act
+        var result = await proxy.ProcessComplexObjectAsync(inputObject);
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(expectedOutputObject.Name, result.Name);
+        Assert.Equal(expectedOutputObject.Value, result.Value);
+        Assert.Equal(expectedOutputObject.Time, result.Time);
+        Assert.Equal(expectedOutputObject.Tags, result.Tags);
+        Assert.Equal(expectedOutputObject.Infos.Count, result.Infos.Count);
+        for (int i = 0; i < expectedOutputObject.Infos.Count; i++)
+        {
+            Assert.Equal(expectedOutputObject.Infos[i].Id, result.Infos[i].Id);
+            Assert.Equal(expectedOutputObject.Infos[i].Description, result.Infos[i].Description);
+        }
+    }
+    
     [Fact]
     public async Task Proxy_ResetAsync_WithoutReturnValue_WorksCorrectly()
     {

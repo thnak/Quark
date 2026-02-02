@@ -19,11 +19,15 @@ dotnet test tests/Quark.Tests/Quark.Tests.csproj --filter "FullyQualifiedName~Cl
 
 ### Error Symptom
 ```
+Attempted to read past the end of the stream.
+```
+or
+```
 'X' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0.
 ```
 
 ### Root Cause
-You're sending data that isn't properly JSON-serialized.
+You're sending data that isn't properly Protobuf-serialized.
 
 ### ❌ Wrong Way
 ```csharp
@@ -31,14 +35,31 @@ var payload = System.Text.Encoding.UTF8.GetBytes("Hello World");
 var envelope = new QuarkEnvelope(messageId, actorId, actorType, methodName, payload);
 ```
 
-### ✅ Correct Way
+### ✅ Correct Way (Manual Serialization)
 ```csharp
-var payload = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes("Hello World");
+// Create the protobuf request message
+var protoRequest = new YourActor_MethodNameRequest { Parameter = "Hello World" };
+byte[] payload;
+using (var ms = new System.IO.MemoryStream())
+{
+    ProtoBuf.Serializer.Serialize(ms, protoRequest);
+    payload = ms.ToArray();
+}
 var envelope = new QuarkEnvelope(messageId, actorId, actorType, methodName, payload);
 ```
 
+### ✅ Even Better Way (Use Generated Proxies)
+```csharp
+// Use the generated proxy - it handles all serialization automatically
+var client = new ClusterClient(transport);
+var proxy = client.GetActor<IYourActor>(actorId);
+var result = await proxy.MethodNameAsync("Hello World");
+```
+
 ### Why?
-The generated actor method dispatchers use `System.Text.Json.JsonSerializer.Deserialize<T>(payload)` to extract parameters. They expect valid JSON, not raw text.
+The generated actor method dispatchers use **Protobuf serialization** (`ProtoBuf.Serializer.Deserialize<T>(payload)`) to extract parameters. They expect valid Protobuf-serialized data, not raw text or JSON.
+
+The proxy generator automatically creates Protobuf message contracts (`YourActor_MethodNameRequest` and `YourActor_MethodNameResponse`) for each actor method, ensuring type-safe, efficient serialization.
 
 ## Other Common Errors
 
@@ -126,13 +147,21 @@ public async Task MyActor_MyMethod_Works()
     transport.Setup(t => t.SendResponse(It.IsAny<QuarkEnvelope>()))
         .Callback<QuarkEnvelope>(r => response = r);
     
-    // 3. Create envelope with JSON-serialized parameters
+    // 3. Create envelope with Protobuf-serialized parameters
+    var protoRequest = new MyActor_MyMethodRequest { Parameter = myParameter };
+    byte[] payload;
+    using (var ms = new System.IO.MemoryStream())
+    {
+        ProtoBuf.Serializer.Serialize(ms, protoRequest);
+        payload = ms.ToArray();
+    }
+    
     var envelope = new QuarkEnvelope(
         messageId: Guid.NewGuid().ToString(),
         actorId: "my-actor-1",
         actorType: "MyActor",
         methodName: "MyMethod",
-        payload: JsonSerializer.SerializeToUtf8Bytes(myParameter));  // ✅ JSON!
+        payload: payload);  // ✅ Protobuf!
     
     // 4. Simulate transport receiving the envelope
     await Task.Delay(50);  // Let silo start
@@ -144,8 +173,11 @@ public async Task MyActor_MyMethod_Works()
     Assert.False(response.IsError);
     
     // 6. Deserialize result
-    var result = JsonSerializer.Deserialize<MyResultType>(response.ResponsePayload);
-    Assert.Equal(expectedValue, result);
+    using (var ms = new System.IO.MemoryStream(response.ResponsePayload))
+    {
+        var result = ProtoBuf.Serializer.Deserialize<MyActor_MyMethodResponse>(ms);
+        Assert.Equal(expectedValue, result.Result);
+    }
 }
 ```
 
@@ -161,12 +193,13 @@ See `docs/CLIENT_TO_ACTOR_FLOW_TEST_FINDINGS.md` for:
 
 When debugging actor invocation errors:
 
-- [ ] Are parameters JSON-serialized? (Use `JsonSerializer.SerializeToUtf8Bytes()`)
+- [ ] Are parameters Protobuf-serialized? (Use generated message contracts and `ProtoBuf.Serializer.Serialize()`)
+- [ ] Or are you using the generated proxy? (Recommended - handles serialization automatically)
 - [ ] Does actor have `[Actor]` attribute?
 - [ ] Is project referencing `Quark.Generators` with `OutputItemType="Analyzer"`?
 - [ ] Are actor methods public and return Task/Task<T>?
 - [ ] Does actor have correct constructor: `public MyActor(string actorId)`?
-- [ ] Are response payloads deserialized as JSON?
+- [ ] Are response payloads deserialized as Protobuf? (Use generated response message contracts)
 
 If all checklist items pass and you still have errors, run the flow tests to isolate the issue:
 
