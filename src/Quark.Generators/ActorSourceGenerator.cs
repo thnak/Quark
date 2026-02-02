@@ -366,7 +366,7 @@ public class ActorSourceGenerator : IIncrementalGenerator
 
     private static string ToPascalCase(string name)
     {
-        if (string.IsNullOrEmpty(name))
+        if (string.IsNullOrEmpty(name) || name.Length == 1)
             return name;
 
         return char.ToUpper(name[0]) + name.Substring(1);
@@ -509,7 +509,9 @@ public class ActorSourceGenerator : IIncrementalGenerator
             }
             else if (isAsyncEnumerable)
             {
-                // IAsyncEnumerable methods don't await - just invoke and return empty
+                // IAsyncEnumerable methods don't follow the request-response pattern.
+                // They are invoked to start streaming, and results are pushed via separate streaming channels.
+                // The dispatcher just initiates the method and returns empty payload.
                 dispatchCases.AppendLine($@"                    typedActor.{methodName}({invokeArgsStr});
                     return Array.Empty<byte>();");
             }
