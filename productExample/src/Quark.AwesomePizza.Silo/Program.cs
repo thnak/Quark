@@ -1,3 +1,4 @@
+using Quark.AwesomePizza.Shared.Models;
 using Quark.Extensions.DependencyInjection;
 using Quark.Hosting;
 
@@ -44,7 +45,7 @@ public class Program
             builder.WithGrpcTransport();
             builder.WithRedisClustering(connectionString: redisHost);
             builder.WithStreaming();
-
+            builder.WithRedisStateStorage<OrderState>();
             builder.WithServerlessActors();
         });
         var services = applicationBuilder.Services;

@@ -31,7 +31,7 @@ public abstract class ActorBase : ISupervisor, IDisposable
     }
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ActorBase" /> class with DI scope.
+    ///     Initializes a new instance of the <see cref="ActorBase" /> class with DI scope. Available when using dependency injection.
     /// </summary>
     /// <param name="actorId">The unique identifier for this actor.</param>
     /// <param name="actorFactory">The actor factory for spawning child actors.</param>
