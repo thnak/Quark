@@ -164,11 +164,11 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 await MigrateColdActorsAsync(cancellationToken);
             }
 
-            // 4. Stop all actor mailboxes (graceful shutdown)
-            await StopAllMailboxesAsync(cancellationToken);
-
-            // 5. Deactivate all active actors
+            // 4. Deactivate all active actors (while mailboxes are still running)
             await DeactivateAllActorsAsync(cancellationToken);
+
+            // 5. Stop all actor mailboxes (graceful shutdown)
+            await StopAllMailboxesAsync(cancellationToken);
 
             // 6. Stop ReminderTickManager
             if (_reminderTickManager != null)
