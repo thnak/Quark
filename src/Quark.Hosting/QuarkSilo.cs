@@ -450,6 +450,18 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     {
         try
         {
+            // IMPORTANT: Only process incoming requests, not responses
+            // Responses (with ResponsePayload or IsError) should not be reprocessed
+            // This prevents infinite loops when SendResponse raises EnvelopeReceived
+            if (envelope.ResponsePayload != null || envelope.IsError)
+            {
+                // This is a response, not a request - skip processing
+                _logger.LogTrace(
+                    "Skipping response envelope {MessageId} (IsError={IsError}, HasResponsePayload={HasPayload})",
+                    envelope.MessageId, envelope.IsError, envelope.ResponsePayload != null);
+                return;
+            }
+            
             _logger.LogTrace(
                 "Received envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
                 envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
