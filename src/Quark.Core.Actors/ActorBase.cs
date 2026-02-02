@@ -49,6 +49,12 @@ public abstract class ActorBase : ISupervisor, IDisposable
     protected IServiceScope? ServiceScope { get; }
 
     /// <summary>
+    ///     Gets the current actor context for this actor.
+    ///     Returns null if no context is set.
+    /// </summary>
+    protected IActorContext? Context => ActorContext.Current;
+
+    /// <summary>
     ///     Disposes the actor and its service scope.
     /// </summary>
     public void Dispose()
@@ -61,13 +67,45 @@ public abstract class ActorBase : ISupervisor, IDisposable
     public string ActorId { get; }
 
     /// <inheritdoc />
-    public virtual Task OnActivateAsync(CancellationToken cancellationToken = default)
+    public virtual async Task OnActivateAsync(CancellationToken cancellationToken = default)
+    {
+        // Create and set actor context for the activation lifecycle
+        var context = new ActorContext(ActorId);
+        using var _ = ActorContext.CreateScope(context);
+        
+        // Allow derived classes to perform activation logic with context available
+        await OnActivateWithContextAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public virtual async Task OnDeactivateAsync(CancellationToken cancellationToken = default)
+    {
+        // Create and set actor context for the deactivation lifecycle
+        var context = new ActorContext(ActorId);
+        using var _ = ActorContext.CreateScope(context);
+        
+        // Allow derived classes to perform deactivation logic with context available
+        await OnDeactivateWithContextAsync(cancellationToken);
+    }
+
+    /// <summary>
+    ///     Called when the actor is activated, with ActorContext already set.
+    ///     Override this method instead of OnActivateAsync to access Context.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    protected virtual Task OnActivateWithContextAsync(CancellationToken cancellationToken = default)
     {
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc />
-    public virtual Task OnDeactivateAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    ///     Called when the actor is deactivated, with ActorContext already set.
+    ///     Override this method instead of OnDeactivateAsync to access Context.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    protected virtual Task OnDeactivateWithContextAsync(CancellationToken cancellationToken = default)
     {
         return Task.CompletedTask;
     }

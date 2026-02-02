@@ -1,3 +1,4 @@
+using Quark.Abstractions;
 using Quark.Core.Actors;
 
 namespace Quark.Tests;
@@ -132,5 +133,81 @@ public class ActorContextTests
             // Context should still be available after async
             Assert.Equal("actor-9", ActorContext.Current!.ActorId);
         }
+    }
+
+    [Fact]
+    public async Task ActorBase_OnActivateAsync_CreatesContext()
+    {
+        // Arrange
+        var actor = new TestActorForContext("actor-10");
+
+        // Act
+        await actor.OnActivateAsync();
+
+        // Assert
+        // Context is created during activation but disposed after the method completes
+        // So we verify it was accessible during activation by checking the captured value
+        Assert.Equal("actor-10", actor.CapturedContextActorId);
+    }
+
+    [Fact]
+    public async Task ActorBase_OnDeactivateAsync_CreatesContext()
+    {
+        // Arrange
+        var actor = new TestActorForContext("actor-11");
+
+        // Act
+        await actor.OnDeactivateAsync();
+
+        // Assert
+        // Context is created during deactivation but disposed after the method completes
+        Assert.Equal("actor-11", actor.CapturedDeactivationContextActorId);
+    }
+
+    [Fact]
+    public async Task ActorBase_Context_IsAccessibleDuringExecution()
+    {
+        // Arrange
+        var actor = new TestActorForContext("actor-12");
+
+        // Act
+        var result = await actor.GetContextActorIdAsync();
+
+        // Assert
+        Assert.Equal("actor-12", result);
+    }
+}
+
+// Test actor for ActorContext integration tests
+[Actor]
+public class TestActorForContext : ActorBase
+{
+    public string? CapturedContextActorId { get; private set; }
+    public string? CapturedDeactivationContextActorId { get; private set; }
+
+    public TestActorForContext(string actorId) : base(actorId)
+    {
+    }
+
+    protected override Task OnActivateWithContextAsync(CancellationToken cancellationToken = default)
+    {
+        // Capture the context during activation
+        CapturedContextActorId = Context?.ActorId;
+        return Task.CompletedTask;
+    }
+
+    protected override Task OnDeactivateWithContextAsync(CancellationToken cancellationToken = default)
+    {
+        // Capture the context during deactivation
+        CapturedDeactivationContextActorId = Context?.ActorId;
+        return Task.CompletedTask;
+    }
+
+    public Task<string?> GetContextActorIdAsync()
+    {
+        // Create a scope to test context availability
+        var context = new ActorContext(ActorId);
+        using var _ = ActorContext.CreateScope(context);
+        return Task.FromResult(Context?.ActorId);
     }
 }
