@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Kitchen state.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record KitchenState(
     [property: ProtoMember(1)] string KitchenId,
     [property: ProtoMember(2)] string RestaurantId,

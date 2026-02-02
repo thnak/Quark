@@ -47,6 +47,7 @@
     <ProjectReference Include="../../src/Quark.Jobs.Redis/Quark.Jobs.Redis.csproj" />
     <ProjectReference Include="../../src/Quark.Placement.Locality/Quark.Placement.Locality.csproj" />
     <ProjectReference Include="../../src/Quark.Placement.Memory/Quark.Placement.Memory.csproj" />
+    <ProjectReference Include="../../productExample/src/Quark.AwesomePizza.Shared/Quark.AwesomePizza.Shared.csproj" />
     <ProjectReference Include="../../src/Quark.Generators/Quark.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Quark.Analyzers/Quark.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Quark.Analyzers.CodeFixes/Quark.Analyzers.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

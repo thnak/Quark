@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Represents driver state.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record DriverState(
     [property: ProtoMember(1)] string DriverId,
     [property: ProtoMember(2)] string Name,

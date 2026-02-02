@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Request to update order status.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record UpdateStatusRequest(
     [property: ProtoMember(1)] OrderStatus NewStatus,
     [property: ProtoMember(2)] string? AssignedChefId = null,

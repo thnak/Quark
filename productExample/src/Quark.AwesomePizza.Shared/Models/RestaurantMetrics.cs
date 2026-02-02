@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Restaurant metrics.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record RestaurantMetrics(
     [property: ProtoMember(1)] string RestaurantId,
     [property: ProtoMember(2)] int ActiveOrders,

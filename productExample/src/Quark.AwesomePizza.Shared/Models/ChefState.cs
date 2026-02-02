@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Represents chef state.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record ChefState(
     [property: ProtoMember(1)] string ChefId,
     [property: ProtoMember(2)] string Name,

@@ -19,7 +19,8 @@ public class AddProtoContractCodeFixProvider : CodeFixProvider
     public sealed override ImmutableArray<string> FixableDiagnosticIds =>
         ImmutableArray.Create(
             MissingProtoContractAnalyzer.MissingProtoContractDiagnosticId,
-            MissingProtoContractAnalyzer.MissingProtoMemberDiagnosticId);
+            MissingProtoContractAnalyzer.MissingProtoMemberDiagnosticId,
+            MissingProtoContractAnalyzer.RecordNeedsSkipConstructorDiagnosticId);
 
     public sealed override FixAllProvider GetFixAllProvider() =>
         WellKnownFixAllProviders.BatchFixer;
@@ -71,6 +72,26 @@ public class AddProtoContractCodeFixProvider : CodeFixProvider
                         }
                     }
                 }
+            }
+        }
+        else if (diagnostic.Id == MissingProtoContractAnalyzer.RecordNeedsSkipConstructorDiagnosticId)
+        {
+            // Find the record declaration
+            var recordDeclaration = root.FindToken(diagnosticSpan.Start).Parent?.AncestorsAndSelf()
+                .OfType<RecordDeclarationSyntax>()
+                .FirstOrDefault();
+
+            if (recordDeclaration != null)
+            {
+                context.RegisterCodeFix(
+                    CodeAction.Create(
+                        title: "Add SkipConstructor = true to [ProtoContract]",
+                        createChangedDocument: c => AddSkipConstructorAsync(
+                            context.Document,
+                            recordDeclaration,
+                            c),
+                        equivalenceKey: "AddSkipConstructor"),
+                    diagnostic);
             }
         }
         else if (diagnostic.Id == MissingProtoContractAnalyzer.MissingProtoMemberDiagnosticId)
@@ -125,9 +146,31 @@ public class AddProtoContractCodeFixProvider : CodeFixProvider
         if (typeDeclaration == null)
             return solution;
 
-        // Add [ProtoContract] to the type
-        var protoContractAttribute = SyntaxFactory.Attribute(
-            SyntaxFactory.IdentifierName("ProtoContract"));
+        // Check if it's a record with positional parameters - if so, add SkipConstructor = true
+        var isRecordWithParams = typeDeclaration is RecordDeclarationSyntax recDecl 
+            && recDecl.ParameterList != null 
+            && recDecl.ParameterList.Parameters.Count > 0;
+
+        // Add [ProtoContract] to the type (with SkipConstructor if needed)
+        AttributeSyntax protoContractAttribute;
+        if (isRecordWithParams)
+        {
+            // Add SkipConstructor = true for records with positional parameters
+            var skipConstructorArgument = SyntaxFactory.AttributeArgument(
+                SyntaxFactory.NameEquals(SyntaxFactory.IdentifierName("SkipConstructor")),
+                null,
+                SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression));
+
+            protoContractAttribute = SyntaxFactory.Attribute(
+                SyntaxFactory.IdentifierName("ProtoContract"),
+                SyntaxFactory.AttributeArgumentList(
+                    SyntaxFactory.SingletonSeparatedList(skipConstructorArgument)));
+        }
+        else
+        {
+            protoContractAttribute = SyntaxFactory.Attribute(
+                SyntaxFactory.IdentifierName("ProtoContract"));
+        }
 
         var protoContractList = SyntaxFactory.AttributeList(
             SyntaxFactory.SingletonSeparatedList(protoContractAttribute))
@@ -342,5 +385,48 @@ public class AddProtoContractCodeFixProvider : CodeFixProvider
         }
 
         return maxNumber + 1;
+    }
+
+    private static async Task<Document> AddSkipConstructorAsync(
+        Document document,
+        RecordDeclarationSyntax recordDeclaration,
+        CancellationToken cancellationToken)
+    {
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        if (root == null)
+            return document;
+
+        // Find the [ProtoContract] attribute
+        var protoContractAttributeList = recordDeclaration.AttributeLists
+            .FirstOrDefault(al => al.Attributes.Any(a => a.Name.ToString().Contains("ProtoContract")));
+
+        if (protoContractAttributeList == null)
+            return document;
+
+        var protoContractAttribute = protoContractAttributeList.Attributes
+            .FirstOrDefault(a => a.Name.ToString().Contains("ProtoContract"));
+
+        if (protoContractAttribute == null)
+            return document;
+
+        // Create the SkipConstructor = true argument
+        var skipConstructorArgument = SyntaxFactory.AttributeArgument(
+            SyntaxFactory.NameEquals(SyntaxFactory.IdentifierName("SkipConstructor")),
+            null,
+            SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression));
+
+        // Add the argument to the attribute
+        var newArgumentList = protoContractAttribute.ArgumentList == null
+            ? SyntaxFactory.AttributeArgumentList(
+                SyntaxFactory.SingletonSeparatedList(skipConstructorArgument))
+            : SyntaxFactory.AttributeArgumentList(
+                protoContractAttribute.ArgumentList.Arguments.Add(skipConstructorArgument));
+
+        var newAttribute = protoContractAttribute.WithArgumentList(newArgumentList);
+        var newAttributeList = protoContractAttributeList.ReplaceNode(protoContractAttribute, newAttribute);
+        var newRecordDeclaration = recordDeclaration.ReplaceNode(protoContractAttributeList, newAttributeList);
+        var newRoot = root.ReplaceNode(recordDeclaration, newRecordDeclaration);
+
+        return document.WithSyntaxRoot(newRoot);
     }
 }

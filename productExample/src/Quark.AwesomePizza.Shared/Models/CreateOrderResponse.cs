@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Response after creating an order.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record CreateOrderResponse(
     [property: ProtoMember(1)] string OrderId,
     [property: ProtoMember(2)] OrderState State,

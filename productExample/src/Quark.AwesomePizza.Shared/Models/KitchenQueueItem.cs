@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Kitchen queue entry.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record KitchenQueueItem(
     [property: ProtoMember(1)] string OrderId,
     [property: ProtoMember(2)] List<PizzaItem> Items,

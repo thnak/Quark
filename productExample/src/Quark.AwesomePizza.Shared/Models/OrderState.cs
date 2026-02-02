@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Represents the complete state of an order.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record OrderState(
     [property: ProtoMember(1)] string OrderId,
     [property: ProtoMember(2)] string CustomerId,

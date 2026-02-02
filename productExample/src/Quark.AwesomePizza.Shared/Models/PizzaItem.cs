@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Represents a pizza item in an order.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record PizzaItem(
     [property: ProtoMember(1)] string PizzaType,
     [property: ProtoMember(2)] string Size,

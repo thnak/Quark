@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Inventory state for a restaurant.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record InventoryState(
     [property: ProtoMember(1)] string RestaurantId,
     [property: ProtoMember(2)] Dictionary<string, InventoryItem> Items,

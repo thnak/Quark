@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Request to update driver location via MQTT.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record UpdateDriverLocationRequest(
     [property: ProtoMember(1)] string DriverId,
     [property: ProtoMember(2)] double Latitude,

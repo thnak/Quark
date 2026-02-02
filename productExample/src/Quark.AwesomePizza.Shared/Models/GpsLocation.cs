@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Represents a GPS location with timestamp.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record GpsLocation(
     [property: ProtoMember(1)] double Latitude,
     [property: ProtoMember(2)] double Longitude,

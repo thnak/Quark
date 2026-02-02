@@ -17,6 +17,7 @@ public class MissingProtoContractAnalyzer : DiagnosticAnalyzer
 {
     public const string MissingProtoContractDiagnosticId = "QUARK014";
     public const string MissingProtoMemberDiagnosticId = "QUARK015";
+    public const string RecordNeedsSkipConstructorDiagnosticId = "QUARK016";
 
     private static readonly DiagnosticDescriptor ProtoContractRule = new DiagnosticDescriptor(
         MissingProtoContractDiagnosticId,
@@ -36,8 +37,17 @@ public class MissingProtoContractAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         description: "All properties in types marked with [ProtoContract] must have [ProtoMember] attributes with sequential numbering starting from 1.");
 
+    private static readonly DiagnosticDescriptor RecordSkipConstructorRule = new DiagnosticDescriptor(
+        RecordNeedsSkipConstructorDiagnosticId,
+        "Record type needs [ProtoContract(SkipConstructor = true)]",
+        "Record type '{0}' with positional parameters requires [ProtoContract(SkipConstructor = true)] for ProtoBuf serialization",
+        "Quark.Serialization",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Record types with positional parameters (primary constructors) don't have parameterless constructors. They must use [ProtoContract(SkipConstructor = true)] to enable ProtoBuf serialization.");
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(ProtoContractRule, ProtoMemberRule);
+        ImmutableArray.Create(ProtoContractRule, ProtoMemberRule, RecordSkipConstructorRule);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -112,11 +122,37 @@ public class MissingProtoContractAnalyzer : DiagnosticAnalyzer
             return;
 
         // Check if type has [ProtoContract] attribute
-        var hasProtoContract = typeSymbol.GetAttributes()
-            .Any(attr => attr.AttributeClass?.ToDisplayString() == "ProtoBuf.ProtoContractAttribute");
+        var protoContractAttr = typeSymbol.GetAttributes()
+            .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == "ProtoBuf.ProtoContractAttribute");
 
-        if (!hasProtoContract)
+        if (protoContractAttr == null)
             return;
+
+        // Check if it's a record with positional parameters that needs SkipConstructor
+        if (typeDeclaration is RecordDeclarationSyntax recordDecl && recordDecl.ParameterList != null && recordDecl.ParameterList.Parameters.Count > 0)
+        {
+            // Check if SkipConstructor = true is set
+            var hasSkipConstructor = false;
+            foreach (var namedArg in protoContractAttr.NamedArguments)
+            {
+                if (namedArg.Key == "SkipConstructor" && namedArg.Value.Value is bool skipValue && skipValue)
+                {
+                    hasSkipConstructor = true;
+                    break;
+                }
+            }
+
+            if (!hasSkipConstructor)
+            {
+                // Report error: record with positional parameters needs SkipConstructor = true
+                var diagnostic = Diagnostic.Create(
+                    RecordSkipConstructorRule,
+                    typeDeclaration.Identifier.GetLocation(),
+                    typeSymbol.Name);
+                
+                context.ReportDiagnostic(diagnostic);
+            }
+        }
 
         // If it has ProtoContract, check that all properties have ProtoMember
         var properties = typeSymbol.GetMembers().OfType<IPropertySymbol>();
@@ -140,9 +176,9 @@ public class MissingProtoContractAnalyzer : DiagnosticAnalyzer
                 // Also check for record parameters (primary constructor parameters)
                 var location = propertySyntax?.GetLocation();
                 
-                if (location == null && typeDeclaration is RecordDeclarationSyntax recordDecl && recordDecl.ParameterList != null)
+                if (location == null && typeDeclaration is RecordDeclarationSyntax recDecl && recDecl.ParameterList != null)
                 {
-                    var recordParam = recordDecl.ParameterList.Parameters
+                    var recordParam = recDecl.ParameterList.Parameters
                         .FirstOrDefault(p => p.Identifier.Text == property.Name);
                     location = recordParam?.GetLocation();
                 }

@@ -17,13 +17,27 @@ All types used in actor interfaces must have ProtoBuf serialization attributes:
 ```csharp
 using ProtoBuf;
 
-[ProtoContract]
+// For records with positional parameters, use SkipConstructor = true
+[ProtoContract(SkipConstructor = true)]
 public record OrderState(
     [property: ProtoMember(1)] string OrderId,
     [property: ProtoMember(2)] string CustomerId,
     [property: ProtoMember(3)] OrderStatus Status
 );
+
+// For classes with mutable properties, SkipConstructor is not needed
+[ProtoContract]
+public class OrderData
+{
+    [ProtoMember(1)]
+    public string OrderId { get; set; }
+    
+    [ProtoMember(2)]
+    public string CustomerId { get; set; }
+}
 ```
+
+**Important:** C# records with positional parameters (primary constructors) don't have parameterless constructors. They require `SkipConstructor = true` in the `[ProtoContract]` attribute to work with ProtoBuf serialization.
 
 ### 2. Create a ProtoSerializer Context
 
@@ -82,10 +96,10 @@ public interface IOrderActor : IQuarkActor
 }
 ```
 
-**Fix**: Add `[ProtoContract]` to the type:
+**Fix**: Add `[ProtoContract]` to the type (with `SkipConstructor = true` for records with positional parameters):
 
 ```csharp
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record OrderState(/* ... */);
 ```
 
@@ -94,7 +108,7 @@ public record OrderState(/* ... */);
 The analyzer detects properties in types with `[ProtoContract]` that lack `[ProtoMember]` attributes:
 
 ```csharp
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record OrderState(
     string OrderId,  // ❌ Error QUARK015: Missing [ProtoMember]
     string CustomerId  // ❌ Error QUARK015: Missing [ProtoMember]
@@ -104,12 +118,36 @@ public record OrderState(
 **Fix**: Add `[ProtoMember(n)]` to all properties:
 
 ```csharp
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record OrderState(
     [property: ProtoMember(1)] string OrderId,
     [property: ProtoMember(2)] string CustomerId
 );
 ```
+
+### QUARK016: Record Needs SkipConstructor
+
+The analyzer detects records with positional parameters that have `[ProtoContract]` but are missing `SkipConstructor = true`:
+
+```csharp
+[ProtoContract]  // ❌ Error QUARK016: Record needs SkipConstructor = true
+public record OrderState(
+    [property: ProtoMember(1)] string OrderId,
+    [property: ProtoMember(2)] string CustomerId
+);
+```
+
+**Fix**: Add `SkipConstructor = true` to the `[ProtoContract]` attribute:
+
+```csharp
+[ProtoContract(SkipConstructor = true)]  // ✅ Correct
+public record OrderState(
+    [property: ProtoMember(1)] string OrderId,
+    [property: ProtoMember(2)] string CustomerId
+);
+```
+
+**Why?** Records with positional parameters don't have parameterless constructors. ProtoBuf requires either a parameterless constructor or the `SkipConstructor = true` flag to deserialize objects.
 
 ### Code Fix Provider
 
@@ -117,7 +155,15 @@ The analyzer includes a code fix provider that can automatically add missing att
 
 1. Place your cursor on the error
 2. Press `Ctrl+.` (or `Cmd+.` on Mac)
-3. Select "Add [ProtoContract] and [ProtoMember] attributes"
+3. Select one of:
+   - "Add [ProtoContract] and [ProtoMember] attributes" (for QUARK014)
+   - "Add [ProtoMember] attribute" (for QUARK015)
+   - "Add SkipConstructor = true to [ProtoContract]" (for QUARK016)
+
+The code fix provider automatically:
+- Adds `SkipConstructor = true` for records with positional parameters
+- Numbers `[ProtoMember]` attributes sequentially
+- Adds the `using ProtoBuf;` directive if missing
 
 ## Custom Converters
 

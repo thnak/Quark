@@ -5,7 +5,7 @@ namespace Quark.AwesomePizza.Shared.Models;
 /// <summary>
 /// Inventory item.
 /// </summary>
-[ProtoContract]
+[ProtoContract(SkipConstructor = true)]
 public record InventoryItem(
     [property: ProtoMember(1)] string ItemId,
     [property: ProtoMember(2)] string Name,
