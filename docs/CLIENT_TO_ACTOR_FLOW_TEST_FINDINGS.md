@@ -69,21 +69,31 @@ TRANSPORT LAYER
 
 ## Critical Findings
 
-### 1. JSON Serialization is Required
+### 1. Protobuf Serialization is Required
 
-**Finding:** All method parameters and return values must be JSON-serializable.
+**Finding:** All method parameters and return values must be Protobuf-serializable using generated message contracts.
 
 **Evidence:**
-- Test initially failed with: "'H' is an invalid start of a value" error
-- This occurred because we used `UTF8.GetBytes()` instead of `JsonSerializer.SerializeToUtf8Bytes()`
-- The generated dispatchers use `System.Text.Json.JsonSerializer` for all serialization
+- The generated dispatchers use `ProtoBuf.Serializer.Deserialize<T>()` for deserialization
+- The generated proxies use `ProtoBuf.Serializer.Serialize()` for serialization
+- Message contracts are auto-generated for each actor method (e.g., `ActorName_MethodNameRequest` and `ActorName_MethodNameResponse`)
 
-**Implication:** If you're sending data to actors, it MUST be JSON-serialized. Raw byte arrays won't work unless they contain valid JSON.
+**Implication:** If you're manually sending data to actors, it MUST be Protobuf-serialized using the generated message contracts. Raw byte arrays or JSON won't work.
 
-**Fix Required:** Always use:
+**Fix Required:** Use generated message contracts:
 ```csharp
-// ✅ CORRECT
-var payload = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(parameter);
+// ✅ CORRECT - Manual serialization (advanced use case)
+var protoRequest = new ActorName_MethodNameRequest { Parameter = value };
+byte[] payload;
+using (var ms = new System.IO.MemoryStream())
+{
+    ProtoBuf.Serializer.Serialize(ms, protoRequest);
+    payload = ms.ToArray();
+}
+
+// ✅ EVEN BETTER - Use generated proxy (recommended)
+var proxy = client.GetActor<IActorName>(actorId);
+var result = await proxy.MethodNameAsync(value);
 
 // ❌ WRONG
 var payload = System.Text.Encoding.UTF8.GetBytes(parameter);
@@ -144,14 +154,15 @@ Based on the tests, here are the most likely error sources in the client-to-acto
 
 ### 1. Serialization Errors (MOST LIKELY)
 
-**Symptom:** JSON deserialization errors like "'X' is an invalid start of a value"
+**Symptom:** Protobuf deserialization errors like "Attempted to read past the end of the stream" or "'X' is an invalid start of a value"
 
-**Cause:** Sending non-JSON data or improperly formatted JSON
+**Cause:** Sending non-Protobuf data or improperly formatted messages
 
 **Fix:**
-- Always use `JsonSerializer.SerializeToUtf8Bytes()` for parameters
-- Ensure all types are JSON-serializable
-- Avoid sending raw binary data unless it's JSON-encoded
+- Use the generated proxy client (handles all serialization automatically)
+- If manually creating envelopes, use the generated Protobuf message contracts
+- Ensure all types are Protobuf-serializable (primitives, strings, lists, etc.)
+- Never send raw binary data or JSON - use Protobuf message contracts
 
 ### 2. Dispatcher Not Registered
 
@@ -225,24 +236,26 @@ To add new test scenarios:
 
 1. Add new test actor interfaces and implementations in the test class
 2. Ensure actors have `[Actor]` attribute
-3. Use JSON serialization for all parameters
+3. Use Protobuf serialization with generated message contracts for all parameters
 4. Set up mock transport to capture responses
 5. Use `transport.Raise(t => t.EnvelopeReceived += null, transport.Object, envelope)` to simulate message reception
 
 ## Recommendations
 
-1. **Always Use JSON Serialization** - This is not optional. The framework expects JSON for all method parameters and return values.
+1. **Always Use Protobuf Serialization** - This is not optional. The framework uses Protobuf for all method parameters and return values. Use the generated proxy client for automatic handling, or use the generated message contracts for manual serialization.
 
-2. **Test Error Paths** - Use these tests as a reference for validating error handling in your own actors.
+2. **Prefer Generated Proxies** - The generated proxy client handles all serialization/deserialization automatically and provides type-safe access to actor methods.
 
-3. **Monitor Mailbox Performance** - The bounded channel has a capacity of 1000. If you expect higher message volumes, consider the backpressure implications.
+3. **Test Error Paths** - Use these tests as a reference for validating error handling in your own actors.
 
-4. **Verify Message Correlation** - Always include MessageId in envelopes for proper request-response tracking.
+4. **Monitor Mailbox Performance** - The bounded channel has a capacity of 1000. If you expect higher message volumes, consider the backpressure implications.
 
-5. **Test Concurrent Access** - Use the sequential processing tests as a baseline to verify actor state consistency.
+5. **Verify Message Correlation** - Always include MessageId in envelopes for proper request-response tracking.
+
+6. **Test Concurrent Access** - Use the sequential processing tests as a baseline to verify actor state consistency.
 
 ## Conclusion
 
-The comprehensive flow tests validate that the Quark actor invocation pipeline works correctly from client to actor and back, without needing the full HTTP/Kestrel stack. The tests identified JSON serialization as the most critical requirement and validated that error handling, sequential processing, and message correlation all work as designed.
+The comprehensive flow tests validate that the Quark actor invocation pipeline works correctly from client to actor and back, without needing the full HTTP/Kestrel stack. The tests verified that Protobuf serialization is the required format and validated that error handling, sequential processing, and message correlation all work as designed.
 
-**Key Takeaway:** If you're experiencing errors in the client-to-actor flow, start by verifying that all data is properly JSON-serialized. This is the most common source of errors based on our test findings.
+**Key Takeaway:** If you're experiencing errors in the client-to-actor flow, start by using the generated proxy client (recommended) or verifying that all data is properly Protobuf-serialized using the generated message contracts. This is the most common source of errors based on our test findings.
