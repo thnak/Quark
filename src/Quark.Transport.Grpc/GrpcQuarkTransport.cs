@@ -186,7 +186,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
         // Also raise the event so subscribers (like QuarkTransportService) can send the response
         // over gRPC streams for remote calls
-        responseEnvelope.IsRequest = true;
+        responseEnvelope.IsRequest = false;
         EnvelopeReceived?.Invoke(this, responseEnvelope);
     }
 
