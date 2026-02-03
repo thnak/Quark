@@ -54,11 +54,9 @@ public sealed class InMemoryJobQueue : IJobQueue
                         job.UpdatedAt = DateTimeOffset.UtcNow;
                         return Task.FromResult<Job?>(job);
                     }
-                    else
-                    {
-                        // Re-enqueue to check later
-                        _pendingQueue.Enqueue(jobId);
-                    }
+
+                    // Re-enqueue to check later
+                    _pendingQueue.Enqueue(jobId);
                 }
             }
         }

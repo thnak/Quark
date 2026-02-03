@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
-using Google.Protobuf;
 using Grpc.Core;
-using Grpc.Net.Client;
 using Quark.Abstractions.Clustering;
 using Quark.Networking.Abstractions;
 using GrpcChannel = Grpc.Net.Client.GrpcChannel;
@@ -14,27 +12,31 @@ namespace Quark.Transport.Grpc;
 ///     Supports optional channel pooling for efficient connection management.
 ///     Optimizes local calls to avoid network overhead when target is the local silo.
 /// </summary>
-public sealed class GrpcQuarkTransport : IQuarkTransport
+public sealed class GrpcQuarkTransport : IQuarkTransport, IEnvelopeReceiver
 {
     private readonly ConcurrentDictionary<string, SiloConnection> _connections = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<QuarkEnvelope>> _pendingRequests = new();
     private readonly IQuarkChannelEnvelopeQueue _quarkChannelEnvelopeQueue;
     private readonly GrpcChannelPool? _channelPool;
+    private readonly TimeSpan _requestTimeout;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="GrpcQuarkTransport" /> class.
     /// </summary>
     /// <param name="localSiloId">The local silo ID.</param>
     /// <param name="localEndpoint">The local endpoint (host:port).</param>
-    /// <param name="quarkChannelEnvelopeQueue"></param>
+    /// <param name="quarkChannelEnvelopeQueue">The envelope queue for outgoing messages.</param>
     /// <param name="channelPool">Optional channel pool for connection reuse and lifecycle management.</param>
+    /// <param name="requestTimeout">Optional timeout for requests. Defaults to 30 seconds.</param>
     public GrpcQuarkTransport(string localSiloId, string localEndpoint,
-        IQuarkChannelEnvelopeQueue quarkChannelEnvelopeQueue, GrpcChannelPool? channelPool = null)
+        IQuarkChannelEnvelopeQueue quarkChannelEnvelopeQueue, GrpcChannelPool? channelPool = null,
+        TimeSpan? requestTimeout = null)
     {
         LocalSiloId = localSiloId ?? throw new ArgumentNullException(nameof(localSiloId));
         LocalEndpoint = localEndpoint ?? throw new ArgumentNullException(nameof(localEndpoint));
         _quarkChannelEnvelopeQueue = quarkChannelEnvelopeQueue;
         _channelPool = channelPool;
+        _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(30);
     }
 
     /// <inheritdoc />
@@ -73,7 +75,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
                 // Wait for response with timeout
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(TimeSpan.FromSeconds(30));
+                cts.CancelAfter(_requestTimeout);
 
                 return await tcs.Task.WaitAsync(cts.Token);
             }
@@ -91,9 +93,9 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         // Send via stream
         await _quarkChannelEnvelopeQueue.Outgoing.Writer.WriteAsync(envelope, cancellationToken);
         
-        // Wait for response (30s timeout)
+        // Wait for response with configured timeout
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+        timeoutCts.CancelAfter(_requestTimeout);
 
         return await remoteTcs.Task.WaitAsync(timeoutCts.Token);
     }
@@ -121,7 +123,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             {
                 try
                 {
-                    RaiseEnvelopeReceived(FromProtoMessage(envelope));
+                    OnEnvelopeReceived(EnvelopeMessageConverter.FromProtoMessage(envelope));
                 }
                 catch (Exception)
                 {
@@ -133,7 +135,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         {
             await foreach (var envelope in _quarkChannelEnvelopeQueue.Outgoing.Reader.ReadAllAsync(cancellationToken))
             {
-                await connection.Call.RequestStream.WriteAsync(ToProtoMessage(envelope), cancellationToken);
+                await connection.Call.RequestStream.WriteAsync(EnvelopeMessageConverter.ToProtoMessage(envelope), cancellationToken);
             }
         });
     }
@@ -198,13 +200,13 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     }
 
     /// <summary>
-    /// Raises the EnvelopeReceived event.
-    /// Used by the server-side gRPC service to notify subscribers of incoming messages.
+    /// Notifies the transport of an incoming envelope from the gRPC layer.
+    /// Implements IEnvelopeReceiver for decoupled communication with QuarkTransportService.
     /// </summary>
     /// <param name="envelope">The received envelope.</param>
-    internal void RaiseEnvelopeReceived(QuarkEnvelope envelope)
+    public void OnEnvelopeReceived(QuarkEnvelope envelope)
     {
-        // EnvelopeReceived?.Invoke(this, envelope);
+        // Complete pending request if this is a response to an outgoing call
         if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
         {
             tcs.SetResult(envelope);
@@ -227,40 +229,5 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         public AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> Call { get; }
         public bool IsPooled { get; }
         public IClientStreamWriter<EnvelopeMessage> RequestStream => Call.RequestStream;
-    }
-    
-    private static EnvelopeMessage ToProtoMessage(QuarkEnvelope envelope)
-    {
-        return new EnvelopeMessage
-        {
-            MessageId = envelope.MessageId,
-            ActorId = envelope.ActorId ?? string.Empty,
-            ActorType = envelope.ActorType ?? string.Empty,
-            MethodName = envelope.MethodName ?? string.Empty,
-            Payload = Google.Protobuf.ByteString.CopyFrom(envelope.Payload ?? Array.Empty<byte>()),
-            CorrelationId = envelope.CorrelationId,
-            Timestamp = envelope.Timestamp.ToUnixTimeMilliseconds(),
-            ResponsePayload = envelope.ResponsePayload != null
-                ? Google.Protobuf.ByteString.CopyFrom(envelope.ResponsePayload)
-                : Google.Protobuf.ByteString.Empty,
-            IsError = envelope.IsError,
-            ErrorMessage = envelope.ErrorMessage ?? string.Empty
-        };
-    }
-
-    private static QuarkEnvelope FromProtoMessage(EnvelopeMessage message)
-    {
-        return new QuarkEnvelope(
-            message.MessageId,
-            message.ActorId,
-            message.ActorType,
-            message.MethodName,
-            message.Payload.ToByteArray(),
-            message.CorrelationId)
-        {
-            ResponsePayload = message.ResponsePayload.Length > 0 ? message.ResponsePayload.ToByteArray() : null,
-            IsError = message.IsError,
-            ErrorMessage = message.ErrorMessage
-        };
     }
 }
