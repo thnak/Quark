@@ -4,6 +4,10 @@ using Quark.Networking.Abstractions;
 
 namespace Quark.Transport.Grpc;
 
+/// <summary>
+/// gRPC service implementation for bi-directional actor message streaming.
+/// Handles incoming gRPC calls and coordinates with the transport layer.
+/// </summary>
 public class QuarkTransportService : QuarkTransport.QuarkTransportBase
 {
     private readonly IQuarkTransport _transport;
@@ -35,7 +39,7 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
                                    context.CancellationToken))
                 {
                     message.ResponsePayload ??= [];
-                    await responseStream.WriteAsync(ToProtoMessage(message));
+                    await responseStream.WriteAsync(EnvelopeMessageConverter.ToProtoMessage(message));
                     _logger.LogTrace("Response sent for message {MessageId}", message.MessageId);
                 }
             }
@@ -57,8 +61,9 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
             {
                 try
                 {
-                    var envelope = FromProtoMessage(message);
+                    var envelope = EnvelopeMessageConverter.FromProtoMessage(message);
 
+                    // Notify transport layer of received envelope
                     if (_transport is GrpcQuarkTransport grpcTransport)
                     {
                         grpcTransport.RaiseEnvelopeReceived(envelope);
@@ -67,7 +72,6 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error processing incoming message");
-                    _quarkChannelEnvelopeQueue.Outgoing.Writer.TryWrite(FromProtoMessage(message));
                 }
             }
         }
@@ -77,40 +81,5 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
             await writeTask; // Wait for the writer to finish draining
             _logger.LogInformation("ActorStream connection closed from {Peer}", clientPeer);
         }
-    }
-
-    private static EnvelopeMessage ToProtoMessage(QuarkEnvelope envelope)
-    {
-        return new EnvelopeMessage
-        {
-            MessageId = envelope.MessageId,
-            ActorId = envelope.ActorId ?? string.Empty,
-            ActorType = envelope.ActorType ?? string.Empty,
-            MethodName = envelope.MethodName ?? string.Empty,
-            Payload = Google.Protobuf.ByteString.CopyFrom(envelope.Payload ?? Array.Empty<byte>()),
-            CorrelationId = envelope.CorrelationId,
-            Timestamp = envelope.Timestamp.ToUnixTimeMilliseconds(),
-            ResponsePayload = envelope.ResponsePayload != null
-                ? Google.Protobuf.ByteString.CopyFrom(envelope.ResponsePayload)
-                : Google.Protobuf.ByteString.Empty,
-            IsError = envelope.IsError,
-            ErrorMessage = envelope.ErrorMessage ?? string.Empty
-        };
-    }
-
-    private static QuarkEnvelope FromProtoMessage(EnvelopeMessage message)
-    {
-        return new QuarkEnvelope(
-            message.MessageId,
-            message.ActorId,
-            message.ActorType,
-            message.MethodName,
-            message.Payload.ToByteArray(),
-            message.CorrelationId)
-        {
-            ResponsePayload = message.ResponsePayload.Length > 0 ? message.ResponsePayload.ToByteArray() : null,
-            IsError = message.IsError,
-            ErrorMessage = message.ErrorMessage
-        };
     }
 }
