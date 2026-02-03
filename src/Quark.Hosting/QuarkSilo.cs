@@ -180,7 +180,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             // 7. Wait for in-flight gRPC calls to complete (with timeout)
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_options.ShutdownTimeout);
-            await Task.Delay(TimeSpan.FromSeconds(1), timeoutCts.Token).ContinueWith(_ => { });
+            await Task.Delay(TimeSpan.FromSeconds(1), timeoutCts.Token).ContinueWith(_ => { }, timeoutCts.Token);
             _logger.LogInformation("Waited for in-flight calls to complete for silo {SiloId}", SiloId);
 
             // 8. Unsubscribe from transport events
@@ -493,28 +493,6 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             var actor = concreteFactory.GetOrCreateActorByName(envelope.ActorType, envelope.ActorId);
 
-            if (actor == null)
-            {
-                _logger.LogError(
-                    "Failed to create actor {ActorId} of type {ActorType}",
-                    envelope.ActorId, envelope.ActorType);
-                
-                var errorResponse = new Networking.Abstractions.QuarkEnvelope(
-                    envelope.MessageId,
-                    envelope.ActorId,
-                    envelope.ActorType,
-                    envelope.MethodName,
-                    Array.Empty<byte>(),
-                    envelope.CorrelationId)
-                {
-                    IsError = true,
-                    ErrorMessage = $"Failed to create actor '{envelope.ActorId}' of type '{envelope.ActorType}'"
-                };
-                
-                _transport.SendResponse(errorResponse);
-                return;
-            }
-
             // 3. Get or create mailbox for this actor (this also registers the actor)
             var mailbox = _actorMailboxes.GetOrAdd(envelope.ActorId, actorId =>
             {
@@ -538,7 +516,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                         "Failed to post envelope {MessageId} to mailbox for actor {ActorId} (channel may be closed)",
                         envelope.MessageId, envelope.ActorId);
                             
-                    var errorResponse = new Networking.Abstractions.QuarkEnvelope(
+                    var errorResponse = new QuarkEnvelope(
                         envelope.MessageId,
                         envelope.ActorId,
                         envelope.ActorType,

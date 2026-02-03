@@ -20,6 +20,7 @@ internal sealed class ActorInvocationMailbox : IDisposable
 
     // 0 = idle, 1 = running
     private int _isProcessing;
+    private bool _isStarted;
 
     // Optional fairness control
     private const int MaxMessagesPerTurn = 100;
@@ -63,6 +64,7 @@ internal sealed class ActorInvocationMailbox : IDisposable
         return result;
     }
 
+
     /// <summary>
     /// Attempts to schedule mailbox execution.
     /// </summary>
@@ -88,6 +90,8 @@ internal sealed class ActorInvocationMailbox : IDisposable
     {
         _channel.Writer.TryComplete();
         await _channel.Reader.Completion;
+        if (_isStarted)
+            await _actor.OnDeactivateAsync();
         await _cts.CancelAsync();
     }
 
@@ -97,6 +101,11 @@ internal sealed class ActorInvocationMailbox : IDisposable
     private async Task ProcessMessagesAsync(CancellationToken cancellationToken)
     {
         _logger.LogDebug("Mailbox started for actor {ActorId}", ActorId);
+        if (!_isStarted)
+        {
+            await Actor.OnActivateAsync(cancellationToken);
+            _isStarted = true;
+        }
 
         try
         {

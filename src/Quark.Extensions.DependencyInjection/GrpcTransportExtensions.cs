@@ -41,6 +41,8 @@ public static class GrpcTransportExtensions
             });
         }
 
+        builder.Services.TryAddSingleton<IQuarkChannelEnvelopeQueue, GrpcMessageQueue>();
+
         // Register gRPC transport
         builder.Services.TryAddSingleton<IQuarkTransport>(sp =>
         {
@@ -49,7 +51,8 @@ public static class GrpcTransportExtensions
             var endpoint = $"{siloOptions.Address}:{siloOptions.Port}";
             
             var channelPool = enableChannelPooling ? sp.GetService<GrpcChannelPool>() : null;
-            return new GrpcQuarkTransport(siloId, endpoint, channelPool);
+            var queue = sp.GetRequiredService<IQuarkChannelEnvelopeQueue>();
+            return new GrpcQuarkTransport(siloId, endpoint, queue, channelPool);
         });
 
         // Register gRPC server services

@@ -41,6 +41,8 @@ public static class GrpcTransportClientExtensions
         }
 
         // Register gRPC transport
+        builder.Services.TryAddSingleton<IQuarkChannelEnvelopeQueue, GrpcMessageQueue>();
+
         builder.Services.TryAddSingleton<IQuarkTransport>(sp =>
         {
             var clientOptions = sp.GetRequiredService<ClusterClientOptions>();
@@ -49,7 +51,8 @@ public static class GrpcTransportClientExtensions
             var endpoint = "client";
             
             var channelPool = enableChannelPooling ? sp.GetService<GrpcChannelPool>() : null;
-            return new GrpcQuarkTransport(clientId, endpoint, channelPool);
+            var queue = sp.GetRequiredService<IQuarkChannelEnvelopeQueue>();
+            return new GrpcQuarkTransport(clientId, endpoint, queue, channelPool);
         });
 
         return builder;

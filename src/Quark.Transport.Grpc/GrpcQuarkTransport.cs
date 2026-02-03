@@ -17,6 +17,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 {
     private readonly ConcurrentDictionary<string, SiloConnection> _connections = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<QuarkEnvelope>> _pendingRequests = new();
+    private readonly IQuarkChannelEnvelopeQueue _quarkChannelEnvelopeQueue;
     private readonly GrpcChannelPool? _channelPool;
 
     /// <summary>
@@ -25,10 +26,11 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     /// <param name="localSiloId">The local silo ID.</param>
     /// <param name="localEndpoint">The local endpoint (host:port).</param>
     /// <param name="channelPool">Optional channel pool for connection reuse and lifecycle management.</param>
-    public GrpcQuarkTransport(string localSiloId, string localEndpoint, GrpcChannelPool? channelPool = null)
+    public GrpcQuarkTransport(string localSiloId, string localEndpoint, IQuarkChannelEnvelopeQueue quarkChannelEnvelopeQueue, GrpcChannelPool? channelPool = null)
     {
         LocalSiloId = localSiloId ?? throw new ArgumentNullException(nameof(localSiloId));
         LocalEndpoint = localEndpoint ?? throw new ArgumentNullException(nameof(localEndpoint));
+        _quarkChannelEnvelopeQueue = quarkChannelEnvelopeQueue;
         _channelPool = channelPool;
     }
 
@@ -78,21 +80,15 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             }
         }
 
-        // Remote call - use gRPC
-        if (!_connections.TryGetValue(targetSiloId, out var connection))
-            throw new InvalidOperationException($"No connection to silo {targetSiloId}. Call ConnectAsync first.");
-
         // Create TCS for response
         var remoteTcs = new TaskCompletionSource<QuarkEnvelope>();
         _pendingRequests[envelope.MessageId] = remoteTcs;
 
         try
         {
-            // Convert to protobuf message
-            var protoMessage = ToProtoMessage(envelope);
 
             // Send via stream
-            await connection.RequestStream.WriteAsync(protoMessage, cancellationToken);
+            await _quarkChannelEnvelopeQueue.Outgoing.Writer.WriteAsync(envelope, cancellationToken);
 
             // Wait for response (30s timeout)
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -123,9 +119,6 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
         var connection = new SiloConnection(siloInfo.SiloId, channel, call, _channelPool != null);
         _connections[siloInfo.SiloId] = connection;
-
-        // Start reading responses in background
-        _ = Task.Run(async () => await ReadResponsesAsync(connection, cancellationToken), cancellationToken);
     }
 
     /// <inheritdoc />
@@ -184,10 +177,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             tcs.SetResult(responseEnvelope);
         }
 
-        // Also raise the event so subscribers (like QuarkTransportService) can send the response
-        // over gRPC streams for remote calls
-        responseEnvelope.IsResponse = true;
-        EnvelopeReceived?.Invoke(this, responseEnvelope);
+        _quarkChannelEnvelopeQueue.Outgoing.Writer.TryWrite(responseEnvelope);
     }
 
     /// <summary>
@@ -198,28 +188,6 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     internal void RaiseEnvelopeReceived(QuarkEnvelope envelope)
     {
         EnvelopeReceived?.Invoke(this, envelope);
-    }
-
-    private async Task ReadResponsesAsync(SiloConnection connection, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await foreach (var message in connection.Call.ResponseStream.ReadAllAsync(cancellationToken))
-            {
-                var envelope = FromProtoMessage(message);
-
-                // Check if this is a response to our request
-                if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
-                    tcs.SetResult(envelope);
-                if (!envelope.IsResponse)
-                    // This is a new request from remote
-                    EnvelopeReceived?.Invoke(this, envelope);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error reading responses from {connection.SiloId}: {ex}");
-        }
     }
 
     private static EnvelopeMessage ToProtoMessage(QuarkEnvelope envelope)
