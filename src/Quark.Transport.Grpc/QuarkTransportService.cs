@@ -23,6 +23,12 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
         
         // Try to get IEnvelopeReceiver from transport
         _envelopeReceiver = transport as IEnvelopeReceiver;
+        
+        // Log a warning if transport doesn't implement IEnvelopeReceiver
+        if (_envelopeReceiver == null)
+        {
+            _logger.LogWarning("Transport does not implement IEnvelopeReceiver. Envelope reception will not be processed.");
+        }
     }
 
     public override async Task ActorStream(
@@ -71,7 +77,7 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing incoming message");
+                    _logger.LogError(ex, "Error processing incoming message from {Peer}", clientPeer);
                 }
             }
         }
