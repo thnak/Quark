@@ -190,43 +190,6 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         EnvelopeReceived?.Invoke(this, envelope);
     }
 
-    private static EnvelopeMessage ToProtoMessage(QuarkEnvelope envelope)
-    {
-        return new EnvelopeMessage
-        {
-            MessageId = envelope.MessageId,
-            ActorId = envelope.ActorId,
-            ActorType = envelope.ActorType,
-            MethodName = envelope.MethodName,
-            Payload = ByteString.CopyFrom(envelope.Payload),
-            CorrelationId = envelope.CorrelationId,
-            Timestamp = envelope.Timestamp.ToUnixTimeMilliseconds(),
-            ResponsePayload = envelope.ResponsePayload != null
-                ? ByteString.CopyFrom(envelope.ResponsePayload)
-                : ByteString.Empty,
-            IsError = envelope.IsError,
-            ErrorMessage = envelope.ErrorMessage ?? string.Empty,
-            IsResponse = envelope.IsResponse
-        };
-    }
-
-    private static QuarkEnvelope FromProtoMessage(EnvelopeMessage message)
-    {
-        return new QuarkEnvelope(
-            message.MessageId,
-            message.ActorId,
-            message.ActorType,
-            message.MethodName,
-            message.Payload.ToByteArray(),
-            message.CorrelationId,
-            message.IsResponse)
-        {
-            ResponsePayload = message.ResponsePayload.Length > 0 ? message.ResponsePayload.ToByteArray() : null,
-            IsError = message.IsError,
-            ErrorMessage = message.ErrorMessage
-        };
-    }
-
     private sealed class SiloConnection
     {
         public SiloConnection(string siloId, GrpcChannel channel,

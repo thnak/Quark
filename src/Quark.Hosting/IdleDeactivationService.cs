@@ -73,7 +73,7 @@ public sealed class IdleDeactivationService : BackgroundService
 
     private async Task CheckAndDeactivateIdleActorsAsync(CancellationToken cancellationToken)
     {
-        var activeActors = _silo.GetActiveActors().ToList();
+        var activeActors = _silo.GetActiveActors();
         var totalActors = activeActors.Count;
         var deactivatedCount = 0;
 
@@ -93,7 +93,7 @@ public sealed class IdleDeactivationService : BackgroundService
 
             try
             {
-                var metrics = await _activityTracker.GetActivityMetricsAsync(actor.ActorId);
+                var metrics = await _activityTracker.GetActivityMetricsAsync(actor.ActorId, cancellationToken);
                 if (metrics == null)
                 {
                     continue;
@@ -101,14 +101,14 @@ public sealed class IdleDeactivationService : BackgroundService
 
                 // Check if we should deactivate based on policy
                 if (_deactivationPolicy.ShouldDeactivate(
-                    actor.ActorId,
-                    metrics.ActorType,
-                    metrics.LastActivityTime,
-                    metrics.QueueDepth,
-                    metrics.ActiveCallCount))
+                        actor.ActorId,
+                        metrics.ActorType,
+                        metrics.LastActivityTime,
+                        metrics.QueueDepth,
+                        metrics.ActiveCallCount))
                 {
                     // Respect minimum active actors setting
-                    if (_options.MinimumActiveActors > 0 && 
+                    if (_options.MinimumActiveActors > 0 &&
                         (totalActors - deactivatedCount) <= _options.MinimumActiveActors)
                     {
                         _logger.LogDebug(

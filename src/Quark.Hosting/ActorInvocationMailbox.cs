@@ -125,6 +125,8 @@ internal sealed class ActorInvocationMailbox : IDisposable
                     HandleMessageFailure(message, ex);
                 }
             }
+
+            await Task.Yield();
         }
         finally
         {
