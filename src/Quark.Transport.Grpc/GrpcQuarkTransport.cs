@@ -14,7 +14,7 @@ namespace Quark.Transport.Grpc;
 ///     Supports optional channel pooling for efficient connection management.
 ///     Optimizes local calls to avoid network overhead when target is the local silo.
 /// </summary>
-public sealed class GrpcQuarkTransport : IQuarkTransport
+public sealed class GrpcQuarkTransport : IQuarkTransport, IEnvelopeReceiver
 {
     private readonly ConcurrentDictionary<string, SiloConnection> _connections = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<QuarkEnvelope>> _pendingRequests = new();
@@ -125,7 +125,7 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
             {
                 try
                 {
-                    RaiseEnvelopeReceived(EnvelopeMessageConverter.FromProtoMessage(envelope));
+                    OnEnvelopeReceived(EnvelopeMessageConverter.FromProtoMessage(envelope));
                 }
                 catch (Exception)
                 {
@@ -202,13 +202,13 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     }
 
     /// <summary>
-    /// Raises the EnvelopeReceived event.
-    /// Used by the server-side gRPC service to notify subscribers of incoming messages.
+    /// Notifies the transport of an incoming envelope from the gRPC layer.
+    /// Implements IEnvelopeReceiver for decoupled communication with QuarkTransportService.
     /// </summary>
     /// <param name="envelope">The received envelope.</param>
-    internal void RaiseEnvelopeReceived(QuarkEnvelope envelope)
+    public void OnEnvelopeReceived(QuarkEnvelope envelope)
     {
-        // EnvelopeReceived?.Invoke(this, envelope);
+        // Complete pending request if this is a response to an outgoing call
         if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
         {
             tcs.SetResult(envelope);

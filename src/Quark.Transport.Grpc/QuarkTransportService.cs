@@ -10,16 +10,19 @@ namespace Quark.Transport.Grpc;
 /// </summary>
 public class QuarkTransportService : QuarkTransport.QuarkTransportBase
 {
-    private readonly IQuarkTransport _transport;
+    private readonly IEnvelopeReceiver? _envelopeReceiver;
     private readonly ILogger<QuarkTransportService> _logger;
     private readonly IQuarkChannelEnvelopeQueue _quarkChannelEnvelopeQueue;
 
     public QuarkTransportService(IQuarkTransport transport, ILogger<QuarkTransportService> logger,
         IQuarkChannelEnvelopeQueue quarkChannelEnvelopeQueue)
     {
-        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+        ArgumentNullException.ThrowIfNull(transport);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _quarkChannelEnvelopeQueue = quarkChannelEnvelopeQueue;
+        
+        // Try to get IEnvelopeReceiver from transport
+        _envelopeReceiver = transport as IEnvelopeReceiver;
     }
 
     public override async Task ActorStream(
@@ -63,11 +66,8 @@ public class QuarkTransportService : QuarkTransport.QuarkTransportBase
                 {
                     var envelope = EnvelopeMessageConverter.FromProtoMessage(message);
 
-                    // Notify transport layer of received envelope
-                    if (_transport is GrpcQuarkTransport grpcTransport)
-                    {
-                        grpcTransport.RaiseEnvelopeReceived(envelope);
-                    }
+                    // Notify transport layer of received envelope using interface
+                    _envelopeReceiver?.OnEnvelopeReceived(envelope);
                 }
                 catch (Exception ex)
                 {
