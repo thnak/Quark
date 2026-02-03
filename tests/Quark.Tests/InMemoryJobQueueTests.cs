@@ -291,23 +291,24 @@ public class InMemoryJobQueueTests
     public async Task DequeueAsync_WithDependencies_WaitsForCompletion()
     {
         // Arrange
+        var cancelToken = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var queue = new InMemoryJobQueue();
         var job1 = CreateTestJob("job1");
         var job2 = CreateTestJob("job2");
         job2.Dependencies = JobDependencies.All("job1");
 
-        await queue.EnqueueAsync(job1);
-        await queue.EnqueueAsync(job2);
+        await queue.EnqueueAsync(job1, cancelToken.Token);
+        await queue.EnqueueAsync(job2, cancelToken.Token);
 
         // Act - dequeue job2 before job1 is complete
-        await queue.DequeueAsync(); // Gets job1
-        var prematureJob2 = await queue.DequeueAsync(); // Should not get job2
+        await queue.DequeueAsync(cancelToken.Token); // Gets job1
+        var prematureJob2 = await queue.DequeueAsync(cancelToken.Token); // Should not get job2
 
         // Complete job1
-        await queue.CompleteAsync("job1");
+        await queue.CompleteAsync("job1", cancellationToken: cancelToken.Token);
 
         // Try to dequeue again
-        var job2Dequeued = await queue.DequeueAsync(); // Should get job2 now
+        var job2Dequeued = await queue.DequeueAsync(cancelToken.Token); // Should get job2 now
 
         // Assert
         Assert.Null(prematureJob2);
