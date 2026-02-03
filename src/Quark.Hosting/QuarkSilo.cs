@@ -114,10 +114,11 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             // 6. Start heartbeat task
             _heartbeatTask = HeartbeatLoopAsync(_heartbeatCts.Token);
-            
+
             // 7. Log active silos in cluster
             var activeSilos = await _clusterMembership.GetActiveSilosAsync(cancellationToken);
-            _logger.LogInformation("Silo {SiloId} discovered {Count} active silos in cluster", SiloId, activeSilos.Count);
+            _logger.LogInformation("Silo {SiloId} discovered {Count} active silos in cluster", SiloId,
+                activeSilos.Count);
 
             // 8. Optionally connect cluster client for silo-internal operations
             if (_clusterClient != null)
@@ -125,7 +126,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 await _clusterClient.ConnectAsync(cancellationToken);
                 _logger.LogInformation("Cluster client connected for silo {SiloId}", SiloId);
             }
-            
+
             _logger.LogInformation("Quark Silo {SiloId} started successfully", SiloId);
         }
         catch (Exception ex)
@@ -259,7 +260,8 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
         _logger.LogInformation("All actor mailboxes stopped for silo {SiloId}", SiloId);
     }
 
-    private async Task StopMailboxAsync(string actorId, ActorInvocationMailbox mailbox, CancellationToken cancellationToken)
+    private async Task StopMailboxAsync(string actorId, ActorInvocationMailbox mailbox,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -326,7 +328,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             // Get migration priority list (cold actors first)
             var actorMetrics = await _activityTracker.GetMigrationPriorityListAsync(cancellationToken);
-            
+
             if (!actorMetrics.Any())
             {
                 _logger.LogInformation("No actors to migrate for silo {SiloId}", SiloId);
@@ -355,7 +357,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             {
                 // Round-robin target selection
                 var targetSilo = targetSilos[migratedCount % targetSilos.Count];
-                
+
                 var migrationTask = Task.Run(async () =>
                 {
                     try
@@ -430,18 +432,6 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
     {
         try
         {
-            // IMPORTANT: Only process incoming requests, not responses
-            // Responses (with ResponsePayload or IsError) should not be reprocessed
-            // This prevents infinite loops when SendResponse raises EnvelopeReceived
-            if (envelope.ResponsePayload != null || envelope.IsError)
-            {
-                // This is a response, not a request - skip processing
-                _logger.LogTrace(
-                    "Skipping response envelope {MessageId} (IsError={IsError}, HasResponsePayload={HasPayload})",
-                    envelope.MessageId, envelope.IsError, envelope.ResponsePayload != null);
-                return;
-            }
-            
             _logger.LogTrace(
                 "Received envelope {MessageId} for actor {ActorId} ({ActorType}.{MethodName})",
                 envelope.MessageId, envelope.ActorId, envelope.ActorType, envelope.MethodName);
@@ -453,7 +443,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                 _logger.LogWarning(
                     "No dispatcher found for actor type {ActorType}. Message {MessageId} cannot be processed.",
                     envelope.ActorType, envelope.MessageId);
-                
+
                 var errorResponse = new QuarkEnvelope(
                     envelope.MessageId,
                     envelope.ActorId,
@@ -465,7 +455,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                     IsError = true,
                     ErrorMessage = $"No dispatcher registered for actor type '{envelope.ActorType}'"
                 };
-                
+
                 _transport.SendResponse(errorResponse);
                 return;
             }
@@ -474,7 +464,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
             if (_actorFactory is not ActorFactory concreteFactory)
             {
                 _logger.LogError("ActorFactory must be an instance of Quark.Core.Actors.ActorFactory");
-                
+
                 var errorResponse = new QuarkEnvelope(
                     envelope.MessageId,
                     envelope.ActorId,
@@ -486,7 +476,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                     IsError = true,
                     ErrorMessage = "Invalid ActorFactory implementation"
                 };
-                
+
                 _transport.SendResponse(errorResponse);
                 return;
             }
@@ -504,18 +494,18 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
 
             // 4. Post message to mailbox for sequential processing
             var message = new ActorEnvelopeMessage(envelope);
-            
+
             // Fire and forget the posting (but log any failures)
             try
             {
-                var posted =  mailbox.Post(message);
-                    
+                var posted = mailbox.Post(message);
+
                 if (!posted)
                 {
                     _logger.LogWarning(
                         "Failed to post envelope {MessageId} to mailbox for actor {ActorId} (channel may be closed)",
                         envelope.MessageId, envelope.ActorId);
-                            
+
                     var errorResponse = new QuarkEnvelope(
                         envelope.MessageId,
                         envelope.ActorId,
@@ -527,7 +517,7 @@ public sealed class QuarkSilo : IQuarkSilo, IHostedService
                         IsError = true,
                         ErrorMessage = "Failed to post message to mailbox"
                     };
-                        
+
                     _transport.SendResponse(errorResponse);
                 }
                 else

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Google.Protobuf;
 using Grpc.Core;
+using Grpc.Net.Client;
 using Quark.Abstractions.Clustering;
 using Quark.Networking.Abstractions;
 using GrpcChannel = Grpc.Net.Client.GrpcChannel;
@@ -25,8 +26,10 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     /// </summary>
     /// <param name="localSiloId">The local silo ID.</param>
     /// <param name="localEndpoint">The local endpoint (host:port).</param>
+    /// <param name="quarkChannelEnvelopeQueue"></param>
     /// <param name="channelPool">Optional channel pool for connection reuse and lifecycle management.</param>
-    public GrpcQuarkTransport(string localSiloId, string localEndpoint, IQuarkChannelEnvelopeQueue quarkChannelEnvelopeQueue, GrpcChannelPool? channelPool = null)
+    public GrpcQuarkTransport(string localSiloId, string localEndpoint,
+        IQuarkChannelEnvelopeQueue quarkChannelEnvelopeQueue, GrpcChannelPool? channelPool = null)
     {
         LocalSiloId = localSiloId ?? throw new ArgumentNullException(nameof(localSiloId));
         LocalEndpoint = localEndpoint ?? throw new ArgumentNullException(nameof(localEndpoint));
@@ -84,22 +87,15 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         var remoteTcs = new TaskCompletionSource<QuarkEnvelope>();
         _pendingRequests[envelope.MessageId] = remoteTcs;
 
-        try
-        {
 
-            // Send via stream
-            await _quarkChannelEnvelopeQueue.Outgoing.Writer.WriteAsync(envelope, cancellationToken);
+        // Send via stream
+        await _quarkChannelEnvelopeQueue.Outgoing.Writer.WriteAsync(envelope, cancellationToken);
+        
+        // Wait for response (30s timeout)
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            // Wait for response (30s timeout)
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
-
-            return await remoteTcs.Task.WaitAsync(timeoutCts.Token);
-        }
-        finally
-        {
-            _pendingRequests.TryRemove(envelope.MessageId, out _);
-        }
+        return await remoteTcs.Task.WaitAsync(timeoutCts.Token);
     }
 
     /// <inheritdoc />
@@ -119,6 +115,27 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
 
         var connection = new SiloConnection(siloInfo.SiloId, channel, call, _channelPool != null);
         _connections[siloInfo.SiloId] = connection;
+        _ = Task.Run(async () =>
+        {
+            await foreach (var envelope in call.ResponseStream.ReadAllAsync(cancellationToken))
+            {
+                try
+                {
+                    RaiseEnvelopeReceived(FromProtoMessage(envelope));
+                }
+                catch (Exception)
+                {
+                    // Ignore malformed messages
+                }
+            }
+        });
+        _ = Task.Run(async () =>
+        {
+            await foreach (var envelope in _quarkChannelEnvelopeQueue.Outgoing.Reader.ReadAllAsync(cancellationToken))
+            {
+                await connection.Call.RequestStream.WriteAsync(ToProtoMessage(envelope), cancellationToken);
+            }
+        });
     }
 
     /// <inheritdoc />
@@ -187,7 +204,11 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
     /// <param name="envelope">The received envelope.</param>
     internal void RaiseEnvelopeReceived(QuarkEnvelope envelope)
     {
-        EnvelopeReceived?.Invoke(this, envelope);
+        // EnvelopeReceived?.Invoke(this, envelope);
+        if (_pendingRequests.TryRemove(envelope.MessageId, out var tcs))
+        {
+            tcs.SetResult(envelope);
+        }
     }
 
     private sealed class SiloConnection
@@ -206,5 +227,40 @@ public sealed class GrpcQuarkTransport : IQuarkTransport
         public AsyncDuplexStreamingCall<EnvelopeMessage, EnvelopeMessage> Call { get; }
         public bool IsPooled { get; }
         public IClientStreamWriter<EnvelopeMessage> RequestStream => Call.RequestStream;
+    }
+    
+    private static EnvelopeMessage ToProtoMessage(QuarkEnvelope envelope)
+    {
+        return new EnvelopeMessage
+        {
+            MessageId = envelope.MessageId,
+            ActorId = envelope.ActorId ?? string.Empty,
+            ActorType = envelope.ActorType ?? string.Empty,
+            MethodName = envelope.MethodName ?? string.Empty,
+            Payload = Google.Protobuf.ByteString.CopyFrom(envelope.Payload ?? Array.Empty<byte>()),
+            CorrelationId = envelope.CorrelationId,
+            Timestamp = envelope.Timestamp.ToUnixTimeMilliseconds(),
+            ResponsePayload = envelope.ResponsePayload != null
+                ? Google.Protobuf.ByteString.CopyFrom(envelope.ResponsePayload)
+                : Google.Protobuf.ByteString.Empty,
+            IsError = envelope.IsError,
+            ErrorMessage = envelope.ErrorMessage ?? string.Empty
+        };
+    }
+
+    private static QuarkEnvelope FromProtoMessage(EnvelopeMessage message)
+    {
+        return new QuarkEnvelope(
+            message.MessageId,
+            message.ActorId,
+            message.ActorType,
+            message.MethodName,
+            message.Payload.ToByteArray(),
+            message.CorrelationId)
+        {
+            ResponsePayload = message.ResponsePayload.Length > 0 ? message.ResponsePayload.ToByteArray() : null,
+            IsError = message.IsError,
+            ErrorMessage = message.ErrorMessage
+        };
     }
 }

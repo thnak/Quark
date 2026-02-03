@@ -5,6 +5,7 @@ using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Client;
 using Quark.Client.DependencyInjection;
+using Quark.Extensions.DependencyInjection;
 using Quark.Generated;
 
 var builder = WebApplication.CreateSlimBuilder(args);
