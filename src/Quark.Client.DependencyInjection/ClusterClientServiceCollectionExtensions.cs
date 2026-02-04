@@ -54,31 +54,3 @@ public static class ClusterClientServiceCollectionExtensions
         return new ClusterClientBuilder(services, options);
     }
 }
-
-/// <summary>
-/// Builder for configuring Quark Cluster Client services.
-/// </summary>
-public interface IClusterClientBuilder
-{
-    /// <summary>
-    /// Gets the service collection.
-    /// </summary>
-    IServiceCollection Services { get; }
-
-    /// <summary>
-    /// Gets the client options.
-    /// </summary>
-    ClusterClientOptions Options { get; }
-}
-
-internal sealed class ClusterClientBuilder : IClusterClientBuilder
-{
-    public ClusterClientBuilder(IServiceCollection services, ClusterClientOptions options)
-    {
-        Services = services ?? throw new ArgumentNullException(nameof(services));
-        Options = options ?? throw new ArgumentNullException(nameof(options));
-    }
-
-    public IServiceCollection Services { get; }
-    public ClusterClientOptions Options { get; }
-}

@@ -1,7 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Quark.Abstractions;
-using Quark.Core.Actors;
 using Quark.Extensions.DependencyInjection;
 using Quark.Placement.Abstractions;
 using Quark.Placement.Numa.Linux;
@@ -124,28 +122,3 @@ public class Program
 }
 
 // Example actor types that would benefit from placement optimization
-
-[Actor(Name = "DataLoader")]
-public class DataLoaderActor : ActorBase
-{
-    public DataLoaderActor(string actorId) : base(actorId) { }
-    
-    public override Task OnActivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"DataLoaderActor {ActorId} activated");
-        return Task.CompletedTask;
-    }
-}
-
-[Actor(Name = "Inference")]
-[GpuBound]
-public class InferenceActor : ActorBase
-{
-    public InferenceActor(string actorId) : base(actorId) { }
-    
-    public override Task OnActivateAsync(CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"InferenceActor {ActorId} activated (GPU-accelerated)");
-        return Task.CompletedTask;
-    }
-}

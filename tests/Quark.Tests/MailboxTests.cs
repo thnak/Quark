@@ -85,15 +85,3 @@ public class MailboxTests
 }
 
 // Test actor for mailbox tests
-[Quark.Abstractions.Actor]
-public class MailboxTestActor : ActorBase
-{
-    public MailboxTestActor(string actorId) : base(actorId)
-    {
-    }
-
-    public Task<string> TestMethod()
-    {
-        return Task.FromResult("test result");
-    }
-}

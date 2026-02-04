@@ -3,23 +3,6 @@ using FastEndpoints;
 namespace Quark.Examples.PizzaTracker.Api.Endpoints;
 
 /// <summary>
-/// Empty request for endpoints without body.
-/// </summary>
-public class EmptyRequest 
-{ 
-    public string? Dummy { get; set; }
-}
-
-/// <summary>
-/// Response for the root endpoint.
-/// </summary>
-public record ApiInfoResponse(
-    string Service,
-    string Version,
-    string Framework,
-    string[] Endpoints);
-
-/// <summary>
 /// Root endpoint that returns API information.
 /// </summary>
 public class RootEndpoint : Endpoint<EmptyRequest, ApiInfoResponse>

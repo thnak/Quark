@@ -94,39 +94,3 @@ public class DataValidatorActor : StatelessActorBase
         return parts.Length > 1 ? parts[1] : "unknown";
     }
 }
-
-/// <summary>
-/// Input data for validation.
-/// </summary>
-public record UserData
-{
-    public string? Name { get; init; }
-    public string? Email { get; init; }
-    public int Age { get; init; }
-}
-
-/// <summary>
-/// Enriched and validated data.
-/// </summary>
-public record EnrichedData
-{
-    public UserData? OriginalData { get; init; }
-    public bool IsValid { get; init; }
-    public List<string> ValidationErrors { get; init; } = new();
-    public DateTime EnrichedAt { get; init; }
-    public string ProcessedBy { get; init; } = string.Empty;
-    public Dictionary<string, string> Metadata { get; init; } = new();
-}
-
-/// <summary>
-/// Result of batch validation.
-/// </summary>
-public record BatchValidationResult
-{
-    public int TotalRecords { get; init; }
-    public int ValidRecords { get; init; }
-    public int InvalidRecords { get; init; }
-    public List<EnrichedData> Results { get; init; } = new();
-    public string ProcessedBy { get; init; } = string.Empty;
-    public DateTime ProcessedAt { get; init; }
-}

@@ -122,31 +122,3 @@ public static class QuarkSiloServiceCollectionExtensions
         return builder;
     }
 }
-
-/// <summary>
-/// Builder for configuring Quark Silo services.
-/// </summary>
-public interface IQuarkSiloBuilder
-{
-    /// <summary>
-    /// Gets the service collection.
-    /// </summary>
-    IServiceCollection Services { get; }
-
-    /// <summary>
-    /// Gets the silo options.
-    /// </summary>
-    QuarkSiloOptions Options { get; }
-}
-
-internal sealed class QuarkSiloBuilder : IQuarkSiloBuilder
-{
-    public QuarkSiloBuilder(IServiceCollection services, QuarkSiloOptions options)
-    {
-        Services = services ?? throw new ArgumentNullException(nameof(services));
-        Options = options ?? throw new ArgumentNullException(nameof(options));
-    }
-
-    public IServiceCollection Services { get; }
-    public QuarkSiloOptions Options { get; }
-}

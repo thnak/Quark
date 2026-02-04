@@ -5,11 +5,6 @@ using Quark.Examples.PizzaTracker.Shared.Actors;
 namespace Quark.Examples.PizzaTracker.Api.Endpoints;
 
 /// <summary>
-/// Request to update driver GPS location.
-/// </summary>
-public record UpdateLocationRequest(double Latitude, double Longitude);
-
-/// <summary>
 /// Endpoint for updating delivery driver GPS location.
 /// </summary>
 public class UpdateDriverLocationEndpoint : Endpoint<UpdateLocationRequest>

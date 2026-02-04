@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using Quark.Abstractions;
-using Quark.Core.Actors;
 using Xunit;
 
 namespace Quark.Tests;
@@ -54,55 +52,5 @@ public class MailboxSequentialProcessingTests
         // Assert
         Assert.NotNull(dispatcher);
         Assert.Equal(typeof(InterfaceTestActor), dispatcher.ActorType);
-    }
-}
-
-/// <summary>
-/// Test actor for verifying sequential processing.
-/// </summary>
-[Actor(Name = "SequentialTest")]
-public class SequentialTestActor : ActorBase
-{
-    private int _counter = 0;
-    public readonly ConcurrentBag<int> ProcessedMessages = new();
-    
-    public SequentialTestActor(string actorId) : base(actorId) { }
-    
-    public async Task<int> ProcessAsync(int value)
-    {
-        // Simulate some work
-        await Task.Delay(10);
-        
-        // Increment counter (should be sequential if no concurrent access)
-        var current = _counter;
-        _counter = current + 1;
-        
-        ProcessedMessages.Add(value);
-        
-        return _counter;
-    }
-    
-    public int FinalCounter => _counter;
-}
-
-/// <summary>
-/// Test interface for dispatcher registration.
-/// </summary>
-public interface IInterfaceTestActor : IQuarkActor
-{
-    Task<string> TestMethodAsync();
-}
-
-/// <summary>
-/// Test actor that uses InterfaceType attribute.
-/// </summary>
-[Actor(InterfaceType = typeof(IInterfaceTestActor))]
-public class InterfaceTestActor : ActorBase, IInterfaceTestActor
-{
-    public InterfaceTestActor(string actorId) : base(actorId) { }
-    
-    public Task<string> TestMethodAsync()
-    {
-        return Task.FromResult("test result");
     }
 }

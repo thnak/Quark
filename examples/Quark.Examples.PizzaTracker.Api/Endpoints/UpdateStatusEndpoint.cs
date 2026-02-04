@@ -1,14 +1,8 @@
 using FastEndpoints;
 using Quark.Abstractions;
 using Quark.Examples.PizzaTracker.Shared.Actors;
-using Quark.Examples.PizzaTracker.Shared.Models;
 
 namespace Quark.Examples.PizzaTracker.Api.Endpoints;
-
-/// <summary>
-/// Request to update pizza status.
-/// </summary>
-public record UpdateStatusRequest(PizzaStatus Status, string? DriverId);
 
 /// <summary>
 /// Endpoint for updating pizza order status.

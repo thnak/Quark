@@ -10,10 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="4.3.7.1207" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="../Quark.AwesomePizza.Shared/Quark.AwesomePizza.Shared.csproj" />
     <ProjectReference Include="../../../src/Quark.Generators/Quark.Generators.csproj" 
                       OutputItemType="Analyzer" 

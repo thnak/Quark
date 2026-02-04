@@ -4,36 +4,6 @@ using StackExchange.Redis;
 namespace Quark.Clustering.Redis;
 
 /// <summary>
-/// Options for configuring Redis connection health monitoring.
-/// </summary>
-public sealed class RedisConnectionHealthOptions
-{
-    /// <summary>
-    /// Gets or sets the interval for checking connection health.
-    /// Defaults to 30 seconds.
-    /// </summary>
-    public TimeSpan HealthCheckInterval { get; set; } = TimeSpan.FromSeconds(30);
-
-    /// <summary>
-    /// Gets or sets whether to enable automatic reconnection.
-    /// Defaults to true.
-    /// </summary>
-    public bool EnableAutoReconnect { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the timeout for connection health checks.
-    /// Defaults to 5 seconds.
-    /// </summary>
-    public TimeSpan HealthCheckTimeout { get; set; } = TimeSpan.FromSeconds(5);
-
-    /// <summary>
-    /// Gets or sets whether to monitor connection failures.
-    /// Defaults to true.
-    /// </summary>
-    public bool MonitorConnectionFailures { get; set; } = true;
-}
-
-/// <summary>
 /// Monitors Redis connection health and provides automatic recovery mechanisms.
 /// </summary>
 public sealed class RedisConnectionHealthMonitor : IDisposable
@@ -249,65 +219,4 @@ public sealed class RedisConnectionHealthMonitor : IDisposable
             _redis.ErrorMessage -= OnErrorMessage;
         }
     }
-}
-
-/// <summary>
-/// Represents the health status of a Redis connection.
-/// </summary>
-/// <param name="IsHealthy">Whether the connection is healthy.</param>
-/// <param name="IsConnected">Whether the connection is currently connected.</param>
-/// <param name="LatencyMs">Latency in milliseconds, or null if check failed.</param>
-/// <param name="FailureCount">Number of consecutive failures.</param>
-/// <param name="LastSuccessfulCheck">Timestamp of the last successful health check.</param>
-/// <param name="ErrorMessage">Error message if the connection is unhealthy.</param>
-public record ConnectionHealthStatus(
-    bool IsHealthy,
-    bool IsConnected,
-    double? LatencyMs,
-    int FailureCount,
-    DateTimeOffset LastSuccessfulCheck,
-    string? ErrorMessage);
-
-/// <summary>
-/// Event arguments for connection health degradation.
-/// </summary>
-public sealed class ConnectionHealthDegradedEventArgs : EventArgs
-{
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ConnectionHealthDegradedEventArgs"/> class.
-    /// </summary>
-    public ConnectionHealthDegradedEventArgs(ConnectionHealthStatus status)
-    {
-        Status = status;
-    }
-
-    /// <summary>
-    /// Gets the current health status.
-    /// </summary>
-    public ConnectionHealthStatus Status { get; }
-}
-
-/// <summary>
-/// Event arguments for connection restoration.
-/// </summary>
-public sealed class ConnectionRestoredEventArgs : EventArgs
-{
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ConnectionRestoredEventArgs"/> class.
-    /// </summary>
-    public ConnectionRestoredEventArgs(System.Net.EndPoint? endPoint, int previousFailureCount)
-    {
-        EndPoint = endPoint;
-        PreviousFailureCount = previousFailureCount;
-    }
-
-    /// <summary>
-    /// Gets the endpoint that was restored.
-    /// </summary>
-    public System.Net.EndPoint? EndPoint { get; }
-
-    /// <summary>
-    /// Gets the number of failures before restoration.
-    /// </summary>
-    public int PreviousFailureCount { get; }
 }

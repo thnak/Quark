@@ -1,4 +1,3 @@
-using Quark.Abstractions;
 using Quark.Core.Actors;
 using Xunit;
 
@@ -116,20 +115,3 @@ public class MailboxWithDeadLetterQueueTests
 }
 
 // Test actor that throws exceptions
-[Actor]
-public class FailingActor : ActorBase
-{
-    public FailingActor(string actorId) : base(actorId)
-    {
-    }
-
-    public Task<string> ThrowError(string errorMessage)
-    {
-        throw new InvalidOperationException(errorMessage);
-    }
-
-    public Task<string> SuccessMethod(string input)
-    {
-        return Task.FromResult($"Success: {input}");
-    }
-}

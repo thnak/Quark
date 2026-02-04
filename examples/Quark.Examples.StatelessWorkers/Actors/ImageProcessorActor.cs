@@ -90,27 +90,3 @@ public class ImageProcessorActor : StatelessActorBase
         return Convert.ToHexString(hash)[..16]; // First 16 chars for brevity
     }
 }
-
-/// <summary>
-/// Result of image processing operation.
-/// </summary>
-public record ImageResult
-{
-    public int Width { get; init; }
-    public int Height { get; init; }
-    public int SizeBytes { get; init; }
-    public DateTime ProcessedAt { get; init; }
-    public string Hash { get; init; } = string.Empty;
-    public string ProcessedBy { get; init; } = string.Empty;
-    public string? FilterApplied { get; init; }
-}
-
-/// <summary>
-/// Result of validation operation.
-/// </summary>
-public record ValidationResult
-{
-    public bool IsValid { get; init; }
-    public string Message { get; init; } = string.Empty;
-    public string ValidatedBy { get; init; } = string.Empty;
-}

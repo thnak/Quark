@@ -1,5 +1,3 @@
-using Quark.Abstractions;
-using Quark.Abstractions.Streaming;
 using Quark.Core.Actors;
 using Quark.Core.Streaming;
 
@@ -152,61 +150,4 @@ class Program
 
 // ═══ Message Types ═══
 
-public class OrderMessage
-{
-    public string OrderId { get; set; } = "";
-    public string CustomerName { get; set; } = "";
-    public decimal TotalAmount { get; set; }
-}
-
 // ═══ Actor Implementations ═══
-
-/// <summary>
-/// Actor that automatically processes orders from the stream.
-/// Uses implicit subscription via [QuarkStream] attribute.
-/// </summary>
-[Actor(Name = "OrderProcessor")]
-[QuarkStream("orders/processed")]
-public class OrderProcessorActor : ActorBase, IStreamConsumer<OrderMessage>
-{
-    public OrderProcessorActor(string actorId) : base(actorId)
-    {
-    }
-
-    public async Task OnStreamMessageAsync(
-        OrderMessage message, 
-        StreamId streamId, 
-        CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  [OrderProcessor-{ActorId}] Processing order {message.OrderId}");
-        Console.WriteLine($"    Customer: {message.CustomerName}");
-        Console.WriteLine($"    Amount: ${message.TotalAmount}");
-        
-        // Simulate some processing
-        await Task.Delay(50, cancellationToken);
-    }
-}
-
-/// <summary>
-/// Actor that sends notifications to users.
-/// Uses implicit subscription via [QuarkStream] attribute.
-/// </summary>
-[Actor(Name = "Notification")]
-[QuarkStream("notifications/user")]
-public class NotificationActor : ActorBase, IStreamConsumer<string>
-{
-    public NotificationActor(string actorId) : base(actorId)
-    {
-    }
-
-    public async Task OnStreamMessageAsync(
-        string message, 
-        StreamId streamId, 
-        CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine($"  [Notification-{ActorId}] Sending notification:");
-        Console.WriteLine($"    Message: {message}");
-        
-        await Task.Delay(50, cancellationToken);
-    }
-}

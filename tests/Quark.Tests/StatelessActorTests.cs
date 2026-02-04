@@ -145,22 +145,3 @@ public class StatelessActorTests
         Assert.Equal("Processed: message-2", task2.Result);
     }
 }
-
-[Actor(Name = "TestStateless", Stateless = true)]
-[StatelessWorker(MinInstances = 2, MaxInstances = 100)]
-public class TestStatelessActor : StatelessActorBase
-{
-    public TestStatelessActor(string actorId) : base(actorId)
-    {
-    }
-
-    public TestStatelessActor(string actorId, IActorFactory? actorFactory) : base(actorId, actorFactory)
-    {
-    }
-
-    public async Task<string> ProcessMessageAsync(string message)
-    {
-        await Task.Delay(1);
-        return $"Processed: {message}";
-    }
-}

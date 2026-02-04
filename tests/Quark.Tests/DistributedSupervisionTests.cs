@@ -246,38 +246,3 @@ public class DistributedSupervisionTests
         Assert.Contains(child, children);
     }
 }
-
-/// <summary>
-/// Simple supervisor actor for testing.
-/// </summary>
-[Actor]
-public class SimpleSupervisorActor : ActorBase, ISupervisor
-{
-    public SimpleSupervisorActor(string actorId, IActorFactory actorFactory) : base(actorId, actorFactory)
-    {
-    }
-
-    public override Task<SupervisionDirective> OnChildFailureAsync(
-        ChildFailureContext context,
-        CancellationToken cancellationToken = default)
-    {
-        // Simple strategy: always restart
-        return Task.FromResult(SupervisionDirective.Restart);
-    }
-}
-
-/// <summary>
-/// Simple worker actor for testing.
-/// </summary>
-[Actor]
-public class SimpleWorkerActor : ActorBase
-{
-    public SimpleWorkerActor(string actorId) : base(actorId)
-    {
-    }
-
-    public Task<int> DoWorkAsync()
-    {
-        return Task.FromResult(42);
-    }
-}

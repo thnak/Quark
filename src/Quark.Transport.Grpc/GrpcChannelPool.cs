@@ -5,36 +5,6 @@ using ConnectivityState = Grpc.Core.ConnectivityState;
 namespace Quark.Transport.Grpc;
 
 /// <summary>
-/// Options for configuring gRPC channel pooling and lifecycle management.
-/// </summary>
-public sealed class GrpcChannelPoolOptions
-{
-    /// <summary>
-    /// Gets or sets the maximum lifetime of a channel before it should be recycled.
-    /// Defaults to 30 minutes. Set to null to disable automatic recycling.
-    /// </summary>
-    public TimeSpan? MaxChannelLifetime { get; set; } = TimeSpan.FromMinutes(30);
-
-    /// <summary>
-    /// Gets or sets the interval for checking channel health.
-    /// Defaults to 5 minutes.
-    /// </summary>
-    public TimeSpan HealthCheckInterval { get; set; } = TimeSpan.FromMinutes(5);
-
-    /// <summary>
-    /// Gets or sets whether to automatically dispose idle channels.
-    /// Defaults to true.
-    /// </summary>
-    public bool DisposeIdleChannels { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the idle timeout before a channel is disposed.
-    /// Defaults to 10 minutes. Only applies if DisposeIdleChannels is true.
-    /// </summary>
-    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
-}
-
-/// <summary>
 /// Manages a pool of gRPC channels with lifecycle management, health monitoring, and automatic recycling.
 /// Prevents duplicate connections and enables efficient resource sharing.
 /// </summary>
@@ -282,16 +252,3 @@ public sealed class GrpcChannelPool : IDisposable
         }
     }
 }
-
-/// <summary>
-/// Statistics about a gRPC channel pool.
-/// </summary>
-/// <param name="TotalChannels">Total number of channels in the pool.</param>
-/// <param name="ActiveChannels">Number of recently accessed channels.</param>
-/// <param name="IdleChannels">Number of idle channels.</param>
-/// <param name="OldestChannelAge">Age of the oldest channel in the pool.</param>
-public record ChannelPoolStats(
-    int TotalChannels,
-    int ActiveChannels,
-    int IdleChannels,
-    TimeSpan OldestChannelAge);

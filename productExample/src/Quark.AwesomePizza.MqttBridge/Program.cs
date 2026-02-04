@@ -1,7 +1,5 @@
 using System.Text;
 using MQTTnet;
-using MQTTnet.Client;
-using MQTTnet.Extensions.ManagedClient;
 using Quark.Abstractions;
 using Quark.Core.Actors;
 
@@ -13,7 +11,7 @@ namespace Quark.AwesomePizza.MqttBridge;
 /// </summary>
 internal class Program
 {
-    private static IManagedMqttClient? _mqttClient;
+    private static IMqttClient? _mqttClient;
     private static IActorFactory? _actorFactory;
     private static readonly Dictionary<string, IActor> _activeActors = new();
     private static readonly CancellationTokenSource _cts = new();
@@ -63,7 +61,8 @@ internal class Program
         Console.WriteLine("   • pizza/orders/+/events       - Order events");
         Console.WriteLine();
         Console.WriteLine("💡 Tip: Use mosquitto_pub to test:");
-        Console.WriteLine("   mosquitto_pub -t \"pizza/drivers/driver-1/location\" -m '{\"lat\":40.7128,\"lon\":-74.0060}'");
+        Console.WriteLine(
+            "   mosquitto_pub -t \"pizza/drivers/driver-1/location\" -m '{\"lat\":40.7128,\"lon\":-74.0060}'");
         Console.WriteLine();
         Console.WriteLine("Press Ctrl+C to exit");
         Console.WriteLine();
@@ -103,30 +102,26 @@ internal class Program
     private static async Task InitializeMqttClientAsync()
     {
         // Create MQTT factory
-        var factory = new MqttFactory();
+        var factory = new MqttClientFactory();
 
         // Create managed client (handles reconnection automatically)
-        _mqttClient = factory.CreateManagedMqttClient();
+        _mqttClient = factory.CreateMqttClient();
 
         // Configure managed client options
-        var options = new ManagedMqttClientOptionsBuilder()
-            .WithAutoReconnectDelay(TimeSpan.FromSeconds(5))
-            .WithClientOptions(new MqttClientOptionsBuilder()
-                .WithTcpServer(_mqttBrokerHost, _mqttBrokerPort)
-                .WithClientId(_clientId)
-                .WithCleanSession(true)
-                .WithKeepAlivePeriod(TimeSpan.FromSeconds(60))
-                .Build())
+        var options = new MqttClientOptionsBuilder()
+            .WithTcpServer(_mqttBrokerHost, _mqttBrokerPort)
+            .WithClientId(_clientId)
+            .WithCleanSession(true)
+            .WithKeepAlivePeriod(TimeSpan.FromSeconds(60))
             .Build();
 
         // Set up event handlers
         _mqttClient.ConnectedAsync += OnConnectedAsync;
         _mqttClient.DisconnectedAsync += OnDisconnectedAsync;
-        _mqttClient.ConnectingFailedAsync += OnConnectingFailedAsync;
         _mqttClient.ApplicationMessageReceivedAsync += OnMessageReceivedAsync;
 
         // Start the client
-        await _mqttClient.StartAsync(options);
+        await _mqttClient.ConnectAsync(options);
 
         Console.WriteLine("⏳ Connecting to MQTT broker...");
     }
@@ -138,14 +133,19 @@ internal class Program
         // Subscribe to all topics
         var subscriptions = new List<MQTTnet.Packets.MqttTopicFilter>
         {
-            new MqttTopicFilterBuilder().WithTopic("pizza/drivers/+/location").WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
-            new MqttTopicFilterBuilder().WithTopic("pizza/drivers/+/status").WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
-            new MqttTopicFilterBuilder().WithTopic("pizza/kitchen/+/oven").WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
-            new MqttTopicFilterBuilder().WithTopic("pizza/kitchen/+/alerts").WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
-            new MqttTopicFilterBuilder().WithTopic("pizza/orders/+/events").WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build()
+            new MqttTopicFilterBuilder().WithTopic("pizza/drivers/+/location")
+                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
+            new MqttTopicFilterBuilder().WithTopic("pizza/drivers/+/status")
+                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
+            new MqttTopicFilterBuilder().WithTopic("pizza/kitchen/+/oven")
+                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
+            new MqttTopicFilterBuilder().WithTopic("pizza/kitchen/+/alerts")
+                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build(),
+            new MqttTopicFilterBuilder().WithTopic("pizza/orders/+/events")
+                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce).Build()
         };
 
-        await _mqttClient!.SubscribeAsync(subscriptions);
+        await _mqttClient!.SubscribeAsync(new MqttClientSubscribeOptions() { TopicFilters = subscriptions });
         Console.WriteLine("✅ Subscribed to all topics");
     }
 
@@ -156,21 +156,15 @@ internal class Program
         {
             Console.WriteLine($"   Reason: {args.Exception.Message}");
         }
-        Console.WriteLine("   Will attempt to reconnect...");
-        return Task.CompletedTask;
-    }
 
-    private static Task OnConnectingFailedAsync(ConnectingFailedEventArgs args)
-    {
-        Console.WriteLine($"❌ Connection failed: {args.Exception.Message}");
-        Console.WriteLine("   Retrying in 5 seconds...");
+        Console.WriteLine("   Will attempt to reconnect...");
         return Task.CompletedTask;
     }
 
     private static async Task OnMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs args)
     {
         var topic = args.ApplicationMessage.Topic;
-        var payload = Encoding.UTF8.GetString(args.ApplicationMessage.PayloadSegment);
+        var payload = Encoding.UTF8.GetString(args.ApplicationMessage.Payload);
 
         Console.WriteLine($"📩 Message received on topic: {topic}");
 
@@ -200,7 +194,7 @@ internal class Program
         }
     }
 
-    private static  Task HandleDriverMessageAsync(string topic, string payload)
+    private static Task HandleDriverMessageAsync(string topic, string payload)
     {
         return Task.CompletedTask;
     }
@@ -272,7 +266,7 @@ internal class Program
         if (_mqttClient != null)
         {
             Console.WriteLine("   Disconnecting from MQTT broker...");
-            await _mqttClient.StopAsync();
+            await _mqttClient.DisconnectAsync(new MqttClientDisconnectOptions());
             _mqttClient.Dispose();
         }
 
@@ -292,25 +286,4 @@ internal class Program
         _activeActors.Clear();
         await _cts.CancelAsync();
     }
-}
-
-/// <summary>
-/// Message payload for driver location updates.
-/// Supports multiple field name formats (lat/latitude, lon/longitude).
-/// </summary>
-internal class DriverLocationMessage
-{
-    public double? Lat { get; set; }
-    public double? Latitude { get; set; }
-    public double? Lon { get; set; }
-    public double? Longitude { get; set; }
-    public DateTime? Timestamp { get; set; }
-}
-
-/// <summary>
-/// Message payload for driver status updates.
-/// </summary>
-internal class DriverStatusMessage
-{
-    public string Status { get; set; } = string.Empty;
 }
