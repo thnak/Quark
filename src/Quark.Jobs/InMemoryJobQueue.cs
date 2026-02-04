@@ -37,9 +37,22 @@ public sealed class InMemoryJobQueue : IJobQueue
     /// <inheritdoc />
     public Task<Job?> DequeueAsync(CancellationToken cancellationToken = default)
     {
+        // Track jobs we've already seen in this dequeue attempt to avoid infinite loops
+        var checkedJobs = new HashSet<string>();
+        
         // Try to dequeue a pending job
         while (_pendingQueue.TryDequeue(out var jobId))
         {
+            // If we've already checked this job in this iteration, we've gone through the entire queue
+            // Re-enqueue it and break to avoid infinite loop
+            if (checkedJobs.Contains(jobId))
+            {
+                _pendingQueue.Enqueue(jobId);
+                break;
+            }
+            
+            checkedJobs.Add(jobId);
+            
             if (_jobs.TryGetValue(jobId, out var job))
             {
                 // Check if job is still eligible for execution
