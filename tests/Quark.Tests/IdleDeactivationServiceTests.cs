@@ -106,7 +106,7 @@ public class IdleDeactivationServiceTests
 
         var activityTrackerMock = new Mock<IActorActivityTracker>();
         activityTrackerMock
-            .Setup(at => at.GetActivityMetricsAsync("test-actor-1"))
+            .Setup(at => at.GetActivityMetricsAsync("test-actor-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(metrics);
 
         var policyMock = new Mock<IActorDeactivationPolicy>();
@@ -166,7 +166,7 @@ public class IdleDeactivationServiceTests
 
         var activityTrackerMock = new Mock<IActorActivityTracker>();
         activityTrackerMock
-            .Setup(at => at.GetActivityMetricsAsync("test-actor-1"))
+            .Setup(at => at.GetActivityMetricsAsync("test-actor-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(metrics);
 
         var policyMock = new Mock<IActorDeactivationPolicy>();
@@ -238,10 +238,10 @@ public class IdleDeactivationServiceTests
 
         var activityTrackerMock = new Mock<IActorActivityTracker>();
         activityTrackerMock
-            .Setup(at => at.GetActivityMetricsAsync("test-actor-1"))
+            .Setup(at => at.GetActivityMetricsAsync("test-actor-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(metrics1);
         activityTrackerMock
-            .Setup(at => at.GetActivityMetricsAsync("test-actor-2"))
+            .Setup(at => at.GetActivityMetricsAsync("test-actor-2", It.IsAny<CancellationToken>()))
             .ReturnsAsync(metrics2);
 
         var policyMock = new Mock<IActorDeactivationPolicy>();

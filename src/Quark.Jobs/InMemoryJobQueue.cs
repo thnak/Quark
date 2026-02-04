@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace Quark.Jobs;
 
@@ -128,8 +129,13 @@ public sealed class InMemoryJobQueue : IJobQueue
     /// <inheritdoc />
     public Task<Job?> GetJobAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        _jobs.TryGetValue(jobId, out var job);
-        return Task.FromResult(job);
+        if (!_jobs.TryGetValue(jobId, out var job))
+            return Task.FromResult<Job?>(null);
+        
+        // Return a deep copy to match Redis behavior (snapshot semantics)
+        var json = JsonSerializer.Serialize(job);
+        var copy = JsonSerializer.Deserialize<Job>(json);
+        return Task.FromResult(copy);
     }
 
     /// <inheritdoc />
@@ -189,6 +195,17 @@ public sealed class InMemoryJobQueue : IJobQueue
     {
         _jobs.Clear();
         while (_pendingQueue.TryDequeue(out _)) { }
+    }
+
+    /// <summary>
+    ///     Gets direct access to a job for testing purposes (returns internal reference, not a copy).
+    /// </summary>
+    /// <param name="jobId">The job ID.</param>
+    /// <returns>The internal job object, or null if not found.</returns>
+    public Job? GetJobForTesting(string jobId)
+    {
+        _jobs.TryGetValue(jobId, out var job);
+        return job;
     }
 
     private bool AreDependenciesMet(Job job)

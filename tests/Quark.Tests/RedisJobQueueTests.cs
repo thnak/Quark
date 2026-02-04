@@ -467,8 +467,8 @@ public class RedisJobQueueTests : IAsyncLifetime
         Assert.NotNull(job1.ScheduledAt);
 
         // Verify backoff delay increased
-        var expectedDelay = TimeSpan.FromMilliseconds(200); // 100 * 2^1
-        var actualDelay = job1.ScheduledAt!.Value - DateTimeOffset.UtcNow;
-        Assert.True(actualDelay.TotalMilliseconds >= 100); // At least some delay
+        // After first failure (AttemptCount=1), delay should be 100 * 2^0 = 100ms
+        var actualDelay = job1.ScheduledAt!.Value - job1.UpdatedAt;
+        Assert.True(actualDelay.TotalMilliseconds >= 100, $"Expected delay >= 100ms, but got {actualDelay.TotalMilliseconds}ms");
     }
 }
