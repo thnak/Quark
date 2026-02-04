@@ -12,7 +12,8 @@ public class GrpcTransportTests
     public void GrpcTransport_CanBeCreated()
     {
         // Arrange & Act
-        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000");
+        var messageQueue = new GrpcMessageQueue();
+        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000", messageQueue);
 
         // Assert
         Assert.NotNull(transport);
@@ -24,7 +25,8 @@ public class GrpcTransportTests
     public async Task SendAsync_CreatesEnvelope_WithCorrectProperties()
     {
         // Arrange
-        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000");
+        var messageQueue = new GrpcMessageQueue();
+        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000", messageQueue);
         var envelope = new QuarkEnvelope(
             messageId: "msg-1",
             actorId: "actor-1",
@@ -94,7 +96,8 @@ public class GrpcTransportTests
     public async Task Transport_Lifecycle_CanStartAndStop()
     {
         // Arrange
-        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000");
+        var messageQueue = new GrpcMessageQueue();
+        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000", messageQueue);
 
         // Act & Assert - Should not throw
         await transport.StartAsync(CancellationToken.None);
@@ -105,7 +108,8 @@ public class GrpcTransportTests
     public void Transport_EnvelopeReceived_EventExists()
     {
         // Arrange
-        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000");
+        var messageQueue = new GrpcMessageQueue();
+        var transport = new GrpcQuarkTransport("test-silo", "localhost:5000", messageQueue);
         var receivedEnvelopes = new List<QuarkEnvelope>();
 
         // Act
