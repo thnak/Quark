@@ -274,8 +274,8 @@ public class InMemoryJobQueueTests
         await queue.DequeueAsync();
         await queue.CompleteAsync("job1");
         
-        // Manually set completion time to past
-        var completedJob = await queue.GetJobAsync("job1");
+        // Manually set completion time to past (use test helper)
+        var completedJob = queue.GetJobForTesting("job1");
         completedJob!.CompletedAt = DateTimeOffset.UtcNow.AddHours(-2);
 
         // Act
