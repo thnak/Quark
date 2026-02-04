@@ -142,6 +142,7 @@ public class BackpressureTests
         {
             await Task.Delay(50);
             received.Add(msg);
+            System.Diagnostics.Debug.WriteLine($"Received message: {msg}, Total count: {received.Count}");
         });
 
         // Act
@@ -158,7 +159,10 @@ public class BackpressureTests
         Assert.NotNull(stream.BackpressureMetrics);
         Assert.Equal(0, stream.BackpressureMetrics.MessagesDropped);
         // All 5 messages should eventually be delivered
-        Assert.True(received.Count == 5, $"Expected 5 messages but received {received.Count}");
+        var actualMessages = received.OrderBy(m => m).ToList();
+        var expectedMessages = new[] { 1, 2, 3, 4, 5 };
+        Assert.True(received.Count == 5, 
+            $"Expected 5 messages but received {received.Count}. Messages: [{string.Join(", ", actualMessages)}]");
     }
 
     [Fact]

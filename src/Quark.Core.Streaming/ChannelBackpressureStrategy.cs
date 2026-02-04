@@ -28,15 +28,23 @@ internal abstract class ChannelBackpressureStrategy<T> : IStreamBackpressureStra
     public abstract Task<bool> TryPublishAsync(T message, CancellationToken cancellationToken = default);
 
     /// <inheritdoc/>
-    public async Task<T?> TryDequeueAsync(CancellationToken cancellationToken = default)
+    public Task<T?> TryDequeueAsync(CancellationToken cancellationToken = default)
     {
+        // First check if there are any messages
+        if (_buffer.Reader.Count == 0)
+        {
+            // Return a null Task<T?> - explicitly handle nullable
+            return Task.FromResult<T?>(default!);
+        }
+        
         if (_buffer.Reader.TryRead(out var message))
         {
             UpdateBufferMetrics();
-            return message;
+            return Task.FromResult<T?>(message);
         }
 
-        return default;
+        // Fallback to null if somehow TryRead failed
+        return Task.FromResult<T?>(default!);
     }
 
     /// <inheritdoc/>
