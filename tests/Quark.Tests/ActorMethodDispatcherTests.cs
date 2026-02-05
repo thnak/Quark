@@ -1,5 +1,7 @@
-using ProtoBuf;
+using System.IO;
+using System.Text.Json;
 using Quark.Abstractions;
+using Quark.Abstractions.Converters;
 using Quark.Core.Actors;
 using Xunit;
 
@@ -17,7 +19,7 @@ public class ActorMethodDispatcherTests
         // Arrange
         var actorId = "test-dispatcher-1";
         var actor = new MailboxTestActor(actorId);
-        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("MailboxTestActor");
+        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("IMailboxTestActor");
         
         Assert.NotNull(dispatcher);
         
@@ -25,12 +27,12 @@ public class ActorMethodDispatcherTests
         var payload = Array.Empty<byte>(); // TestMethod has no parameters
         var resultBytes = await dispatcher.InvokeAsync(actor, "TestMethod", payload, default);
         
-        // Deserialize Protobuf response
-        using (var ms = new System.IO.MemoryStream(resultBytes))
-        {
-            var response = Serializer.Deserialize<MailboxTestActor_TestMethodResponse>(ms);
-            Assert.Equal("test result", response.Result);
-        }
+        // Deserialize binary response with length-prefixing
+        using var ms = new MemoryStream(resultBytes);
+        using var reader = new BinaryReader(ms);
+        var result = BinaryConverterHelper.ReadWithLength(reader, new StringConverter());
+        
+        Assert.Equal("test result", result);
     }
     
     [Fact]
@@ -41,7 +43,7 @@ public class ActorMethodDispatcherTests
         
         // Assert
         Assert.NotEmpty(registeredTypes);
-        Assert.Contains("MailboxTestActor", registeredTypes);
+        Assert.Contains("IMailboxTestActor", registeredTypes);
     }
     
     [Fact]
@@ -50,7 +52,7 @@ public class ActorMethodDispatcherTests
         // Arrange
         var actorId = "test-dispatcher-2";
         var actor = new MailboxTestActor(actorId);
-        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("MailboxTestActor");
+        var dispatcher = ActorMethodDispatcherRegistry.GetDispatcher("IMailboxTestActor");
         
         Assert.NotNull(dispatcher);
         

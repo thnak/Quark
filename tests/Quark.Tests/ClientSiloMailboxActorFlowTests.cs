@@ -3,9 +3,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using ProtoBuf;
+using System.Text.Json;
 using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
+using Quark.Abstractions.Converters;
 using Quark.Client;
 using Quark.Core.Actors;
 using Quark.Hosting;
@@ -50,8 +51,16 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
     /// </summary>
     public interface IFlowTestActor : IQuarkActor
     {
+        [BinaryConverter(typeof(StringConverter), ParameterName = "message")]
+        [BinaryConverter(typeof(StringConverter))] // Return value
         Task<string> EchoAsync(string message);
+        
+        [BinaryConverter(typeof(Int32Converter), ParameterName = "a", Order = 0)]
+        [BinaryConverter(typeof(Int32Converter), ParameterName = "b", Order = 1)]
+        [BinaryConverter(typeof(Int32Converter))] // Return value
         Task<int> AddAsync(int a, int b);
+        
+        [BinaryConverter(typeof(StringConverter), ParameterName = "exceptionMessage")]
         Task ThrowExceptionAsync(string exceptionMessage);
     }
 
@@ -82,7 +91,10 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
     public interface IStatefulFlowActor : IQuarkActor
     {
         Task IncrementAsync();
+        
+        [BinaryConverter(typeof(Int32Converter))] // Return value
         Task<int> GetCountAsync();
+        
         Task ResetAsync();
     }
 
@@ -121,12 +133,15 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         // Arrange: Set up the complete stack without Kestrel
         var (client, silo, transport) = await SetupClientSiloStackAsync("test-silo-1");
 
-        // Create envelope for actor invocation
-        var protoRequest = new FlowTestActor_EchoAsyncRequest { Message = "Hello World" };
+        // Create envelope for actor invocation using binary serialization
         byte[] payload;
-        using (var ms = new System.IO.MemoryStream())
+        using (var ms = new MemoryStream())
         {
-            Serializer.Serialize(ms, protoRequest);
+            using (var writer = new BinaryWriter(ms))
+            {
+                // Serialize "Hello World" parameter with length-prefixing
+                BinaryConverterHelper.WriteWithLength(writer, new StringConverter(), "Hello World");
+            }
             payload = ms.ToArray();
         }
         
@@ -164,13 +179,13 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         Assert.False(capturedResponse.IsError);
         Assert.NotNull(capturedResponse.ResponsePayload);
         
-        // Verify the actual response payload contains expected data
-        using (var ms = new System.IO.MemoryStream(capturedResponse.ResponsePayload))
-        {
-            var response = Serializer.Deserialize<FlowTestActor_EchoAsyncResponse>(ms);
-            Assert.NotNull(response.Result);
-            Assert.Contains("Echo: Hello World", response.Result);
-        }
+        // Verify the actual response payload contains expected data using binary deserialization
+        using var responseMs = new MemoryStream(capturedResponse.ResponsePayload);
+        using var responseReader = new BinaryReader(responseMs);
+        var result = BinaryConverterHelper.ReadWithLength(responseReader, new StringConverter());
+        
+        Assert.NotNull(result);
+        Assert.Contains("Echo: Hello World", result);
     }
 
     [Fact]
@@ -206,13 +221,12 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         Assert.Equal(3, responses.Count);
         Assert.All(responses, r => Assert.False(r.IsError));
         
-        // The last response should contain the count value (Protobuf serialized)
+        // The last response should contain the count value (binary serialized with length-prefix)
         Assert.NotNull(responses[2].ResponsePayload);
-        using (var ms = new System.IO.MemoryStream(responses[2].ResponsePayload))
-        {
-            var response = Serializer.Deserialize<StatefulFlowActor_GetCountAsyncResponse>(ms);
-            Assert.Equal(2, response.Result);
-        }
+        using var countMs = new MemoryStream(responses[2].ResponsePayload);
+        using var countReader = new BinaryReader(countMs);
+        var count = BinaryConverterHelper.ReadWithLength(countReader, new Int32Converter());
+        Assert.Equal(2, count);
     }
 
     [Fact]
@@ -227,12 +241,14 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
 
         await Task.Delay(50);
 
-        // Act: Invoke method that throws exception
-        var protoRequest = new FlowTestActor_ThrowExceptionAsyncRequest { ExceptionMessage = "Test exception message" };
+        // Act: Invoke method that throws exception using binary serialization
         byte[] payload;
-        using (var ms = new System.IO.MemoryStream())
+        using (var ms = new MemoryStream())
         {
-            Serializer.Serialize(ms, protoRequest);
+            using (var writer = new BinaryWriter(ms))
+            {
+                BinaryConverterHelper.WriteWithLength(writer, new StringConverter(), "Test exception message");
+            }
             payload = ms.ToArray();
         }
         
@@ -322,11 +338,10 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         
         // Final count should be 10 (sequential processing guaranteed)
         var finalResponse = responses[10];
-        using (var ms = new System.IO.MemoryStream(finalResponse.ResponsePayload))
-        {
-            var response = Serializer.Deserialize<StatefulFlowActor_GetCountAsyncResponse>(ms);
-            Assert.Equal(10, response.Result);
-        }
+        using var finalMs = new MemoryStream(finalResponse.ResponsePayload);
+        using var finalReader = new BinaryReader(finalMs);
+        var finalCount = BinaryConverterHelper.ReadWithLength(finalReader, new Int32Converter());
+        Assert.Equal(10, finalCount);
     }
 
     [Fact]
@@ -393,11 +408,13 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
             var messageId = Guid.NewGuid().ToString();
             messageIds.Add(messageId);
             
-            var protoRequest = new FlowTestActor_EchoAsyncRequest { Message = $"Message {i}" };
             byte[] payload;
-            using (var ms = new System.IO.MemoryStream())
+            using (var ms = new MemoryStream())
             {
-                Serializer.Serialize(ms, protoRequest);
+                using (var writer = new BinaryWriter(ms))
+                {
+                    BinaryConverterHelper.WriteWithLength(writer, new StringConverter(), $"Message {i}");
+                }
                 payload = ms.ToArray();
             }
             
@@ -466,12 +483,14 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
 
         await Task.Delay(50);
 
-        // Act: Invoke method that throws
-        var protoRequest = new FlowTestActor_ThrowExceptionAsyncRequest { ExceptionMessage = "Dispatcher exception test" };
+        // Act: Invoke method that throws using binary serialization
         byte[] payload;
-        using (var ms = new System.IO.MemoryStream())
+        using (var ms = new MemoryStream())
         {
-            Serializer.Serialize(ms, protoRequest);
+            using (var writer = new BinaryWriter(ms))
+            {
+                BinaryConverterHelper.WriteWithLength(writer, new StringConverter(), "Dispatcher exception test");
+            }
             payload = ms.ToArray();
         }
         

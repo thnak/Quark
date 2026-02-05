@@ -22,4 +22,10 @@
     <ProjectReference Include="..\..\..\src\Quark.Networking.Abstractions\Quark.Networking.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Temporary: Keep protobuf-net for existing AwesomePizza models -->
+    <!-- TODO: Migrate to use System.Text.Json for full AOT compatibility -->
+    <PackageReference Include="protobuf-net" Version="3.2.56" />
+  </ItemGroup>
+
 </Project>

@@ -4,7 +4,6 @@ using Quark.Extensions.DependencyInjection;
 using Quark.Placement.Abstractions;
 using Quark.Placement.Numa.Linux;
 using Quark.Placement.Gpu.Cuda;
-using Quark.Generated;
 
 namespace Quark.Examples.Placement;
 
@@ -56,8 +55,9 @@ public class Program
                     options.DeviceSelectionStrategy = GpuDeviceSelectionStrategy.LeastUtilized;
                     options.AllowCpuFallback = true;
                     
-                    // Use the source-generated list of GPU-bound actors
-                    options.AcceleratedActorTypes = Quark_Examples_PlacementAcceleratedActorTypes.All;
+                    // Note: Source-generated list of GPU-bound actors would go here
+                    // options.AcceleratedActorTypes = Quark_Examples_PlacementAcceleratedActorTypes.All;
+                    // For this example, the GpuBoundSourceGenerator would generate this if actors are marked with [GpuBound]
                     
                     Console.WriteLine("✓ GPU acceleration configured");
                     Console.WriteLine($"  - Backend: {options.PreferredBackend}");

@@ -5,7 +5,6 @@ using Quark.AwesomePizza.Shared.Models;
 using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Client;
 using Quark.Client.DependencyInjection;
-using Quark.Extensions.DependencyInjection;
 using Quark.Generated;
 
 var builder = WebApplication.CreateSlimBuilder(args);
@@ -19,7 +18,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 ConfigureServices(builder);
 
-// Register proxy manually (or use generated registration class)
 QuarkAwesomePizzaSharedActorProxyFactoryRegistration.RegisterAll();
 
 void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
@@ -195,14 +193,14 @@ app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext ctx
     response.Headers.Append("Cache-Control", "no-cache");
     response.Headers.Append("Connection", "keep-alive");
 
-    void OnUpdate(OrderStatusUpdate update)
-    {
-        var json = JsonSerializer.Serialize(update);
-        response.WriteAsync($"data: {json}\n\n").GetAwaiter().GetResult();
-        response.Body.FlushAsync().GetAwaiter().GetResult();
-    }
-
-    actor.Subscribe(OnUpdate);
+    // void OnUpdate(OrderStatusUpdate update)
+    // {
+    //     var json = JsonSerializer.Serialize(update);
+    //     response.WriteAsync($"data: {json}\n\n").GetAwaiter().GetResult();
+    //     response.Body.FlushAsync().GetAwaiter().GetResult();
+    // }
+    //
+    // actor.Subscribe(OnUpdate);
 
     try
     {
@@ -231,7 +229,7 @@ app.MapGet("/api/orders/{orderId}/track", async (string orderId, HttpContext ctx
     }
     finally
     {
-        actor.Unsubscribe(OnUpdate);
+        // actor.Unsubscribe(OnUpdate);
     }
 
     return Results.Empty;
