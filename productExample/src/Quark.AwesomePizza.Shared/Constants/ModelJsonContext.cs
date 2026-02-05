@@ -18,4 +18,5 @@ namespace Quark.AwesomePizza.Shared.Constants;
 [JsonSerializable(typeof(Quark.AwesomePizza.Shared.Models.UpdateDriverLocationRequest))]
 [JsonSerializable(typeof(Quark.AwesomePizza.Shared.Models.UpdateStatusRequest))]
 [JsonSerializable(typeof(Quark.AwesomePizza.Shared.Models.RestaurantMetrics))]
+[JsonSerializable(typeof(Quark.AwesomePizza.Shared.Models.OrderStatusUpdate))]
 public partial class ModelJsonContext : JsonSerializerContext;
