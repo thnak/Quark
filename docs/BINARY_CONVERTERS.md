@@ -2,7 +2,15 @@
 
 ## Overview
 
-The Binary Converter System replaces JSON serialization with a custom binary serialization approach that gives users full control over how actor method parameters and return values are serialized.
+The Binary Converter System replaces JSON serialization with a custom binary serialization approach that gives users full control over how actor method parameters and return values are serialized. **Automatic length-prefixing** ensures safe deserialization even with multiple parameters and variable-length types.
+
+## Key Features
+
+✅ **Automatic Length-Prefixing**: Each parameter isolated in its own data segment  
+✅ **Safe Multi-Parameter**: Converters can't read beyond their boundaries  
+✅ **Variable-Length Support**: Strings, arrays handled transparently  
+✅ **Error Detection**: Invalid data caught immediately  
+✅ **No Manual Length Management**: Framework handles everything automatically  
 
 ## Key Components
 
@@ -50,6 +58,57 @@ public sealed class BinaryConverterAttribute : Attribute
     public string? ParameterName { get; set; } // Which parameter this applies to
 }
 ```
+
+### 4. BinaryConverterHelper (Automatic Safety)
+
+The framework automatically wraps all serialization with length-prefixing to ensure safe multi-parameter handling:
+
+```csharp
+public static class BinaryConverterHelper
+{
+    // Writes value with automatic length prefix
+    public static void WriteWithLength<T>(BinaryWriter writer, IQuarkBinaryConverter<T> converter, T value);
+    
+    // Reads value with automatic length validation
+    public static T ReadWithLength<T>(BinaryReader reader, IQuarkBinaryConverter<T> converter);
+}
+```
+
+**How It Works:**
+1. **WriteWithLength**: Serializes to temp buffer → writes buffer length (Int32) → writes buffer data
+2. **ReadWithLength**: Reads length → reads exactly that many bytes → deserializes from isolated segment → validates converter consumed all data
+
+**Safety Features:**
+- ✅ Each parameter gets isolated data segment (can't bleed into next parameter)
+- ✅ Converters can't read beyond their boundaries
+- ✅ Automatic validation of read length
+- ✅ Detects truncated streams and incorrect converters
+- ✅ Works transparently - users just write normal converters
+
+## Wire Format (Length-Prefixed)
+
+Every parameter is automatically wrapped with its length to ensure safe deserialization:
+
+```
+Method: ProcessOrder(string orderId, int quantity, double price)
+
+Binary Stream:
+┌─────────────────┐
+│ 4 bytes: 10     │ <- orderId length prefix
+├─────────────────┤
+│ 10 bytes: data  │ <- orderId content (isolated segment)
+├─────────────────┤
+│ 4 bytes: 4      │ <- quantity length prefix
+├─────────────────┤
+│ 4 bytes: 42     │ <- quantity content (isolated segment)
+├─────────────────┤
+│ 4 bytes: 8      │ <- price length prefix
+├─────────────────┤
+│ 8 bytes: 99.99  │ <- price content (isolated segment)
+└─────────────────┘
+```
+
+**Key Point**: Even if StringConverter for `orderId` writes the wrong amount of data, the length prefix ensures `quantity` always starts reading from the correct position. This prevents corruption and makes the system robust against converter bugs.
 
 ## Usage Examples
 
@@ -157,7 +216,7 @@ public interface IMyActor : IQuarkActor
 }
 ```
 
-The generator creates:
+The generator creates (simplified):
 
 ```csharp
 public sealed class MyActorProxy : IMyActor
@@ -172,8 +231,9 @@ public sealed class MyActorProxy : IMyActor
         {
             using (var writer = new BinaryWriter(ms))
             {
-                new StringConverter().Write(writer, name);
-                new Int32Converter().Write(writer, age);
+                // Each parameter automatically length-prefixed
+                BinaryConverterHelper.WriteWithLength(writer, new StringConverter(), name);
+                BinaryConverterHelper.WriteWithLength(writer, new Int32Converter(), age);
             }
             payload = ms.ToArray();
         }
@@ -209,8 +269,9 @@ internal sealed class MyActorDispatcher : IActorMethodDispatcher
                     {
                         using (var reader = new BinaryReader(ms))
                         {
-                            var name = new StringConverter().Read(reader);
-                            var age = new Int32Converter().Read(reader);
+                            // Each parameter automatically length-validated
+                            var name = (string)BinaryConverterHelper.ReadWithLength(reader, new StringConverter());
+                            var age = (int)BinaryConverterHelper.ReadWithLength(reader, new Int32Converter());
                             
                             var typedActor = (MyActor)actor;
                             await typedActor.UpdateAsync(name, age);
@@ -222,6 +283,12 @@ internal sealed class MyActorDispatcher : IActorMethodDispatcher
     }
 }
 ```
+
+**Key Points:**
+- No intermediate message classes needed
+- Length-prefixing happens automatically
+- Each parameter isolated in its own segment
+- Safe even if converter has bugs
 
 ## Migration from JSON
 
