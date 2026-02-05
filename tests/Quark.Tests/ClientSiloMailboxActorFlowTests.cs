@@ -6,6 +6,7 @@ using Moq;
 using System.Text.Json;
 using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
+using Quark.Abstractions.Converters;
 using Quark.Client;
 using Quark.Core.Actors;
 using Quark.Hosting;
@@ -50,8 +51,16 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
     /// </summary>
     public interface IFlowTestActor : IQuarkActor
     {
+        [BinaryConverter(typeof(StringConverter), ParameterName = "message")]
+        [BinaryConverter(typeof(StringConverter))] // Return value
         Task<string> EchoAsync(string message);
+        
+        [BinaryConverter(typeof(Int32Converter), ParameterName = "a", Order = 0)]
+        [BinaryConverter(typeof(Int32Converter), ParameterName = "b", Order = 1)]
+        [BinaryConverter(typeof(Int32Converter))] // Return value
         Task<int> AddAsync(int a, int b);
+        
+        [BinaryConverter(typeof(StringConverter), ParameterName = "exceptionMessage")]
         Task ThrowExceptionAsync(string exceptionMessage);
     }
 
@@ -82,7 +91,10 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
     public interface IStatefulFlowActor : IQuarkActor
     {
         Task IncrementAsync();
+        
+        [BinaryConverter(typeof(Int32Converter))] // Return value
         Task<int> GetCountAsync();
+        
         Task ResetAsync();
     }
 
