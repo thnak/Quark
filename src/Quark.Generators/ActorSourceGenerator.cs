@@ -329,7 +329,10 @@ public class ActorSourceGenerator : IIncrementalGenerator
                      && m.Name != "OnActivateAsync"
                      && m.Name != "OnDeactivateAsync"
                      && m.Name != "Subscribe"
-                     && m.Name != "Unsubscribe")
+                     && m.Name != "Unsubscribe"
+                     && m.Name != "OnChildFailureAsync"  // ISupervisor callback, not remotely callable
+                     && m.Name != "SpawnChildAsync"      // ISupervisor method, handled locally
+                     && m.Name != "GetChildren")         // ISupervisor method, handled locally
             .ToList();
 
         // Get the interface symbol if InterfaceType is specified

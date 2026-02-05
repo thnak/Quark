@@ -30,8 +30,8 @@ public class ObjectClassValueConverter : QuarkBinaryConverter<ObjectClassValue>
         {
             foreach (var info in value.Infos)
             {
+                writer.Write(info.Id);
                 writer.Write(info.Description ?? string.Empty);
-                writer.Write(info.Priority);
             }
         }
         
@@ -70,8 +70,8 @@ public class ObjectClassValueConverter : QuarkBinaryConverter<ObjectClassValue>
         {
             result.Infos.Add(new Info
             {
-                Description = reader.ReadString(),
-                Priority = reader.ReadInt32()
+                Id = reader.ReadInt32(),
+                Description = reader.ReadString()
             });
         }
         
