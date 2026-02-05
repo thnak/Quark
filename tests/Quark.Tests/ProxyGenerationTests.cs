@@ -1,5 +1,8 @@
 using Moq;
+using System.IO;
 using System.Text.Json;
+using Quark.Abstractions;
+using Quark.Abstractions.Converters;
 using Quark.Client;
 using Quark.Networking.Abstractions;
 
@@ -110,9 +113,16 @@ public class ProxyGenerationTests
         var actorId = "counter-2";
         var expectedCount = 123;
 
-        // Create a response envelope with serialized ITestProxyActor_GetCountAsyncResponse
-        var responseMessage = new Generated.ITestProxyActor_GetCountAsyncResponse { Result = expectedCount };
-        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
+        // Create a response envelope with binary serialized response
+        byte[] responsePayload;
+        using (var ms = new MemoryStream())
+        {
+            using (var writer = new BinaryWriter(ms))
+            {
+                BinaryConverterHelper.WriteWithLength(writer, new Int32Converter(), expectedCount);
+            }
+            responsePayload = ms.ToArray();
+        }
 
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((QuarkEnvelope env, CancellationToken ct) => new QuarkEnvelope(
@@ -145,9 +155,16 @@ public class ProxyGenerationTests
         var priority = 5;
         var expectedResponse = "Processed: Hello, World!";
 
-        // Create a response envelope
-        var responseMessage = new Generated.ITestProxyActor_ProcessMessageAsyncResponse { Result = expectedResponse };
-        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
+        // Create a response envelope with binary serialization
+        byte[] responsePayload;
+        using (var ms = new MemoryStream())
+        {
+            using (var writer = new BinaryWriter(ms))
+            {
+                BinaryConverterHelper.WriteWithLength(writer, new StringConverter(), expectedResponse);
+            }
+            responsePayload = ms.ToArray();
+        }
 
         QuarkEnvelope? capturedEnvelope = null;
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
@@ -173,11 +190,15 @@ public class ProxyGenerationTests
         Assert.Equal("ProcessMessageAsync", capturedEnvelope.MethodName);
         Assert.NotEmpty(capturedEnvelope.Payload); // Contains serialized request with both parameters
         
-        // Verify the request was serialized correctly
-        var request = JsonSerializer.Deserialize<Generated.ITestProxyActor_ProcessMessageAsyncRequest>(capturedEnvelope.Payload);
-        Assert.NotNull(request);
-        Assert.Equal(message, request.Message);
-        Assert.Equal(priority, request.Priority);
+        // Verify the request was serialized correctly using binary deserialization
+        using var payloadMs = new MemoryStream(capturedEnvelope.Payload);
+        using var payloadReader = new BinaryReader(payloadMs);
+        
+        var requestMessage = BinaryConverterHelper.ReadWithLength(payloadReader, new StringConverter());
+        var requestPriority = BinaryConverterHelper.ReadWithLength(payloadReader, new Int32Converter());
+        
+        Assert.Equal(message, requestMessage);
+        Assert.Equal(priority, requestPriority);
     }
 
     /// <summary>
@@ -215,20 +236,16 @@ public class ProxyGenerationTests
             }
         };
 
-        // Create a response envelope with serialized expected output
-        var responseMessage = new Generated.ITestProxyActor_ProcessComplexObjectAsyncResponse
+        // Create a response envelope with binary serialized expected output
+        byte[] responsePayload;
+        using (var ms = new MemoryStream())
         {
-            Result = new ObjectClassValue
+            using (var writer = new BinaryWriter(ms))
             {
-                Name = expectedOutputObject.Name,
-                Value = expectedOutputObject.Value,
-                Time = expectedOutputObject.Time,
-                Tags = [..expectedOutputObject.Tags],
-                Infos = [..expectedOutputObject.Infos]
+                BinaryConverterHelper.WriteWithLength(writer, new ObjectClassValueConverter(), expectedOutputObject);
             }
-        };
-
-        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
+            responsePayload = ms.ToArray();
+        }
 
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((QuarkEnvelope env, CancellationToken ct) => new QuarkEnvelope(
