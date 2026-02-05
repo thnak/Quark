@@ -1,4 +1,4 @@
-using ProtoBuf;
+using System.Text.Json;
 using Quark.Abstractions;
 using Quark.Core.Actors;
 using Xunit;
@@ -25,12 +25,10 @@ public class ActorMethodDispatcherTests
         var payload = Array.Empty<byte>(); // TestMethod has no parameters
         var resultBytes = await dispatcher.InvokeAsync(actor, "TestMethod", payload, default);
         
-        // Deserialize Protobuf response
-        using (var ms = new System.IO.MemoryStream(resultBytes))
-        {
-            var response = Serializer.Deserialize<MailboxTestActor_TestMethodResponse>(ms);
-            Assert.Equal("test result", response.Result);
-        }
+        // Deserialize JSON response
+        var response = JsonSerializer.Deserialize<MailboxTestActor_TestMethodResponse>(resultBytes);
+        Assert.NotNull(response);
+        Assert.Equal("test result", response.Result);
     }
     
     [Fact]
