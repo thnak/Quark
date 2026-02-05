@@ -76,12 +76,12 @@ public class InMemorySagaStateStoreTests
 
         // Act
         await store.SaveStateAsync(state);
-        state.CompletedSteps.Add("Step2");  // Mutate after saving
+        state.CompletedSteps.Add("Step2"); // Mutate after saving
 
         // Assert
         var loaded = await store.LoadStateAsync("saga-3");
         Assert.NotNull(loaded);
-        Assert.Single(loaded.CompletedSteps);  // Should not include "Step2"
+        Assert.Single(loaded.CompletedSteps); // Should not include "Step2"
         Assert.Equal("Step1", loaded.CompletedSteps[0]);
     }
 
@@ -115,11 +115,11 @@ public class InMemorySagaStateStoreTests
 
         // Act
         var loaded1 = await store.LoadStateAsync("saga-4");
-        loaded1!.CompletedSteps.Add("Step2");  // Mutate the loaded copy
+        loaded1!.CompletedSteps.Add("Step2"); // Mutate the loaded copy
         var loaded2 = await store.LoadStateAsync("saga-4");
 
         // Assert
-        Assert.Single(loaded2!.CompletedSteps);  // Should still be single
+        Assert.Single(loaded2!.CompletedSteps); // Should still be single
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public class InMemorySagaStateStoreTests
     {
         // Arrange
         var store = new InMemorySagaStateStore();
-        
+
         await store.SaveStateAsync(new SagaState
         {
             SagaId = "saga-6",
@@ -198,7 +198,7 @@ public class InMemorySagaStateStoreTests
         Assert.Equal(2, runningSagas.Count);
         Assert.Single(completedSagas);
         Assert.Single(compensatingSagas);
-        
+
         Assert.Contains(runningSagas, s => s.SagaId == "saga-6");
         Assert.Contains(runningSagas, s => s.SagaId == "saga-7");
         Assert.Contains(completedSagas, s => s.SagaId == "saga-8");
@@ -210,7 +210,7 @@ public class InMemorySagaStateStoreTests
     {
         // Arrange
         var store = new InMemorySagaStateStore();
-        
+
         await store.SaveStateAsync(new SagaState
         {
             SagaId = "saga-10",
@@ -230,7 +230,7 @@ public class InMemorySagaStateStoreTests
     {
         // Arrange
         var store = new InMemorySagaStateStore();
-        
+
         await store.SaveStateAsync(new SagaState
         {
             SagaId = "saga-11",
@@ -241,33 +241,33 @@ public class InMemorySagaStateStoreTests
 
         // Act
         var sagas = await store.GetSagasByStatusAsync(SagaStatus.Running);
-        sagas[0].CompletedSteps.Add("Step2");  // Mutate the returned copy
-        
+        sagas[0].CompletedSteps.Add("Step2"); // Mutate the returned copy
+
         var reloaded = await store.LoadStateAsync("saga-11");
 
         // Assert
-        Assert.Single(reloaded!.CompletedSteps);  // Should still be single
+        Assert.Single(reloaded!.CompletedSteps); // Should still be single
     }
 
     [Fact]
-    public void Clear_RemovesAllStates()
+    public async Task Clear_RemovesAllStates()
     {
         // Arrange
         var store = new InMemorySagaStateStore();
-        
-        store.SaveStateAsync(new SagaState
+
+        await store.SaveStateAsync(new SagaState
         {
             SagaId = "saga-12",
             Status = SagaStatus.Running,
             StartedAt = DateTimeOffset.UtcNow
-        }).Wait();
+        });
 
-        store.SaveStateAsync(new SagaState
+        await store.SaveStateAsync(new SagaState
         {
             SagaId = "saga-13",
             Status = SagaStatus.Completed,
             StartedAt = DateTimeOffset.UtcNow
-        }).Wait();
+        });
 
         // Act
         store.Clear();
@@ -281,7 +281,7 @@ public class InMemorySagaStateStoreTests
     {
         // Arrange
         var store = new InMemorySagaStateStore();
-        
+
         // Act & Assert
         Assert.Equal(0, store.Count);
 

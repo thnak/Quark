@@ -421,12 +421,21 @@ public class ActorSourceGenerator : IIncrementalGenerator
             }
             else
             {
+                foreach (var nonCancellationParam in nonCancellationParams)
+                {
+                    parameterCode.AppendLine($"                    // Deserialize parameter: {nonCancellationParam.Name}");
+                    parameterCode.AppendLine($"                    {nonCancellationParam.Type.ToDisplayString() } {nonCancellationParam.Name};");
+                }
+
                 // Deserialize using binary converters with length-prefixing
+
                 parameterCode.AppendLine("                    using (var ms = new System.IO.MemoryStream(payload))");
                 parameterCode.AppendLine("                    {");
+                // Define parameter deserialization
+
                 parameterCode.AppendLine("                        using (var reader = new System.IO.BinaryReader(ms))");
                 parameterCode.AppendLine("                        {");
-                
+
                 // Deserialize each parameter
                 foreach (var param in nonCancellationParams)
                 {
@@ -447,14 +456,14 @@ public class ActorSourceGenerator : IIncrementalGenerator
                         var converterTypeName = converterType?.ToDisplayString();
                         
                         parameterCode.AppendLine($"                            // Deserialize {paramName} with length-prefixing using {converterTypeName}");
-                        parameterCode.AppendLine($"                            var {paramName} = ({paramType})BinaryConverterHelper.ReadWithLength(reader, new {converterTypeName}());");
+                        parameterCode.AppendLine($"                            {paramName} = BinaryConverterHelper.ReadWithLength(reader, new {converterTypeName}());");
                     }
                     else
                     {
                         // Use default converter based on type
                         var defaultConverter = GetDefaultConverterForType(paramType);
                         parameterCode.AppendLine($"                            // Deserialize {paramName} with length-prefixing using default converter");
-                        parameterCode.AppendLine($"                            var {paramName} = ({paramType})BinaryConverterHelper.ReadWithLength(reader, new {defaultConverter}());");
+                        parameterCode.AppendLine($"                            {paramName} = BinaryConverterHelper.ReadWithLength(reader, new {defaultConverter}());");
                     }
                     
                     invokeArgs.Add(paramName);
