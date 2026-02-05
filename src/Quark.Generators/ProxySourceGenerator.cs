@@ -360,7 +360,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
             })
             .ToList();
 
-        // Serialize request parameters using binary converters
+        // Serialize request parameters using binary converters with length-prefixing
         if (serializableParams.Count > 0)
         {
             source.AppendLine($"            byte[] payload;");
@@ -369,7 +369,7 @@ public class ProxySourceGenerator : IIncrementalGenerator
             source.AppendLine($"                using (var writer = new System.IO.BinaryWriter(ms))");
             source.AppendLine($"                {{");
             
-            // Write each parameter using its converter
+            // Write each parameter using its converter with length-prefixing
             foreach (var param in serializableParams)
             {
                 var paramName = param.Name;
@@ -388,15 +388,15 @@ public class ProxySourceGenerator : IIncrementalGenerator
                     var converterType = converterAttr.ConstructorArguments[0].Value as INamedTypeSymbol;
                     var converterTypeName = converterType?.ToDisplayString();
                     
-                    source.AppendLine($"                    // Serialize {paramName} using {converterTypeName}");
-                    source.AppendLine($"                    new {converterTypeName}().Write(writer, {paramName});");
+                    source.AppendLine($"                    // Serialize {paramName} with length-prefixing using {converterTypeName}");
+                    source.AppendLine($"                    BinaryConverterHelper.WriteWithLength(writer, new {converterTypeName}(), {paramName});");
                 }
                 else
                 {
                     // Use default converter based on type
                     var defaultConverter = GetDefaultConverterForType(paramType);
-                    source.AppendLine($"                    // Serialize {paramName} using default converter");
-                    source.AppendLine($"                    new {defaultConverter}().Write(writer, {paramName});");
+                    source.AppendLine($"                    // Serialize {paramName} with length-prefixing using default converter");
+                    source.AppendLine($"                    BinaryConverterHelper.WriteWithLength(writer, new {defaultConverter}(), {paramName});");
                 }
             }
             
@@ -463,12 +463,12 @@ public class ProxySourceGenerator : IIncrementalGenerator
             {
                 var converterType = returnConverterAttr.ConstructorArguments[0].Value as INamedTypeSymbol;
                 var converterTypeName = converterType?.ToDisplayString();
-                source.AppendLine($"                        return ({resultType})new {converterTypeName}().Read(reader);");
+                source.AppendLine($"                        return BinaryConverterHelper.ReadWithLength(reader, new {converterTypeName}());");
             }
             else
             {
                 var defaultConverter = GetDefaultConverterForType(resultType);
-                source.AppendLine($"                        return new {defaultConverter}().Read(reader);");
+                source.AppendLine($"                        return BinaryConverterHelper.ReadWithLength(reader, new {defaultConverter}());");
             }
             
             source.AppendLine($"                    }}");
