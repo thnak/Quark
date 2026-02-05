@@ -19,3 +19,7 @@ QUARK010 | Quark.Actors | Warning | Multiple classes implement the same IQuarkAc
 QUARK011 | Quark.Actors | Info | Deep inheritance chain detected for IQuarkActor implementation
 QUARK012 | Quark.Actors | Error | Actor method returns unsupported IEnumerable or IAsyncEnumerable
 QUARK013 | Quark.Actors | Error | Actor interface property exposes unsupported IEnumerable or IAsyncEnumerable
+QUARK014 | Quark.Serialization | Error | Type is missing [ProtoContract] attribute (deprecated - use binary converters)
+QUARK015 | Quark.Serialization | Error | Property is missing [ProtoMember] attribute (deprecated - use binary converters)
+QUARK016 | Quark.Serialization | Error | Record type needs [ProtoContract(SkipConstructor = true)] (deprecated - use binary converters)
+QUARK017 | Quark.Actors | Error | Actor method parameter uses unsupported type (delegates, expressions, lazy types)
