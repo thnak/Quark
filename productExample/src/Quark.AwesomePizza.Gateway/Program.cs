@@ -6,7 +6,6 @@ using Quark.AwesomePizza.Shared.Interfaces;
 using Quark.Client;
 using Quark.Client.DependencyInjection;
 using Quark.Extensions.DependencyInjection;
-using Quark.Generated;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -19,8 +18,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 ConfigureServices(builder);
 
-// Register proxy manually (or use generated registration class)
-QuarkAwesomePizzaSharedActorProxyFactoryRegistration.RegisterAll();
+// TODO: Register proxy once all actor interfaces have binary converters
+// QuarkAwesomePizzaSharedActorProxyFactoryRegistration.RegisterAll();
 
 void ConfigureServices(WebApplicationBuilder webApplicationBuilder)
 {
