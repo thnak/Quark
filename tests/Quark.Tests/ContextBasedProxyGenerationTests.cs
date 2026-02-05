@@ -1,4 +1,5 @@
 using Moq;
+using System.Text.Json;
 using Quark.Client;
 using Quark.Networking.Abstractions;
 
@@ -56,12 +57,7 @@ public class ContextBasedProxyGenerationTests
         
         // Create a response envelope with serialized response
         var responseMessage = new Generated.IExternalLibraryActor_CalculateAsyncResponse { Result = expectedResult };
-        byte[] responsePayload;
-        using (var ms = new MemoryStream())
-        {
-            ProtoBuf.Serializer.Serialize(ms, responseMessage);
-            responsePayload = ms.ToArray();
-        }
+        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
 
         QuarkEnvelope? capturedEnvelope = null;
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
@@ -90,12 +86,10 @@ public class ContextBasedProxyGenerationTests
         Assert.NotEmpty(capturedEnvelope.Payload);
         
         // Verify the request was serialized correctly
-        using (var ms = new MemoryStream(capturedEnvelope.Payload))
-        {
-            var request = ProtoBuf.Serializer.Deserialize<Generated.IExternalLibraryActor_CalculateAsyncRequest>(ms);
-            Assert.Equal(x, request.X);
-            Assert.Equal(y, request.Y);
-        }
+        var request = JsonSerializer.Deserialize<Generated.IExternalLibraryActor_CalculateAsyncRequest>(capturedEnvelope.Payload);
+        Assert.NotNull(request);
+        Assert.Equal(x, request.X);
+        Assert.Equal(y, request.Y);
         
         mockClient.Verify(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -129,11 +123,9 @@ public class ContextBasedProxyGenerationTests
         Assert.NotEmpty(capturedEnvelope.Payload);
         
         // Verify the request was serialized correctly
-        using (var ms = new MemoryStream(capturedEnvelope.Payload))
-        {
-            var request = ProtoBuf.Serializer.Deserialize<Generated.IExternalLibraryActor_PerformOperationAsyncRequest>(ms);
-            Assert.Equal(operation, request.Operation);
-        }
+        var request = JsonSerializer.Deserialize<Generated.IExternalLibraryActor_PerformOperationAsyncRequest>(capturedEnvelope.Payload);
+        Assert.NotNull(request);
+        Assert.Equal(operation, request.Operation);
         
         mockClient.Verify(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -149,12 +141,7 @@ public class ContextBasedProxyGenerationTests
 
         // Create a response envelope
         var responseMessage = new Generated.IExternalLibraryActor_GetDataAsyncResponse { Result = expectedData };
-        byte[] responsePayload;
-        using (var ms = new MemoryStream())
-        {
-            ProtoBuf.Serializer.Serialize(ms, responseMessage);
-            responsePayload = ms.ToArray();
-        }
+        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
 
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((QuarkEnvelope env, CancellationToken ct) => new QuarkEnvelope(

@@ -1,4 +1,5 @@
 using Moq;
+using System.Text.Json;
 using Quark.Client;
 using Quark.Networking.Abstractions;
 
@@ -111,12 +112,7 @@ public class ProxyGenerationTests
 
         // Create a response envelope with serialized ITestProxyActor_GetCountAsyncResponse
         var responseMessage = new Generated.ITestProxyActor_GetCountAsyncResponse { Result = expectedCount };
-        byte[] responsePayload;
-        using (var ms = new MemoryStream())
-        {
-            ProtoBuf.Serializer.Serialize(ms, responseMessage);
-            responsePayload = ms.ToArray();
-        }
+        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
 
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((QuarkEnvelope env, CancellationToken ct) => new QuarkEnvelope(
@@ -151,12 +147,7 @@ public class ProxyGenerationTests
 
         // Create a response envelope
         var responseMessage = new Generated.ITestProxyActor_ProcessMessageAsyncResponse { Result = expectedResponse };
-        byte[] responsePayload;
-        using (var ms = new MemoryStream())
-        {
-            ProtoBuf.Serializer.Serialize(ms, responseMessage);
-            responsePayload = ms.ToArray();
-        }
+        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
 
         QuarkEnvelope? capturedEnvelope = null;
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
@@ -183,12 +174,10 @@ public class ProxyGenerationTests
         Assert.NotEmpty(capturedEnvelope.Payload); // Contains serialized request with both parameters
         
         // Verify the request was serialized correctly
-        using (var ms = new MemoryStream(capturedEnvelope.Payload))
-        {
-            var request = ProtoBuf.Serializer.Deserialize<Generated.ITestProxyActor_ProcessMessageAsyncRequest>(ms);
-            Assert.Equal(message, request.Message);
-            Assert.Equal(priority, request.Priority);
-        }
+        var request = JsonSerializer.Deserialize<Generated.ITestProxyActor_ProcessMessageAsyncRequest>(capturedEnvelope.Payload);
+        Assert.NotNull(request);
+        Assert.Equal(message, request.Message);
+        Assert.Equal(priority, request.Priority);
     }
 
     /// <summary>
@@ -239,12 +228,7 @@ public class ProxyGenerationTests
             }
         };
 
-        byte[] responsePayload;
-        using (var ms = new MemoryStream())
-        {
-            ProtoBuf.Serializer.Serialize(ms, responseMessage);
-            responsePayload = ms.ToArray();
-        }
+        var responsePayload = JsonSerializer.SerializeToUtf8Bytes(responseMessage);
 
         mockClient.Setup(c => c.SendAsync(It.IsAny<QuarkEnvelope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((QuarkEnvelope env, CancellationToken ct) => new QuarkEnvelope(

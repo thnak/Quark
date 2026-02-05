@@ -3,7 +3,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using ProtoBuf;
+using System.Text.Json;
 using Quark.Abstractions;
 using Quark.Abstractions.Clustering;
 using Quark.Client;
@@ -122,13 +122,8 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         var (client, silo, transport) = await SetupClientSiloStackAsync("test-silo-1");
 
         // Create envelope for actor invocation
-        var protoRequest = new FlowTestActor_EchoAsyncRequest { Message = "Hello World" };
-        byte[] payload;
-        using (var ms = new System.IO.MemoryStream())
-        {
-            Serializer.Serialize(ms, protoRequest);
-            payload = ms.ToArray();
-        }
+        var jsonRequest = new FlowTestActor_EchoAsyncRequest { Message = "Hello World" };
+        var payload = JsonSerializer.SerializeToUtf8Bytes(jsonRequest);
         
         var envelope = CreateEnvelope(
             actorId: "flow-actor-1",
@@ -165,12 +160,10 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         Assert.NotNull(capturedResponse.ResponsePayload);
         
         // Verify the actual response payload contains expected data
-        using (var ms = new System.IO.MemoryStream(capturedResponse.ResponsePayload))
-        {
-            var response = Serializer.Deserialize<FlowTestActor_EchoAsyncResponse>(ms);
-            Assert.NotNull(response.Result);
-            Assert.Contains("Echo: Hello World", response.Result);
-        }
+        var response = JsonSerializer.Deserialize<FlowTestActor_EchoAsyncResponse>(capturedResponse.ResponsePayload);
+        Assert.NotNull(response);
+        Assert.NotNull(response.Result);
+        Assert.Contains("Echo: Hello World", response.Result);
     }
 
     [Fact]
@@ -206,13 +199,11 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         Assert.Equal(3, responses.Count);
         Assert.All(responses, r => Assert.False(r.IsError));
         
-        // The last response should contain the count value (Protobuf serialized)
+        // The last response should contain the count value (JSON serialized)
         Assert.NotNull(responses[2].ResponsePayload);
-        using (var ms = new System.IO.MemoryStream(responses[2].ResponsePayload))
-        {
-            var response = Serializer.Deserialize<StatefulFlowActor_GetCountAsyncResponse>(ms);
-            Assert.Equal(2, response.Result);
-        }
+        var response = JsonSerializer.Deserialize<StatefulFlowActor_GetCountAsyncResponse>(responses[2].ResponsePayload);
+        Assert.NotNull(response);
+        Assert.Equal(2, response.Result);
     }
 
     [Fact]
@@ -228,13 +219,8 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         await Task.Delay(50);
 
         // Act: Invoke method that throws exception
-        var protoRequest = new FlowTestActor_ThrowExceptionAsyncRequest { ExceptionMessage = "Test exception message" };
-        byte[] payload;
-        using (var ms = new System.IO.MemoryStream())
-        {
-            Serializer.Serialize(ms, protoRequest);
-            payload = ms.ToArray();
-        }
+        var jsonRequest = new FlowTestActor_ThrowExceptionAsyncRequest { ExceptionMessage = "Test exception message" };
+        var payload = JsonSerializer.SerializeToUtf8Bytes(jsonRequest);
         
         var envelope = CreateEnvelope(
             "flow-actor-3",
@@ -322,11 +308,9 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         
         // Final count should be 10 (sequential processing guaranteed)
         var finalResponse = responses[10];
-        using (var ms = new System.IO.MemoryStream(finalResponse.ResponsePayload))
-        {
-            var response = Serializer.Deserialize<StatefulFlowActor_GetCountAsyncResponse>(ms);
-            Assert.Equal(10, response.Result);
-        }
+        var response = JsonSerializer.Deserialize<StatefulFlowActor_GetCountAsyncResponse>(finalResponse.ResponsePayload);
+        Assert.NotNull(response);
+        Assert.Equal(10, response.Result);
     }
 
     [Fact]
@@ -393,13 +377,8 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
             var messageId = Guid.NewGuid().ToString();
             messageIds.Add(messageId);
             
-            var protoRequest = new FlowTestActor_EchoAsyncRequest { Message = $"Message {i}" };
-            byte[] payload;
-            using (var ms = new System.IO.MemoryStream())
-            {
-                Serializer.Serialize(ms, protoRequest);
-                payload = ms.ToArray();
-            }
+            var jsonRequest = new FlowTestActor_EchoAsyncRequest { Message = $"Message {i}" };
+            var payload = JsonSerializer.SerializeToUtf8Bytes(jsonRequest);
             
             var envelope = new QuarkEnvelope(
                 messageId: messageId,
@@ -467,13 +446,8 @@ public class ClientSiloMailboxActorFlowTests : IDisposable
         await Task.Delay(50);
 
         // Act: Invoke method that throws
-        var protoRequest = new FlowTestActor_ThrowExceptionAsyncRequest { ExceptionMessage = "Dispatcher exception test" };
-        byte[] payload;
-        using (var ms = new System.IO.MemoryStream())
-        {
-            Serializer.Serialize(ms, protoRequest);
-            payload = ms.ToArray();
-        }
+        var jsonRequest = new FlowTestActor_ThrowExceptionAsyncRequest { ExceptionMessage = "Dispatcher exception test" };
+        var payload = JsonSerializer.SerializeToUtf8Bytes(jsonRequest);
         
         var envelope = CreateEnvelope(
             "error-actor",
