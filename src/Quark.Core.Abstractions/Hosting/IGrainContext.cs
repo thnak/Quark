@@ -18,6 +18,18 @@ public interface IGrainContext
     GrainActivationStatus ActivationStatus { get; }
 
     /// <summary>
+    /// The grain factory scoped to this activation.
+    /// Use this inside grain code to get references to other grains.
+    /// Equivalent to Orleans' <c>GrainFactory</c> property.
+    /// </summary>
+    IGrainFactory GrainFactory { get; }
+
+    /// <summary>
+    /// The DI service provider scoped to this activation.
+    /// </summary>
+    IServiceProvider ServiceProvider { get; }
+
+    /// <summary>
     /// Requests that this activation be deactivated when it becomes idle.
     /// </summary>
     void Deactivate(DeactivationReason reason);
@@ -38,3 +50,4 @@ public enum GrainActivationStatus
     /// <summary>Activation is fully stopped.</summary>
     Inactive,
 }
+

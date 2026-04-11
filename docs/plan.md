@@ -18,8 +18,8 @@
 | `Quark.Serialization` | 18 primitive codecs, `CodecProvider`, `QuarkSerializer`, DI extensions | ✅ M1 Done |
 | `Quark.Core` | `ISiloBuilder`, `IClientBuilder`, host-builder extensions | ✅ M1 Done |
 | `Quark.Transport.Tcp` | TCP `ITransport` + `ITransportConnection` (System.IO.Pipelines) | ✅ M1 Done |
-| `Quark.Runtime` | Silo-side runtime: lifecycle, directory, activator, scheduling | 🔄 M3 In Progress |
-| `Quark.Client` | Client-side runtime: connection, grain reference resolution | ⏳ M3 Planned |
+| `Quark.Runtime` | Silo-side runtime: lifecycle, directory, activator, scheduling | ✅ M3 Core Done |
+| `Quark.Client` | Client-side runtime: connection, grain reference resolution | ✅ M3 Core Done |
 | `Quark.Server` | Server hosting entry-point | ⏳ M3 Planned |
 | `Quark.CodeGenerator` | Roslyn source generators: grain proxies + serializers + activators | 🔄 M2 In Progress |
 | `Quark.Analyzers` | AOT-safety Roslyn analyzers (QRK0001-QRK0003) | ✅ M2 Done (scaffold) |
@@ -58,17 +58,23 @@
 - [x] `IGrainTypeRegistry` + `GrainTypeRegistry` — maps `GrainType` key → CLR `Type`
 - [x] `IGrainActivator` + `DefaultGrainActivator` — DI-backed grain creation
 - [x] `IGrainDirectory` + `InMemoryGrainDirectory` — `ConcurrentDictionary` backed
-- [x] `GrainContext` — concrete `IGrainContext` with lifecycle and deactivation
+- [x] `GrainContext` — concrete `IGrainContext` with lifecycle, deactivation, `GrainFactory`, `ServiceProvider`
 - [x] `SiloRuntimeOptions` — cluster id, service id, silo name, endpoints
-- [x] `SiloHostedService` — `IHostedService` driving silo lifecycle start/stop
+- [x] `SiloHostedService` — `IHostedService` driving silo lifecycle start/stop + deferred registration
 - [x] `IGrainCallInvoker` (core abstractions) — routes calls from proxy to runtime
-- [x] `RuntimeServiceCollectionExtensions` — `AddQuarkRuntime()`
-- [ ] Message pump / dispatcher — receive `MessageEnvelope`, route to grain context
-- [ ] Scheduler — per-grain single-threaded task execution
-- [ ] Client connection — connect to silo, send calls, receive responses
-- [ ] Placement engine — `RandomPlacement` + `LocalPlacement` strategies
-- [ ] End-to-end integration test: client → silo → grain activation → response
-- [ ] `Quark.Tests.Integration` project
+- [x] `RuntimeServiceCollectionExtensions` — `AddQuarkRuntime()`, `AddGrain<T>()`, `AddGrainMethodInvoker<TGrain,TInvoker>()`
+- [x] **Orleans API alignment** — `PreferLocalPlacement`, `HashBasedPlacement`, public `DeactivationReason` ctor, `DeactivationReason.Force`, `Grain.GrainFactory`, `Grain.DeactivateOnIdle()`, `Grain.DelayDeactivation()`, `IGrainFactory` non-generic overloads, `UseQuark(IHostApplicationBuilder)`, `UseLocalhostClustering()` on `ISiloBuilder`
+- [x] **`IGrainMethodInvoker`** + `GrainMethodInvokerRegistry` — per-grain-type method dispatcher interface
+- [x] **`GrainActivation`** — grain instance + context + sequential `Channel<Func<Task>>` scheduler
+- [x] **`GrainActivationTable`** — silo-local activation registry with lazy/atomic init
+- [x] **`LocalGrainCallInvoker`** — in-process `IGrainCallInvoker`: find/activate grain, post to scheduler, return result
+- [x] **`LocalGrainFactory`** — `IGrainFactory` using `GrainProxyFactoryRegistry` + `GrainInterfaceTypeRegistry`
+- [x] **`LocalClusterClient`** — `IClusterClient` for in-process (cohosted) scenario
+- [x] **`ClientServiceCollectionExtensions`** — `AddLocalClusterClient()`, `AddGrainProxy<TInterface,TProxy>()`
+- [x] **End-to-end integration tests** — 8 tests: grain activate, increment, reset, same-key identity, different-key isolation, 20 concurrent serialised calls, void methods
+- [ ] Message pump / dispatcher — receive `MessageEnvelope`, route to grain context (network path — M4)
+- [ ] Placement engine — `RandomPlacement` + `PreferLocalPlacement` strategies (M4)
+- [ ] `Quark.Tests.Integration` project (separate from unit tests — M4)
 
 ### ⏳ Milestone 4 — Persistence & Provider Model (Tier 2)
 - [ ] `Quark.Persistence.Abstractions`: `IStorage<TState>`, `IGrainStorage`, `StorageOptions`

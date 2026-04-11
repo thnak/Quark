@@ -16,6 +16,16 @@ public abstract class Grain : IGrain
     /// <summary>Gets the identity of this grain.</summary>
     protected GrainId GrainId => GrainContext.GrainId;
 
+    /// <summary>
+    /// Gets the grain factory for this activation.
+    /// Use to obtain references to other grains from inside a grain.
+    /// Drop-in equivalent of Orleans' <c>GrainFactory</c> property.
+    /// </summary>
+    protected IGrainFactory GrainFactory => GrainContext.GrainFactory;
+
+    /// <summary>Gets the DI service provider for this activation.</summary>
+    protected IServiceProvider ServiceProvider => GrainContext.ServiceProvider;
+
     /// <summary>Called when the grain is first activated. Override to perform async initialization.</summary>
     public virtual Task OnActivateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -24,7 +34,26 @@ public abstract class Grain : IGrain
         Task.CompletedTask;
 
     /// <summary>
+    /// Requests that this grain be deactivated once it becomes idle.
+    /// Drop-in equivalent of Orleans' <c>DeactivateOnIdle()</c>.
+    /// </summary>
+    protected void DeactivateOnIdle() =>
+        GrainContext.Deactivate(DeactivationReason.ApplicationRequested);
+
+    /// <summary>
+    /// Delays automatic deactivation by <paramref name="timeSpan"/> from now.
+    /// Not yet implemented in M3; reserved for the idle-timeout scheduler (M3/M6).
+    /// Drop-in equivalent of Orleans' <c>DelayDeactivation(TimeSpan)</c>.
+    /// </summary>
+    protected void DelayDeactivation(TimeSpan timeSpan)
+    {
+        // TODO (M3/M6): pass hint to per-grain idle timer.
+        _ = timeSpan; // suppress unused warning until implemented.
+    }
+
+    /// <summary>
     /// Framework-only. Called by the runtime to bind the grain to its activation context.
     /// </summary>
     internal void SetContext(IGrainContext context) => _grainContext = context;
 }
+

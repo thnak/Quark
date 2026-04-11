@@ -6,11 +6,17 @@ namespace Quark.Tests.Unit.Runtime;
 
 public sealed class GrainContextTests
 {
+    // Minimal stub factory/provider for tests that don't use GrainFactory.
+    private static readonly IGrainFactory NullFactory = new NullGrainFactory();
+    private static readonly IServiceProvider NullServices = new NullServiceProvider();
+
+    private static GrainContext MakeContext(GrainId id) =>
+        new GrainContext(id, NullFactory, NullServices);
+
     [Fact]
     public async Task ActivateAsync_SetsStatusActive()
     {
-        var id = new GrainId(new GrainType("MyGrain"), "1");
-        var ctx = new GrainContext(id);
+        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -21,8 +27,7 @@ public sealed class GrainContextTests
     [Fact]
     public async Task ActivateAsync_CallsOnActivate()
     {
-        var id = new GrainId(new GrainType("MyGrain"), "1");
-        var ctx = new GrainContext(id);
+        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -33,8 +38,7 @@ public sealed class GrainContextTests
     [Fact]
     public async Task DeactivateAsync_SetsStatusInactive()
     {
-        var id = new GrainId(new GrainType("MyGrain"), "1");
-        var ctx = new GrainContext(id);
+        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -47,18 +51,25 @@ public sealed class GrainContextTests
     [Fact]
     public async Task Deactivate_Method_TriggersStop()
     {
-        var id = new GrainId(new GrainType("MyGrain"), "1");
-        var ctx = new GrainContext(id);
+        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
         ctx.Deactivate(DeactivationReason.ApplicationRequested);
 
-        // Allow async stop to complete.
         await Task.Delay(50);
 
         Assert.Equal(GrainActivationStatus.Inactive, ctx.ActivationStatus);
     }
+
+    [Fact]
+    public void GrainFactory_ExposedOnContext()
+    {
+        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
+        Assert.Same(NullFactory, ctx.GrainFactory);
+    }
+
+    // -----------------------------------------------------------------------
 
     private sealed class TestGrain : Grain
     {
@@ -76,6 +87,23 @@ public sealed class GrainContextTests
             DeactivateCalled = true;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class NullGrainFactory : IGrainFactory
+    {
+        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey => throw new NotImplementedException();
+        public IGrain GetGrain(Type t, string key) => throw new NotImplementedException();
+        public IGrain GetGrain(Type t, Guid key) => throw new NotImplementedException();
+        public IGrain GetGrain(Type t, long key) => throw new NotImplementedException();
+    }
+
+    private sealed class NullServiceProvider : IServiceProvider
+    {
+        public object? GetService(Type serviceType) => null;
     }
 }
 

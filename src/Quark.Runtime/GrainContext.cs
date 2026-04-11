@@ -10,15 +10,23 @@ public sealed class GrainContext : IGrainContext
 {
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
-    /// <summary>Creates a context for the supplied grain identity with its own lifecycle.</summary>
-    public GrainContext(GrainId grainId)
+    /// <summary>Creates a context for the supplied grain identity.</summary>
+    public GrainContext(GrainId grainId, IGrainFactory grainFactory, IServiceProvider serviceProvider)
     {
         GrainId = grainId;
+        GrainFactory = grainFactory;
+        ServiceProvider = serviceProvider;
         Lifecycle = new LifecycleSubject();
     }
 
     /// <inheritdoc/>
     public GrainId GrainId { get; }
+
+    /// <inheritdoc/>
+    public IGrainFactory GrainFactory { get; }
+
+    /// <inheritdoc/>
+    public IServiceProvider ServiceProvider { get; }
 
     /// <summary>The lifecycle subject for this activation.</summary>
     public LifecycleSubject Lifecycle { get; }

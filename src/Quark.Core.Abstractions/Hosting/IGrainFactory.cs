@@ -34,4 +34,21 @@ public interface IGrainFactory
     /// </summary>
     TGrainInterface GetGrain<TGrainInterface>(Guid key, string? keyExtension)
         where TGrainInterface : IGrainWithGuidCompoundKey;
+
+    /// <summary>
+    /// Returns a reference to the grain with the specified interface type and string key (non-generic overload).
+    /// Drop-in equivalent of Orleans' <c>IGrainFactory.GetGrain(Type, string)</c>.
+    /// </summary>
+    IGrain GetGrain(Type grainInterfaceType, string key);
+
+    /// <summary>
+    /// Returns a reference to the grain with the specified interface type and <see cref="Guid"/> key (non-generic overload).
+    /// </summary>
+    IGrain GetGrain(Type grainInterfaceType, Guid key);
+
+    /// <summary>
+    /// Returns a reference to the grain with the specified interface type and integer key (non-generic overload).
+    /// </summary>
+    IGrain GetGrain(Type grainInterfaceType, long key);
 }
+

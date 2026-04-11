@@ -40,14 +40,9 @@ public static class QuarkServiceCollectionExtensions
 
     // Internal builder implementations ------------------------------------
 
-    private sealed class DefaultSiloBuilder : ISiloBuilder
+    private sealed class DefaultSiloBuilder(IServiceCollection services) : ISiloBuilder
     {
-        public DefaultSiloBuilder(IServiceCollection services)
-        {
-            Services = services;
-        }
-
-        public IServiceCollection Services { get; }
+        public IServiceCollection Services { get; } = services;
 
         public ISiloBuilder Configure<TOptions>(Action<TOptions> configure) where TOptions : class, new()
         {
@@ -56,14 +51,9 @@ public static class QuarkServiceCollectionExtensions
         }
     }
 
-    private sealed class DefaultClientBuilder : IClientBuilder
+    private sealed class DefaultClientBuilder(IServiceCollection services) : IClientBuilder
     {
-        public DefaultClientBuilder(IServiceCollection services)
-        {
-            Services = services;
-        }
-
-        public IServiceCollection Services { get; }
+        public IServiceCollection Services { get; } = services;
 
         public IClientBuilder Configure<TOptions>(Action<TOptions> configure) where TOptions : class, new()
         {
