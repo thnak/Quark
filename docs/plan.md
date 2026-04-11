@@ -18,6 +18,9 @@
 | `Quark.Serialization` | 18 primitive codecs, `CodecProvider`, `QuarkSerializer`, DI extensions | ✅ M1 Done |
 | `Quark.Core` | `ISiloBuilder`, `IClientBuilder`, host-builder extensions | ✅ M1 Done |
 | `Quark.Transport.Tcp` | TCP `ITransport` + `ITransportConnection` (System.IO.Pipelines) | ✅ M1 Done |
+| `Quark.Persistence.Abstractions` | Persistence contracts and persistent grain abstractions | ✅ M4 Core Done |
+| `Quark.Persistence.InMemory` | In-memory grain state persistence provider | ✅ M4 Core Done |
+| `Quark.Persistence.Redis` | Redis-backed grain state persistence provider | ✅ M4 Provider Added |
 | `Quark.Runtime` | Silo-side runtime: lifecycle, directory, activator, scheduling | ✅ M3 Core Done |
 | `Quark.Client` | Client-side runtime: connection, grain reference resolution | ✅ M3 Core Done |
 | `Quark.Server` | Server hosting entry-point | ⏳ M3 Planned |
@@ -79,7 +82,7 @@
 ### ⏳ Milestone 4 — Persistence & Provider Model (Tier 2)
 - [x] `Quark.Persistence.Abstractions`: `IStorage<TState>`, `IGrainStorage`, `StorageOptions`
 - [x] `Quark.Persistence.InMemory`: in-memory storage provider
-- [ ] `Quark.Persistence.Redis` (or chosen durable backend): real persistence
+- [x] `Quark.Persistence.Redis` (or chosen durable backend): real persistence
 - [ ] Testcontainers matrix for integration tests
 - [x] `IPersistentGrain<TState>` mixin on `Grain` base
 
@@ -173,4 +176,4 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 
 ---
 
-*Last updated: Tier 2 persistence foundations added; durable provider and CI matrix next*
+*Last updated: Tier 2 Redis provider added; Testcontainers validation next*

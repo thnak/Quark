@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <PackageId>Quark.Persistence.Redis</PackageId>
+    <Description>Redis-backed grain state persistence provider for Quark.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj" />
+    <ProjectReference Include="..\Quark.Serialization\Quark.Serialization.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+</Project>
