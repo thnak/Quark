@@ -135,6 +135,37 @@
 
 ---
 
+## Remaining Tier Completion Plan (Orleans Concept Aligned)
+
+### Tier 2 — Production Core (M4–M5)
+- [ ] **Retry/timeout policy model** aligned to Orleans reliability expectations for grain calls and client calls
+- [ ] **Observability baseline**: metrics + distributed tracing + structured logging hooks on runtime/client pipeline
+- [ ] **Testcontainers matrix** for durable providers (persistence + reminders storage path)
+- [ ] **Multi-silo test harness completion** using Orleans `TestCluster` style ergonomics in `Quark.Testing`
+- [ ] **Placement validation suite** (random, prefer-local, hash-based) with deterministic assertions
+- [ ] **Failure/recovery suite** (silo stop/restart, activation recovery, directory rebuild behavior)
+- [ ] **CI deterministic distributed test helpers** for repeatable cluster outcomes
+
+### Tier 3 — Ecosystem Parity (M6)
+- [ ] **Membership/clustering provider model** (Orleans-style external membership stores such as ADO.NET/Consul/Redis class of providers)
+- [ ] **Reminders + timers split** (persistent reminders vs in-memory timers, matching Orleans mental model)
+- [ ] **Streaming baseline** (`IAsyncStream<T>`-equivalent abstraction + provider model + pub/sub store option)
+- [ ] **Advanced placement strategies** (activation-count/resource-aware strategy family beyond random/prefer-local)
+- [ ] **Version tolerance hardening** for serializer contracts and rolling upgrade scenarios
+- [ ] **Transactional state extension point** (Orleans `ITransactionalState`-style optional capability)
+- [ ] **Performance/memory regression suite** with tier-gated baselines
+
+### Orleans concepts referenced from Context7 (for implementation framing)
+- Cluster/Silo/Grain runtime model with built-in timers, reminders, streams, persistence, transactions
+- Grain placement strategy model (default random + specialized placement attributes/strategies)
+- Membership & clustering provider pattern (e.g., external coordination stores/providers)
+- Timers and reminders as separate runtime services (ephemeral vs persistent scheduling)
+- Streams as provider-backed reactive pipeline abstraction with grain/client symmetry
+- TestCluster-based distributed test ergonomics for multi-silo validation
+- Transactional state as distributed ACID optional subsystem
+
+---
+
 ## Definition of Success
 - [ ] AOT-first by default — no reflection-dependent runtime path required
 - [ ] Multi-silo + client + persistence validated in CI via Testcontainers
@@ -176,4 +207,4 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 
 ---
 
-*Last updated: Tier 2 Redis provider added; Testcontainers validation next*
+*Last updated: Tier 2/3 remaining backlog expanded with Orleans concept alignment*
