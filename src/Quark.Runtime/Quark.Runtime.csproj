@@ -8,7 +8,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Quark.Core\Quark.Core.csproj" />
     <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 </Project>

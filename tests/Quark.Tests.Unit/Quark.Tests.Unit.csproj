@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj" />
     <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj" />
