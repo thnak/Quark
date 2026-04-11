@@ -137,6 +137,9 @@
 
 ## Remaining Tier Completion Plan (Orleans Concept Aligned)
 
+> Full prioritized ticket breakdown with acceptance criteria and dependency graph: **[docs/backlog.md](backlog.md)**
+
+
 ### Tier 2 — Production Core (M4–M5)
 - [ ] **Retry/timeout policy model** aligned to Orleans reliability expectations for grain calls and client calls
 - [ ] **Observability baseline**: metrics + distributed tracing + structured logging hooks on runtime/client pipeline
