@@ -26,7 +26,7 @@
 | `Quark.Server` | Server hosting entry-point | ⏳ M3 Planned |
 | `Quark.CodeGenerator` | Roslyn source generators: grain proxies + serializers + activators | ✅ M2 Done |
 | `Quark.Analyzers` | AOT-safety Roslyn analyzers (QRK0001-QRK0003) | ✅ M2 Done (scaffold) |
-| `Quark.Testing` | Multi-silo in-process test harness | ⏳ M5 Planned |
+| `Quark.Testing` | Multi-silo in-process test harness | 🔄 M5 In Progress |
 
 ---
 
@@ -87,7 +87,7 @@
 - [x] `IPersistentGrain<TState>` mixin on `Grain` base
 
 ### ⏳ Milestone 5 — Test Kit & Distributed Validation
-- [ ] `Quark.Testing` full implementation: `TestCluster`, `TestSilo`, `TestClient`
+- [x] `Quark.Testing` core harness baseline: `TestCluster`, `TestSilo`, `TestClient`
 - [ ] Multi-silo in-process orchestration
 - [ ] Placement validation tests (assert grain lands on expected silo)
 - [ ] Persistence round-trip tests
