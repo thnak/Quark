@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <PackageId>Quark.Server</PackageId>
+    <Description>Server meta-package that pulls in Quark.Runtime and Quark.Core for hosting silos.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj" />
+  </ItemGroup>
+</Project>
