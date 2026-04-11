@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <PackageId>Quark.Transport.Abstractions</PackageId>
+    <Description>Transport layer contracts for the Quark distributed actor framework.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

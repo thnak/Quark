@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quark.Analyzers/Quark.Analyzers.csproj" />
+    <Project Path="src/Quark.Client/Quark.Client.csproj" />
+    <Project Path="src/Quark.CodeGenerator/Quark.CodeGenerator.csproj" />
+    <Project Path="src/Quark.Core.Abstractions/Quark.Core.Abstractions.csproj" />
+    <Project Path="src/Quark.Core/Quark.Core.csproj" />
+    <Project Path="src/Quark.Runtime/Quark.Runtime.csproj" />
+    <Project Path="src/Quark.Serialization.Abstractions/Quark.Serialization.Abstractions.csproj" />
+    <Project Path="src/Quark.Serialization/Quark.Serialization.csproj" />
+    <Project Path="src/Quark.Server/Quark.Server.csproj" />
+    <Project Path="src/Quark.Testing/Quark.Testing.csproj" />
+    <Project Path="src/Quark.Transport.Abstractions/Quark.Transport.Abstractions.csproj" />
+    <Project Path="src/Quark.Transport.Tcp/Quark.Transport.Tcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
