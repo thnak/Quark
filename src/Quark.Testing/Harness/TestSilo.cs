@@ -34,9 +34,13 @@ public sealed class TestSilo : IAsyncDisposable
     /// <summary>Whether this silo has been started.</summary>
     public bool IsStarted => _host is not null;
 
+    /// <summary>Service provider for this silo host.</summary>
+    public IServiceProvider Services => _host?.Services
+        ?? throw new InvalidOperationException("TestSilo is not started.");
+
     /// <summary>Resolves a service from this silo's DI container.</summary>
     public T GetRequiredService<T>() where T : notnull =>
-        _host!.Services.GetRequiredService<T>();
+        Services.GetRequiredService<T>();
 
     /// <summary>Starts the silo.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -46,6 +50,7 @@ public sealed class TestSilo : IAsyncDisposable
 
         // Minimal silo setup — will expand in M3 to include real silo runtime.
         Options.ConfigureSiloServices?.Invoke(builder.Services);
+        Options.ConfigureClientServices?.Invoke(builder.Services);
 
         _host = builder.Build();
         await _host.StartAsync(cancellationToken).ConfigureAwait(false);

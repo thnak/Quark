@@ -13,6 +13,7 @@ public sealed class TestCluster : IAsyncDisposable
 {
     private readonly TestClusterOptions _options;
     private readonly List<TestSilo> _silos = new();
+    private TestClient? _client;
     private bool _started;
 
     private TestCluster(TestClusterOptions options)
@@ -21,21 +22,31 @@ public sealed class TestCluster : IAsyncDisposable
     }
 
     /// <summary>Builds and starts a <see cref="TestCluster"/> with default options.</summary>
-    public static Task<TestCluster> CreateAsync(
+    public static async Task<TestCluster> CreateAsync(
         Action<TestClusterOptions>? configure = null,
         CancellationToken cancellationToken = default)
     {
         TestClusterOptions options = new();
         configure?.Invoke(options);
         TestCluster cluster = new(options);
-        return cluster.StartAsync(cancellationToken).ContinueWith(_ => cluster, cancellationToken);
+        await cluster.StartAsync(cancellationToken).ConfigureAwait(false);
+        return cluster;
     }
 
     /// <summary>All silos currently in the cluster.</summary>
     public IReadOnlyList<TestSilo> Silos => _silos;
 
     /// <summary>Gets the primary silo (first one started).</summary>
-    public TestSilo PrimarySilo => _silos[0];
+    public TestSilo PrimarySilo => _silos.Count > 0
+        ? _silos[0]
+        : throw new InvalidOperationException("TestCluster has no started silos.");
+
+    /// <summary>
+    /// Client facade for invoking grains in this cluster.
+    /// Mirrors Orleans testing concept where TestCluster exposes client-side grain access.
+    /// </summary>
+    public TestClient Client => _client
+        ?? throw new InvalidOperationException("TestCluster is not started.");
 
     /// <summary>
     /// Starts all configured silos.
@@ -55,12 +66,22 @@ public sealed class TestCluster : IAsyncDisposable
             _silos.Add(silo);
         }
 
+        _client = new TestClient(PrimarySilo.Services);
+        await _client.ConnectAsync().ConfigureAwait(false);
+
         _started = true;
     }
 
     /// <summary>Stops all silos and releases resources.</summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        if (_client is not null)
+        {
+            await _client.CloseAsync().ConfigureAwait(false);
+            await _client.DisposeAsync().ConfigureAwait(false);
+            _client = null;
+        }
+
         foreach (TestSilo silo in _silos)
             await silo.StopAsync(cancellationToken).ConfigureAwait(false);
         _silos.Clear();
