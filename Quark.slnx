@@ -5,6 +5,8 @@
     <Project Path="src/Quark.CodeGenerator/Quark.CodeGenerator.csproj" />
     <Project Path="src/Quark.Core.Abstractions/Quark.Core.Abstractions.csproj" />
     <Project Path="src/Quark.Core/Quark.Core.csproj" />
+    <Project Path="src/Quark.Persistence.Abstractions/Quark.Persistence.Abstractions.csproj" />
+    <Project Path="src/Quark.Persistence.InMemory/Quark.Persistence.InMemory.csproj" />
     <Project Path="src/Quark.Runtime/Quark.Runtime.csproj" />
     <Project Path="src/Quark.Serialization.Abstractions/Quark.Serialization.Abstractions.csproj" />
     <Project Path="src/Quark.Serialization/Quark.Serialization.csproj" />
@@ -15,5 +17,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj" />
+    <Project Path="tests/Quark.Tests.CodeGenerator/Quark.Tests.CodeGenerator.csproj" />
+    <Project Path="tests/Quark.Tests.Integration/Quark.Tests.Integration.csproj" />
   </Folder>
 </Solution>

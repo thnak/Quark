@@ -164,6 +164,15 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine($"        global::System.Type expectedType,");
         sb.AppendLine($"        {m.FqTypeName} value)");
         sb.AppendLine("    {");
+        if (!m.IsValueType)
+        {
+            sb.AppendLine("        if (value is null)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            writer.WriteFieldHeader(fieldId, global::Quark.Serialization.Abstractions.WireType.Extended);");
+            sb.AppendLine("            writer.WriteByte((byte)global::Quark.Serialization.Abstractions.ExtendedWireType.Null);");
+            sb.AppendLine("            return;");
+            sb.AppendLine("        }");
+        }
         sb.AppendLine("        writer.WriteFieldHeader(fieldId, global::Quark.Serialization.Abstractions.WireType.TagDelimited);");
         foreach (MemberModel member in m.Members)
         {
@@ -178,6 +187,13 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine($"        global::Quark.Serialization.Abstractions.CodecReader reader,");
         sb.AppendLine($"        global::Quark.Serialization.Abstractions.Field field)");
         sb.AppendLine("    {");
+        if (!m.IsValueType)
+        {
+            sb.AppendLine("        if (field.WireType == global::Quark.Serialization.Abstractions.WireType.Extended)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            return default!;");
+            sb.AppendLine("        }");
+        }
         sb.AppendLine($"        var result = new {m.FqTypeName}();");
         sb.AppendLine("        global::Quark.Serialization.Abstractions.Field f;");
         sb.AppendLine("        while (!(f = reader.ReadFieldHeader()).IsEndObject)");
@@ -210,7 +226,16 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine("                reader.ReadFixed64(); break;");
         sb.AppendLine("            case global::Quark.Serialization.Abstractions.WireType.LengthPrefixed:");
         sb.AppendLine("                reader.ReadBytes(); break;");
-        sb.AppendLine("            // TagDelimited/EndTagDelimited: no extra bytes to skip at this level.");
+        sb.AppendLine("            case global::Quark.Serialization.Abstractions.WireType.TagDelimited:");
+        sb.AppendLine("                global::Quark.Serialization.Abstractions.Field nested;");
+        sb.AppendLine("                while (!(nested = reader.ReadFieldHeader()).IsEndObject)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    SkipField(reader, nested);");
+        sb.AppendLine("                }");
+        sb.AppendLine("                break;");
+        sb.AppendLine("            case global::Quark.Serialization.Abstractions.WireType.Extended:");
+        sb.AppendLine("            case global::Quark.Serialization.Abstractions.WireType.EndTagDelimited:");
+        sb.AppendLine("                break;");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
@@ -221,31 +246,31 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine($"internal sealed class {m.TypeName}Copier");
         sb.AppendLine($"    : global::Quark.Serialization.Abstractions.IDeepCopier<{m.FqTypeName}>");
         sb.AppendLine("{");
-
-        if (m.IsValueType)
+        sb.AppendLine("    private readonly global::Quark.Serialization.Abstractions.ICopierProvider _copiers;");
+        sb.AppendLine();
+        sb.AppendLine($"    public {m.TypeName}Copier(global::Quark.Serialization.Abstractions.ICopierProvider copiers)");
+        sb.AppendLine("        => _copiers = copiers;");
+        sb.AppendLine();
+        sb.AppendLine($"    public {m.FqTypeName} DeepCopy({m.FqTypeName} input,");
+        sb.AppendLine($"        global::Quark.Serialization.Abstractions.CopyContext context)");
+        sb.AppendLine("    {");
+        if (!m.IsValueType)
         {
-            // Value types can be copied by value.
-            sb.AppendLine($"    public {m.FqTypeName} DeepCopy({m.FqTypeName} input,");
-            sb.AppendLine($"        global::Quark.Serialization.Abstractions.CopyContext context) => input;");
-        }
-        else
-        {
-            sb.AppendLine($"    public {m.FqTypeName} DeepCopy({m.FqTypeName} input,");
-            sb.AppendLine($"        global::Quark.Serialization.Abstractions.CopyContext context)");
-            sb.AppendLine("    {");
-            sb.AppendLine($"        if (input is null) return default!;");
+            sb.AppendLine("        if (input is null) return default!;");
             sb.AppendLine($"        var existing = context.TryGetCopy<{m.FqTypeName}>(input);");
-            sb.AppendLine($"        if (existing is not null) return existing;");
-            sb.AppendLine($"        var copy = new {m.FqTypeName}();");
-            sb.AppendLine("        context.RecordCopy(input, copy);");
-            foreach (MemberModel member in m.Members)
-            {
-                sb.AppendLine($"        copy.{member.Name} = input.{member.Name};");
-            }
-            sb.AppendLine("        return copy;");
-            sb.AppendLine("    }");
+            sb.AppendLine("        if (existing is not null) return existing;");
         }
-
+        sb.AppendLine($"        var copy = new {m.FqTypeName}();");
+        if (!m.IsValueType)
+        {
+            sb.AppendLine("        context.RecordCopy(input, copy);");
+        }
+        foreach (MemberModel member in m.Members)
+        {
+            sb.AppendLine($"        copy.{member.Name} = _copiers.GetRequiredCopier<{member.FqTypeName}>().DeepCopy(input.{member.Name}, context);");
+        }
+        sb.AppendLine("        return copy;");
+        sb.AppendLine("    }");
         sb.AppendLine("}");
 
         return sb.ToString();

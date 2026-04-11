@@ -7,6 +7,17 @@ namespace Quark.Core.Abstractions;
 public interface IGrainCallInvoker
 {
     /// <summary>
+    /// Invokes a grain method and returns the raw boxed result.
+    /// This is used by the runtime dispatcher for network-routed calls where the result type is
+    /// not known at compile time.
+    /// </summary>
+    Task<object?> InvokeAsync(
+        GrainId grainId,
+        uint methodId,
+        object?[]? arguments = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Invokes a grain method that returns <see cref="Task{TResult}"/>.
     /// </summary>
     /// <typeparam name="TResult">The return type of the grain method.</typeparam>

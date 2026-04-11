@@ -130,6 +130,7 @@ public static class SerializationServiceCollectionExtensions
         services.TryAddSingleton<IDeepCopier<TimeSpan>>(new ImmutableCopier<TimeSpan>());
 
         services.TryAddSingleton<IFieldCodec<byte[]?>, ByteArrayCodec>();
+        services.TryAddSingleton<IDeepCopier<byte[]?>, ByteArrayCopier>();
 
         return services;
     }

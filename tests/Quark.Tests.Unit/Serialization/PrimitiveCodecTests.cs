@@ -192,4 +192,20 @@ public sealed class PrimitiveCodecTests
         byte[]? result = codec.ReadValue(reader, field);
         Assert.Equal(original, result);
     }
+
+    [Fact]
+    public void ByteArray_Copier_Clones_Array()
+    {
+        IDeepCopier<byte[]?> copier = new ServiceCollection()
+            .AddQuarkSerialization()
+            .BuildServiceProvider()
+            .GetRequiredService<IDeepCopier<byte[]?>>();
+
+        byte[] original = [1, 2, 3, 4, 5];
+        byte[]? copy = copier.DeepCopy(original, new CopyContext());
+
+        Assert.NotNull(copy);
+        Assert.NotSame(original, copy);
+        Assert.Equal(original, copy);
+    }
 }

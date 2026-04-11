@@ -44,7 +44,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc/>
-    public async Task<TResult> InvokeAsync<TResult>(
+    public async Task<object?> InvokeAsync(
         GrainId grainId,
         uint methodId,
         object?[]? arguments = null,
@@ -52,7 +52,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     {
         var activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
 
-        var tcs = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await activation.PostAsync(async () =>
         {
@@ -60,7 +60,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             {
                 var invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
                 var result = await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
-                tcs.TrySetResult(result is TResult r ? r : (TResult)result!);
+                tcs.TrySetResult(result);
             }
             catch (Exception ex)
             {
@@ -72,31 +72,24 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc/>
+    public async Task<TResult> InvokeAsync<TResult>(
+        GrainId grainId,
+        uint methodId,
+        object?[]? arguments = null,
+        CancellationToken cancellationToken = default)
+    {
+        object? result = await InvokeAsync(grainId, methodId, arguments, cancellationToken).ConfigureAwait(false);
+        return result is TResult typed ? typed : (TResult)result!;
+    }
+
+    /// <inheritdoc/>
     public async Task InvokeVoidAsync(
         GrainId grainId,
         uint methodId,
         object?[]? arguments = null,
         CancellationToken cancellationToken = default)
     {
-        var activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
-
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        await activation.PostAsync(async () =>
-        {
-            try
-            {
-                var invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
-                await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
-                tcs.TrySetResult(true);
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-        }).ConfigureAwait(false);
-
-        await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _ = await InvokeAsync(grainId, methodId, arguments, cancellationToken).ConfigureAwait(false);
     }
 
     // -----------------------------------------------------------------------

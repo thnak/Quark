@@ -21,7 +21,7 @@
 | `Quark.Runtime` | Silo-side runtime: lifecycle, directory, activator, scheduling | ✅ M3 Core Done |
 | `Quark.Client` | Client-side runtime: connection, grain reference resolution | ✅ M3 Core Done |
 | `Quark.Server` | Server hosting entry-point | ⏳ M3 Planned |
-| `Quark.CodeGenerator` | Roslyn source generators: grain proxies + serializers + activators | 🔄 M2 In Progress |
+| `Quark.CodeGenerator` | Roslyn source generators: grain proxies + serializers + activators | ✅ M2 Done |
 | `Quark.Analyzers` | AOT-safety Roslyn analyzers (QRK0001-QRK0003) | ✅ M2 Done (scaffold) |
 | `Quark.Testing` | Multi-silo in-process test harness | ⏳ M5 Planned |
 
@@ -46,13 +46,13 @@
 ### 🔄 Milestone 2 — AOT-Safe Tooling & Codegen
 - [x] `Quark.Analyzers` scaffold: QRK0001 (dynamic type), QRK0002 (Assembly.Load), QRK0003 (ISerializable)
 - [x] `Quark.CodeGenerator` scaffold: `SerializerGenerator`, `GrainProxyGenerator` stubs
-- [ ] **`SerializerGenerator`** — real codegen: inspect `[Id]` members, emit `IFieldCodec<T>` + `IDeepCopier<T>`
-- [ ] **`GrainProxyGenerator`** — real codegen: emit grain proxy classes per `IGrain` interface
-- [ ] Activator generator (emits `IGrainActivatorFactory` registrations)
-- [ ] CI gate: `dotnet publish --aot` smoke build + trim analyzer warnings
-- [ ] `Quark.Tests.CodeGenerator` — Roslyn compilation-based generator tests
+- [x] **`SerializerGenerator`** — real codegen: inspect `[Id]` members, emit `IFieldCodec<T>` + `IDeepCopier<T>`
+- [x] **`GrainProxyGenerator`** — real codegen: emit grain proxy classes per `IGrain` interface
+- [x] Activator generator (emits `IGrainActivatorFactory` registrations)
+- [x] CI gate: `dotnet publish --aot` smoke build + trim analyzer warnings
+- [x] `Quark.Tests.CodeGenerator` — Roslyn compilation-based generator tests
 
-### 🔄 Milestone 3 — Runtime MVP (Tier 1)
+### ✅ Milestone 3 — Runtime MVP (Tier 1)
 - [x] `SiloAddress` — value type `(Host, Port)` with `ToString` and parse
 - [x] `LifecycleSubject` — concrete ordered `ILifecycleSubject` (ascending start / descending stop)
 - [x] `IGrainTypeRegistry` + `GrainTypeRegistry` — maps `GrainType` key → CLR `Type`
@@ -72,16 +72,16 @@
 - [x] **`LocalClusterClient`** — `IClusterClient` for in-process (cohosted) scenario
 - [x] **`ClientServiceCollectionExtensions`** — `AddLocalClusterClient()`, `AddGrainProxy<TInterface,TProxy>()`
 - [x] **End-to-end integration tests** — 8 tests: grain activate, increment, reset, same-key identity, different-key isolation, 20 concurrent serialised calls, void methods
-- [ ] Message pump / dispatcher — receive `MessageEnvelope`, route to grain context (network path — M4)
-- [ ] Placement engine — `RandomPlacement` + `PreferLocalPlacement` strategies (M4)
-- [ ] `Quark.Tests.Integration` project (separate from unit tests — M4)
+- [x] Message pump / dispatcher — receive `MessageEnvelope`, route to grain context (network path — M4)
+- [x] Placement engine — `RandomPlacement` + `PreferLocalPlacement` strategies (M4)
+- [x] `Quark.Tests.Integration` project (separate from unit tests — M4)
 
 ### ⏳ Milestone 4 — Persistence & Provider Model (Tier 2)
-- [ ] `Quark.Persistence.Abstractions`: `IStorage<TState>`, `IGrainStorage`, `StorageOptions`
-- [ ] `Quark.Persistence.InMemory`: in-memory storage provider
+- [x] `Quark.Persistence.Abstractions`: `IStorage<TState>`, `IGrainStorage`, `StorageOptions`
+- [x] `Quark.Persistence.InMemory`: in-memory storage provider
 - [ ] `Quark.Persistence.Redis` (or chosen durable backend): real persistence
 - [ ] Testcontainers matrix for integration tests
-- [ ] `IPersistentGrain<TState>` mixin on `Grain` base
+- [x] `IPersistentGrain<TState>` mixin on `Grain` base
 
 ### ⏳ Milestone 5 — Test Kit & Distributed Validation
 - [ ] `Quark.Testing` full implementation: `TestCluster`, `TestSilo`, `TestClient`
@@ -151,8 +151,14 @@ dotnet test tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj
 # Run all tests
 dotnet test Quark.slnx
 
-# AOT smoke build (add to CI)
-dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -r linux-x64 --aot
+# Run integration-tier tests
+dotnet test tests/Quark.Tests.Integration/Quark.Tests.Integration.csproj
+
+# AOT smoke build (Windows/local)
+dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r win-x64 /p:PublishAot=true
+
+# AOT smoke build (Linux CI runner)
+dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r linux-x64 /p:PublishAot=true
 ```
 
 ---
@@ -167,4 +173,4 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -r linux-x64 --aot
 
 ---
 
-*Last updated: Milestone 3 in progress*
+*Last updated: Tier 2 persistence foundations added; durable provider and CI matrix next*

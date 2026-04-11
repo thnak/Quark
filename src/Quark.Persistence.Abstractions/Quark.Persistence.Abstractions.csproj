@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <PackageId>Quark.Persistence.Abstractions</PackageId>
+    <Description>Persistence contracts and persistent grain abstractions for Quark.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

@@ -10,3 +10,15 @@ At minimum, contributors should follow these rules when adding new runtime featu
 4. Prefer `[UnsafeAccessor]` over `DynamicMethod` for private member access on .NET 8+.
 5. Avoid introducing new `ISerializable`-based patterns.
 6. Prefer explicit provider registration over trim-unsafe assembly scanning.
+
+## Smoke-build gate
+
+Use an OS-matching RID when validating Native AOT publishes. Cross-OS native compilation is not supported.
+
+```bash
+# Windows local smoke check
+dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r win-x64 /p:PublishAot=true
+
+# Linux CI smoke check (run on a Linux runner)
+dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r linux-x64 /p:PublishAot=true
+```

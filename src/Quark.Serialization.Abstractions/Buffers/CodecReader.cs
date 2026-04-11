@@ -125,6 +125,18 @@ public sealed class CodecReader
         uint tag = ReadVarUInt32();
         uint fieldId = tag >> 3;
         var wireType = (WireType)(tag & 0x07);
-        return new Field { FieldId = fieldId, WireType = wireType };
+
+        ExtendedWireType extendedWireType = default;
+        if (wireType == WireType.Extended)
+        {
+            extendedWireType = (ExtendedWireType)ReadByte();
+        }
+
+        return new Field
+        {
+            FieldId = fieldId,
+            WireType = wireType,
+            ExtendedWireType = extendedWireType
+        };
     }
 }

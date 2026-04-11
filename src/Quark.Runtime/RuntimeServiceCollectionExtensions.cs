@@ -39,6 +39,10 @@ public static class RuntimeServiceCollectionExtensions
         // Grain activator.
         services.TryAddSingleton<IGrainActivator, DefaultGrainActivator>();
 
+        // Placement services — strategy resolution and target-silo selection.
+        services.TryAddSingleton<IPlacementStrategyResolver, AttributePlacementStrategyResolver>();
+        services.TryAddSingleton<IPlacementDirector, PlacementDirector>();
+
         // Activation table — live activations on this silo.
         services.TryAddSingleton<GrainActivationTable>();
 
@@ -50,6 +54,12 @@ public static class RuntimeServiceCollectionExtensions
         // Local in-process call invoker.
         services.TryAddSingleton<LocalGrainCallInvoker>();
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
+
+        // Message dispatch / pump services for transport-routed grain calls.
+        services.TryAddSingleton<MessageSerializer>();
+        services.TryAddSingleton<GrainMessageSerializer>();
+        services.TryAddSingleton<IMessageDispatcher, MessageDispatcher>();
+        services.TryAddSingleton<SiloMessagePump>();
 
         // Hosted service drives the silo lifecycle.
         services.AddHostedService<SiloHostedService>();
@@ -74,6 +84,19 @@ public static class RuntimeServiceCollectionExtensions
         services.AddSingleton<IGrainRegistration>(
             new GrainRegistration(new GrainType(typeof(TGrain).Name), typeof(TGrain)));
 
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a generated or hand-written <see cref="IGrainActivatorFactory"/>.
+    /// This provides an AOT-safe activation path which avoids reflection-based construction.
+    /// </summary>
+    public static IServiceCollection AddGrainActivatorFactory<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TFactory>(
+        this IServiceCollection services)
+        where TFactory : class, IGrainActivatorFactory
+    {
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IGrainActivatorFactory, TFactory>());
         return services;
     }
 

@@ -92,4 +92,21 @@ public sealed class BinaryEncodingTests
         Assert.Equal(3u, field.FieldId);
         Assert.Equal(WireType.LengthPrefixed, field.WireType);
     }
+
+    [Fact]
+    public void ExtendedFieldHeader_ReadsExtendedWireType_AndAdvancesPastMarker()
+    {
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        writer.WriteFieldHeader(7, WireType.Extended);
+        writer.WriteByte((byte)ExtendedWireType.Null);
+        writer.WriteByte(0x42);
+
+        CodecReader reader = new(buf.WrittenMemory);
+        Field field = reader.ReadFieldHeader();
+
+        Assert.Equal(7u, field.FieldId);
+        Assert.Equal(WireType.Extended, field.WireType);
+        Assert.Equal(ExtendedWireType.Null, field.ExtendedWireType);
+        Assert.Equal(0x42, reader.ReadByte());
+    }
 }

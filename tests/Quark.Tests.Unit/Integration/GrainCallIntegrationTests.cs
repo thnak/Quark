@@ -189,6 +189,8 @@ public sealed class GrainCallFixture : IAsyncDisposable
     {
         private IGrainCallInvoker? _inner;
         public void SetInvoker(IGrainCallInvoker invoker) => _inner = invoker;
+        public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
+            => _inner!.InvokeAsync(id, method, args, ct);
         public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
             => _inner!.InvokeAsync<TResult>(id, method, args, ct);
         public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)

@@ -44,6 +44,12 @@ public sealed class SiloHostedService : IHostedService
         // Apply deferred method-invoker registrations (AddGrainMethodInvoker<TGrain,TInvoker> calls).
         ApplyMethodInvokerRegistrations();
 
+        var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
+        if (messagePump is not null)
+        {
+            await messagePump.StartAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await _lifecycle.StartAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Quark silo '{SiloName}' is active.", _options.SiloName);
@@ -53,6 +59,12 @@ public sealed class SiloHostedService : IHostedService
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Stopping Quark silo '{SiloName}'...", _options.SiloName);
+
+        var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
+        if (messagePump is not null)
+        {
+            await messagePump.StopAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         await _lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
 

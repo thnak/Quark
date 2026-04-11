@@ -3,7 +3,6 @@
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <PackageId>Quark.Testing</PackageId>
     <Description>Test kit providing multi-silo harnesses and helpers for testing Quark applications.</Description>
-    <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,6 +10,5 @@
     <ProjectReference Include="..\Quark.Client\Quark.Client.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="xunit" />
   </ItemGroup>
 </Project>
