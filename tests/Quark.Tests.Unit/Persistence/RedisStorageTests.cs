@@ -24,7 +24,7 @@ public sealed class RedisStorageTests
         services.AddSingleton<IRedisStorageConnection>(connection);
         services.AddRedisGrainStorage(options => options.KeyPrefix = "quark-tests");
 
-        using ServiceProvider provider = services.BuildServiceProvider();
+        await using ServiceProvider provider = services.BuildServiceProvider();
         IStorage<CounterState> storage = provider.GetRequiredService<IStorage<CounterState>>();
 
         GrainId grainId = new(new GrainType("CounterGrain"), "redis-1");
