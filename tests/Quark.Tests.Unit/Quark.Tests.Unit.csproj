@@ -6,20 +6,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Quark.Client\Quark.Client.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Core\Quark.Core.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Persistence.InMemory\Quark.Persistence.InMemory.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Persistence.Redis\Quark.Persistence.Redis.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="xunit" />
+    <ProjectReference Include="..\..\src\Quark.Client\Quark.Client.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Core\Quark.Core.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Persistence.InMemory\Quark.Persistence.InMemory.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Persistence.Redis\Quark.Persistence.Redis.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting"/>
+    <PackageReference Include="xunit"/>
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>

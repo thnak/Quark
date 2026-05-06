@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Codecs;
 using Quark.Serialization.Copiers;
@@ -10,13 +9,13 @@ using Quark.Serialization.Providers;
 namespace Quark.Serialization;
 
 /// <summary>
-/// Extension methods for registering Quark serialization into an <see cref="IServiceCollection"/>.
+///     Extension methods for registering Quark serialization into an <see cref="IServiceCollection" />.
 /// </summary>
 public static class SerializationServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds the Quark serialization infrastructure with all built-in primitive codecs.
-    /// Call this before registering user-defined codecs so the primitives are always available.
+    ///     Adds the Quark serialization infrastructure with all built-in primitive codecs.
+    ///     Call this before registering user-defined codecs so the primitives are always available.
     /// </summary>
     public static IServiceCollection AddQuarkSerialization(this IServiceCollection services)
     {
@@ -33,10 +32,12 @@ public static class SerializationServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a custom <see cref="IFieldCodec{T}"/> implementation.
-    /// Use this for hand-written codecs or for types that cannot use the source generator.
+    ///     Registers a custom <see cref="IFieldCodec{T}" /> implementation.
+    ///     Use this for hand-written codecs or for types that cannot use the source generator.
     /// </summary>
-    public static IServiceCollection AddCodec<T, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCodec>(this IServiceCollection services)
+    public static IServiceCollection AddCodec<T,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCodec>(
+        this IServiceCollection services)
         where TCodec : class, IFieldCodec<T>
     {
         services.AddSingleton<IFieldCodec<T>, TCodec>();
@@ -44,9 +45,11 @@ public static class SerializationServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a custom <see cref="IDeepCopier{T}"/> implementation.
+    ///     Registers a custom <see cref="IDeepCopier{T}" /> implementation.
     /// </summary>
-    public static IServiceCollection AddCopier<T, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCopier>(this IServiceCollection services)
+    public static IServiceCollection AddCopier<T,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCopier>(
+        this IServiceCollection services)
         where TCopier : class, IDeepCopier<T>
     {
         services.AddSingleton<IDeepCopier<T>, TCopier>();
@@ -54,7 +57,9 @@ public static class SerializationServiceCollectionExtensions
     }
 
     /// <summary>Registers a generalized codec that handles multiple types.</summary>
-    public static IServiceCollection AddGeneralizedCodec<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCodec>(this IServiceCollection services)
+    public static IServiceCollection AddGeneralizedCodec<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCodec>(
+        this IServiceCollection services)
         where TCodec : class, IGeneralizedCodec
     {
         services.AddSingleton<IGeneralizedCodec, TCodec>();
@@ -62,7 +67,9 @@ public static class SerializationServiceCollectionExtensions
     }
 
     /// <summary>Registers a generalized copier that handles multiple types.</summary>
-    public static IServiceCollection AddGeneralizedCopier<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCopier>(this IServiceCollection services)
+    public static IServiceCollection AddGeneralizedCopier<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCopier>(
+        this IServiceCollection services)
         where TCopier : class, IGeneralizedCopier
     {
         services.AddSingleton<IGeneralizedCopier, TCopier>();

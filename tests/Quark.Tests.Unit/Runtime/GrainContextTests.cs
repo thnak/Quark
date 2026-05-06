@@ -12,13 +12,15 @@ public sealed class GrainContextTests
     private static readonly IGrainFactory NullFactory = new NullGrainFactory();
     private static readonly IServiceProvider NullServices = new NullServiceProvider();
 
-    private static GrainContext MakeContext(GrainId id) =>
-        new GrainContext(id, NullFactory, NullServices);
+    private static GrainContext MakeContext(GrainId id)
+    {
+        return new GrainContext(id, NullFactory, NullServices);
+    }
 
     [Fact]
     public async Task ActivateAsync_SetsStatusActive()
     {
-        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
+        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -29,7 +31,7 @@ public sealed class GrainContextTests
     [Fact]
     public async Task ActivateAsync_CallsOnActivate()
     {
-        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
+        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -40,7 +42,7 @@ public sealed class GrainContextTests
     [Fact]
     public async Task DeactivateAsync_SetsStatusInactive()
     {
-        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
+        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -53,7 +55,7 @@ public sealed class GrainContextTests
     [Fact]
     public async Task Deactivate_Method_TriggersStop()
     {
-        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
+        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         var grain = new TestGrain();
 
         await ctx.ActivateAsync(grain);
@@ -67,7 +69,7 @@ public sealed class GrainContextTests
     [Fact]
     public void GrainFactory_ExposedOnContext()
     {
-        var ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
+        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
         Assert.Same(NullFactory, ctx.GrainFactory);
     }
 
@@ -93,18 +95,52 @@ public sealed class GrainContextTests
 
     private sealed class NullGrainFactory : IGrainFactory
     {
-        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, string key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, Guid key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, long key) => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, string key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, Guid key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, long key)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     private sealed class NullServiceProvider : IServiceProvider
     {
-        public object? GetService(Type serviceType) => null;
+        public object? GetService(Type serviceType)
+        {
+            return null;
+        }
     }
 }

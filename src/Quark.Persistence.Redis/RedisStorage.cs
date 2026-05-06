@@ -1,11 +1,10 @@
-﻿using Quark.Core.Abstractions;
-using Quark.Core.Abstractions.Identity;
+﻿using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 
 namespace Quark.Persistence.Redis;
 
 /// <summary>
-/// Typed facade over <see cref="RedisGrainStorage"/> for a single state type.
+///     Typed facade over <see cref="RedisGrainStorage" /> for a single state type.
 /// </summary>
 public sealed class RedisStorage<TState> : IStorage<TState>
     where TState : new()
@@ -18,7 +17,7 @@ public sealed class RedisStorage<TState> : IStorage<TState>
         _storage = storage;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<TState> ReadAsync(
         GrainId grainId,
         string? stateName = null,
@@ -34,7 +33,7 @@ public sealed class RedisStorage<TState> : IStorage<TState>
         return state.State;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task WriteAsync(
         GrainId grainId,
         TState state,
@@ -49,7 +48,7 @@ public sealed class RedisStorage<TState> : IStorage<TState>
             cancellationToken);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task ClearAsync(
         GrainId grainId,
         string? stateName = null,

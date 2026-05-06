@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Quark.Core.Hosting;
 
 /// <summary>
-/// Builder interface for configuring a Quark silo.
+///     Builder interface for configuring a Quark silo.
 /// </summary>
 public interface ISiloBuilder
 {
@@ -11,7 +11,7 @@ public interface ISiloBuilder
     IServiceCollection Services { get; }
 
     /// <summary>
-    /// Configures silo options.
+    ///     Configures silo options.
     /// </summary>
     ISiloBuilder Configure<TOptions>(Action<TOptions> configure) where TOptions : class, new();
 }

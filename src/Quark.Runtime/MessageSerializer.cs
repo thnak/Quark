@@ -1,18 +1,17 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
 
 /// <summary>
-/// Encodes and decodes wire-level <see cref="MessageEnvelope"/> instances.
+///     Encodes and decodes wire-level <see cref="MessageEnvelope" /> instances.
 /// </summary>
 public sealed class MessageSerializer
 {
-    /// <summary>Serializes <paramref name="envelope"/> into a byte array.</summary>
+    /// <summary>Serializes <paramref name="envelope" /> into a byte array.</summary>
     public byte[] Serialize(MessageEnvelope envelope)
     {
         ArgumentNullException.ThrowIfNull(envelope);
@@ -24,7 +23,7 @@ public sealed class MessageSerializer
         writer.WriteByte((byte)envelope.MessageType);
 
         IReadOnlyDictionary<string, string> headers = envelope.Headers?.All
-            ?? (IReadOnlyDictionary<string, string>)new Dictionary<string, string>();
+                                                      ?? new Dictionary<string, string>();
         writer.WriteVarUInt32((uint)headers.Count);
         foreach ((string key, string value) in headers)
         {
@@ -36,12 +35,12 @@ public sealed class MessageSerializer
         return buffer.WrittenMemory.ToArray();
     }
 
-    /// <summary>Deserializes a <see cref="MessageEnvelope"/> from <paramref name="buffer"/>.</summary>
+    /// <summary>Deserializes a <see cref="MessageEnvelope" /> from <paramref name="buffer" />.</summary>
     public MessageEnvelope Deserialize(ReadOnlyMemory<byte> buffer)
     {
         CodecReader reader = new(buffer);
         long correlationId = reader.ReadInt64();
-        MessageType messageType = (MessageType)reader.ReadByte();
+        var messageType = (MessageType)reader.ReadByte();
 
         uint headerCount = reader.ReadVarUInt32();
         MessageHeaders? headers = headerCount > 0 ? new MessageHeaders() : null;
@@ -63,7 +62,8 @@ public sealed class MessageSerializer
     }
 
     /// <summary>Writes a length-prefixed envelope to a pipe.</summary>
-    public async ValueTask WriteAsync(PipeWriter writer, MessageEnvelope envelope, CancellationToken cancellationToken = default)
+    public async ValueTask WriteAsync(PipeWriter writer, MessageEnvelope envelope,
+        CancellationToken cancellationToken = default)
     {
         byte[] bytes = Serialize(envelope);
         Span<byte> prefix = writer.GetSpan(sizeof(int));
@@ -104,14 +104,18 @@ public sealed class MessageSerializer
         envelope = null;
 
         if (buffer.Length < sizeof(int))
+        {
             return false;
+        }
 
         Span<byte> lengthBytes = stackalloc byte[sizeof(int)];
         buffer.Slice(0, sizeof(int)).CopyTo(lengthBytes);
         int payloadLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBytes);
 
         if (buffer.Length < sizeof(int) + payloadLength)
+        {
             return false;
+        }
 
         ReadOnlySequence<byte> payload = buffer.Slice(sizeof(int), payloadLength);
         envelope = Deserialize(payload.ToArray());

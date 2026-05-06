@@ -4,7 +4,7 @@ using Xunit;
 namespace Quark.Tests.Unit.Transport;
 
 /// <summary>
-/// Tests for transport-layer abstractions and message envelope encoding.
+///     Tests for transport-layer abstractions and message envelope encoding.
 /// </summary>
 public sealed class MessageEnvelopeTests
 {
@@ -16,7 +16,7 @@ public sealed class MessageEnvelopeTests
         {
             CorrelationId = 42,
             MessageType = MessageType.Request,
-            Payload = payload,
+            Payload = payload
         };
 
         Assert.Equal(42, envelope.CorrelationId);
@@ -48,11 +48,12 @@ public sealed class MessageEnvelopeTests
     [Fact]
     public void MessageType_AllValuesDistinct()
     {
-        byte[] values = [
+        byte[] values =
+        [
             (byte)MessageType.Request,
             (byte)MessageType.Response,
             (byte)MessageType.OneWayRequest,
-            (byte)MessageType.System,
+            (byte)MessageType.System
         ];
         Assert.Equal(values.Length, values.Distinct().Count());
     }

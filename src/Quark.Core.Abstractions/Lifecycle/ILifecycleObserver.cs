@@ -1,7 +1,7 @@
 namespace Quark.Core.Abstractions.Lifecycle;
 
 /// <summary>
-/// An observer that participates in a lifecycle at a specific stage.
+///     An observer that participates in a lifecycle at a specific stage.
 /// </summary>
 public interface ILifecycleObserver
 {

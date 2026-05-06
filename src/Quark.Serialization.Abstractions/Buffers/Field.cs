@@ -1,7 +1,7 @@
 namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
-/// Describes a single field header read from the wire.
+///     Describes a single field header read from the wire.
 /// </summary>
 public readonly struct Field
 {
@@ -12,7 +12,7 @@ public readonly struct Field
     public WireType WireType { get; init; }
 
     /// <summary>
-    /// For <see cref="WireType.Extended"/> fields: the sub-type of the extension.
+    ///     For <see cref="WireType.Extended" /> fields: the sub-type of the extension.
     /// </summary>
     public ExtendedWireType ExtendedWireType { get; init; }
 

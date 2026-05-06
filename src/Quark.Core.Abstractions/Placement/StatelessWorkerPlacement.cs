@@ -1,8 +1,8 @@
 ﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
-/// Stateless-worker placement: multiple activations of the same grain may exist
-/// concurrently on the same silo. The runtime load-balances across them.
+///     Stateless-worker placement: multiple activations of the same grain may exist
+///     concurrently on the same silo. The runtime load-balances across them.
 /// </summary>
 public sealed class StatelessWorkerPlacement : PlacementStrategy
 {
@@ -13,8 +13,8 @@ public sealed class StatelessWorkerPlacement : PlacementStrategy
     }
 
     /// <summary>
-    /// Maximum number of concurrent local activations.
-    /// -1 means the runtime chooses automatically (typically number of CPU cores).
+    ///     Maximum number of concurrent local activations.
+    ///     -1 means the runtime chooses automatically (typically number of CPU cores).
     /// </summary>
     public int MaxLocalWorkers { get; }
 }

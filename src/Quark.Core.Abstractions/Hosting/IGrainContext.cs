@@ -5,8 +5,8 @@ using Quark.Core.Abstractions.Lifecycle;
 namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
-/// Represents the context of a single grain activation in the runtime.
-/// Provided to grain base classes and framework components.
+///     Represents the context of a single grain activation in the runtime.
+///     Provided to grain base classes and framework components.
 /// </summary>
 public interface IGrainContext
 {
@@ -20,19 +20,19 @@ public interface IGrainContext
     GrainActivationStatus ActivationStatus { get; }
 
     /// <summary>
-    /// The grain factory scoped to this activation.
-    /// Use this inside grain code to get references to other grains.
-    /// Equivalent to Orleans' <c>GrainFactory</c> property.
+    ///     The grain factory scoped to this activation.
+    ///     Use this inside grain code to get references to other grains.
+    ///     Equivalent to Orleans' <c>GrainFactory</c> property.
     /// </summary>
     IGrainFactory GrainFactory { get; }
 
     /// <summary>
-    /// The DI service provider scoped to this activation.
+    ///     The DI service provider scoped to this activation.
     /// </summary>
     IServiceProvider ServiceProvider { get; }
 
     /// <summary>
-    /// Requests that this activation be deactivated when it becomes idle.
+    ///     Requests that this activation be deactivated when it becomes idle.
     /// </summary>
     void Deactivate(DeactivationReason reason);
 }

@@ -1,40 +1,37 @@
+using System.Collections.Immutable;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading;
 
 namespace Quark.CodeGenerator;
 
 /// <summary>
-/// Source generator that emits <c>IFieldCodec&lt;T&gt;</c> and <c>IDeepCopier&lt;T&gt;</c>
-/// implementations for every type annotated with <c>[GenerateSerializer]</c>.
-///
-/// For each serializable member (property/field tagged <c>[Id(N)]</c>) the generator:
-/// <list type="bullet">
-///   <item>Writes/reads via the codec resolved from <c>ICodecProvider</c>.</item>
-///   <item>Uses field-id switch dispatch on deserialisation; skips unknown fields.</item>
-/// </list>
+///     Source generator that emits <c>IFieldCodec&lt;T&gt;</c> and <c>IDeepCopier&lt;T&gt;</c>
+///     implementations for every type annotated with <c>[GenerateSerializer]</c>.
+///     For each serializable member (property/field tagged <c>[Id(N)]</c>) the generator:
+///     <list type="bullet">
+///         <item>Writes/reads via the codec resolved from <c>ICodecProvider</c>.</item>
+///         <item>Uses field-id switch dispatch on deserialisation; skips unknown fields.</item>
+///     </list>
 /// </summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class SerializerGenerator : IIncrementalGenerator
 {
     private const string GenerateSerializerFqn =
         "Quark.Serialization.Abstractions.GenerateSerializerAttribute";
+
     private const string IdAttributeFqn =
         "Quark.Serialization.Abstractions.IdAttribute";
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<TypeModel?> models = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 GenerateSerializerFqn,
-                predicate: static (node, _) => node is TypeDeclarationSyntax,
-                transform: ExtractModel);
+                static (node, _) => node is TypeDeclarationSyntax,
+                ExtractModel);
 
         context.RegisterSourceOutput(
             models.Where(static m => m is not null).Collect(),
@@ -50,28 +47,37 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         CancellationToken ct)
     {
         if (ctx.TargetSymbol is not INamedTypeSymbol typeSymbol)
+        {
             return null;
+        }
 
         // Skip generic types for now — future M2 work.
         if (typeSymbol.IsGenericType)
+        {
             return null;
+        }
 
-        var ns = typeSymbol.ContainingNamespace.IsGlobalNamespace
+        string ns = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : typeSymbol.ContainingNamespace.ToDisplayString();
 
         var members = new List<MemberModel>();
-        foreach (var member in typeSymbol.GetMembers())
+        foreach (ISymbol? member in typeSymbol.GetMembers())
         {
             ct.ThrowIfCancellationRequested();
-            foreach (var attr in member.GetAttributes())
+            foreach (AttributeData? attr in member.GetAttributes())
             {
                 if (attr.AttributeClass?.ToDisplayString() != IdAttributeFqn)
+                {
                     continue;
-                if (attr.ConstructorArguments.Length == 0)
-                    continue;
+                }
 
-                var idValue = attr.ConstructorArguments[0].Value;
+                if (attr.ConstructorArguments.Length == 0)
+                {
+                    continue;
+                }
+
+                object? idValue = attr.ConstructorArguments[0].Value;
                 uint id = idValue is uint u ? u : (uint)(int)idValue!;
 
                 ITypeSymbol memberType;
@@ -100,7 +106,9 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         }
 
         if (members.Count == 0)
+        {
             return null;
+        }
 
         return new TypeModel(
             ns,
@@ -147,7 +155,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
 
         // ---- IFieldCodec<T> ------------------------------------------------
 
-        sb.AppendLine($"[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
+        sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
         sb.AppendLine($"internal sealed class {m.TypeName}Codec");
         sb.AppendLine($"    : global::Quark.Serialization.Abstractions.IFieldCodec<{m.FqTypeName}>");
         sb.AppendLine("{");
@@ -158,34 +166,41 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine();
 
         // WriteField
-        sb.AppendLine($"    public void WriteField(");
-        sb.AppendLine($"        global::Quark.Serialization.Abstractions.CodecWriter writer,");
-        sb.AppendLine($"        uint fieldId,");
-        sb.AppendLine($"        global::System.Type expectedType,");
+        sb.AppendLine("    public void WriteField(");
+        sb.AppendLine("        global::Quark.Serialization.Abstractions.CodecWriter writer,");
+        sb.AppendLine("        uint fieldId,");
+        sb.AppendLine("        global::System.Type expectedType,");
         sb.AppendLine($"        {m.FqTypeName} value)");
         sb.AppendLine("    {");
         if (!m.IsValueType)
         {
             sb.AppendLine("        if (value is null)");
             sb.AppendLine("        {");
-            sb.AppendLine("            writer.WriteFieldHeader(fieldId, global::Quark.Serialization.Abstractions.WireType.Extended);");
-            sb.AppendLine("            writer.WriteByte((byte)global::Quark.Serialization.Abstractions.ExtendedWireType.Null);");
+            sb.AppendLine(
+                "            writer.WriteFieldHeader(fieldId, global::Quark.Serialization.Abstractions.WireType.Extended);");
+            sb.AppendLine(
+                "            writer.WriteByte((byte)global::Quark.Serialization.Abstractions.ExtendedWireType.Null);");
             sb.AppendLine("            return;");
             sb.AppendLine("        }");
         }
-        sb.AppendLine("        writer.WriteFieldHeader(fieldId, global::Quark.Serialization.Abstractions.WireType.TagDelimited);");
+
+        sb.AppendLine(
+            "        writer.WriteFieldHeader(fieldId, global::Quark.Serialization.Abstractions.WireType.TagDelimited);");
         foreach (MemberModel member in m.Members)
         {
-            sb.AppendLine($"        _codecs.GetRequiredCodec<{member.FqTypeName}>().WriteField(writer, {member.Id}u, typeof({member.FqTypeName}), value.{member.Name});");
+            sb.AppendLine(
+                $"        _codecs.GetRequiredCodec<{member.FqTypeName}>().WriteField(writer, {member.Id}u, typeof({member.FqTypeName}), value.{member.Name});");
         }
-        sb.AppendLine("        writer.WriteFieldHeader(0u, global::Quark.Serialization.Abstractions.WireType.EndTagDelimited);");
+
+        sb.AppendLine(
+            "        writer.WriteFieldHeader(0u, global::Quark.Serialization.Abstractions.WireType.EndTagDelimited);");
         sb.AppendLine("    }");
         sb.AppendLine();
 
         // ReadValue
         sb.AppendLine($"    public {m.FqTypeName} ReadValue(");
-        sb.AppendLine($"        global::Quark.Serialization.Abstractions.CodecReader reader,");
-        sb.AppendLine($"        global::Quark.Serialization.Abstractions.Field field)");
+        sb.AppendLine("        global::Quark.Serialization.Abstractions.CodecReader reader,");
+        sb.AppendLine("        global::Quark.Serialization.Abstractions.Field field)");
         sb.AppendLine("    {");
         if (!m.IsValueType)
         {
@@ -194,6 +209,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             sb.AppendLine("            return default!;");
             sb.AppendLine("        }");
         }
+
         sb.AppendLine($"        var result = new {m.FqTypeName}();");
         sb.AppendLine("        global::Quark.Serialization.Abstractions.Field f;");
         sb.AppendLine("        while (!(f = reader.ReadFieldHeader()).IsEndObject)");
@@ -202,8 +218,10 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine("            {");
         foreach (MemberModel member in m.Members)
         {
-            sb.AppendLine($"                case {member.Id}: result.{member.Name} = _codecs.GetRequiredCodec<{member.FqTypeName}>().ReadValue(reader, f); break;");
+            sb.AppendLine(
+                $"                case {member.Id}: result.{member.Name} = _codecs.GetRequiredCodec<{member.FqTypeName}>().ReadValue(reader, f); break;");
         }
+
         sb.AppendLine("                default: SkipField(reader, f); break;");
         sb.AppendLine("            }");
         sb.AppendLine("        }");
@@ -242,17 +260,18 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine();
 
         // ---- IDeepCopier<T> ------------------------------------------------
-        sb.AppendLine($"[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
+        sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
         sb.AppendLine($"internal sealed class {m.TypeName}Copier");
         sb.AppendLine($"    : global::Quark.Serialization.Abstractions.IDeepCopier<{m.FqTypeName}>");
         sb.AppendLine("{");
         sb.AppendLine("    private readonly global::Quark.Serialization.Abstractions.ICopierProvider _copiers;");
         sb.AppendLine();
-        sb.AppendLine($"    public {m.TypeName}Copier(global::Quark.Serialization.Abstractions.ICopierProvider copiers)");
+        sb.AppendLine(
+            $"    public {m.TypeName}Copier(global::Quark.Serialization.Abstractions.ICopierProvider copiers)");
         sb.AppendLine("        => _copiers = copiers;");
         sb.AppendLine();
         sb.AppendLine($"    public {m.FqTypeName} DeepCopy({m.FqTypeName} input,");
-        sb.AppendLine($"        global::Quark.Serialization.Abstractions.CopyContext context)");
+        sb.AppendLine("        global::Quark.Serialization.Abstractions.CopyContext context)");
         sb.AppendLine("    {");
         if (!m.IsValueType)
         {
@@ -260,15 +279,19 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             sb.AppendLine($"        var existing = context.TryGetCopy<{m.FqTypeName}>(input);");
             sb.AppendLine("        if (existing is not null) return existing;");
         }
+
         sb.AppendLine($"        var copy = new {m.FqTypeName}();");
         if (!m.IsValueType)
         {
             sb.AppendLine("        context.RecordCopy(input, copy);");
         }
+
         foreach (MemberModel member in m.Members)
         {
-            sb.AppendLine($"        copy.{member.Name} = _copiers.GetRequiredCopier<{member.FqTypeName}>().DeepCopy(input.{member.Name}, context);");
+            sb.AppendLine(
+                $"        copy.{member.Name} = _copiers.GetRequiredCopier<{member.FqTypeName}>().DeepCopy(input.{member.Name}, context);");
         }
+
         sb.AppendLine("        return copy;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
@@ -302,4 +325,3 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         public bool IsProperty { get; } = isProperty;
     }
 }
-

@@ -1,21 +1,19 @@
 using System.Buffers;
 using Microsoft.Extensions.Options;
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Persistence.Redis;
 
 /// <summary>
-/// Redis-backed implementation of <see cref="IGrainStorage"/>.
+///     Redis-backed implementation of <see cref="IGrainStorage" />.
 /// </summary>
 public sealed class RedisGrainStorage : IGrainStorage
 {
     private readonly IRedisStorageConnection _connection;
-    private readonly ISerializer _serializer;
     private readonly RedisStorageOptions _options;
+    private readonly ISerializer _serializer;
 
     /// <summary>Creates a new Redis grain storage provider.</summary>
     public RedisGrainStorage(
@@ -28,7 +26,7 @@ public sealed class RedisGrainStorage : IGrainStorage
         _options = options.Value;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task ReadStateAsync<TState>(
         string stateName,
         GrainId grainId,
@@ -55,7 +53,7 @@ public sealed class RedisGrainStorage : IGrainStorage
         }
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task WriteStateAsync<TState>(
         string stateName,
         GrainId grainId,
@@ -71,13 +69,14 @@ public sealed class RedisGrainStorage : IGrainStorage
 
         string eTag = Guid.NewGuid().ToString("N");
         byte[] payload = buffer.WrittenSpan.ToArray();
-        await _connection.WriteAsync(key, new RedisStorageRecord(payload, eTag), cancellationToken).ConfigureAwait(false);
+        await _connection.WriteAsync(key, new RedisStorageRecord(payload, eTag), cancellationToken)
+            .ConfigureAwait(false);
 
         grainState.RecordExists = true;
         grainState.ETag = eTag;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task ClearStateAsync<TState>(
         string stateName,
         GrainId grainId,

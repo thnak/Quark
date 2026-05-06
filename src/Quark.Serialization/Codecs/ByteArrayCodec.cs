@@ -1,4 +1,3 @@
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Buffers;
 
@@ -7,7 +6,7 @@ namespace Quark.Serialization.Codecs;
 /// <summary>Codec for <c>byte[]</c> (null-safe).</summary>
 public sealed class ByteArrayCodec : IFieldCodec<byte[]?>
 {
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public void WriteField(CodecWriter writer, uint fieldId, Type expectedType, byte[]? value)
     {
         if (value is null)
@@ -16,15 +15,19 @@ public sealed class ByteArrayCodec : IFieldCodec<byte[]?>
             writer.WriteByte((byte)ExtendedWireType.Null);
             return;
         }
+
         writer.WriteFieldHeader(fieldId, WireType.LengthPrefixed);
         writer.WriteBytes(value);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public byte[]? ReadValue(CodecReader reader, Field field)
     {
         if (field.WireType == WireType.Extended && field.ExtendedWireType == ExtendedWireType.Null)
+        {
             return null;
+        }
+
         return reader.ReadBytes();
     }
 }

@@ -7,19 +7,19 @@ using Quark.Transport.Abstractions;
 namespace Quark.Runtime;
 
 /// <summary>
-/// Long-running pump which accepts framed messages from transport connections and dispatches them.
+///     Long-running pump which accepts framed messages from transport connections and dispatches them.
 /// </summary>
 public sealed class SiloMessagePump : IAsyncDisposable
 {
-    private readonly IServiceProvider _services;
-    private readonly MessageSerializer _serializer;
-    private readonly IMessageDispatcher _dispatcher;
-    private readonly SiloRuntimeOptions _options;
-    private readonly ILogger<SiloMessagePump> _logger;
     private readonly List<Task> _connectionTasks = new();
+    private readonly IMessageDispatcher _dispatcher;
+    private readonly ILogger<SiloMessagePump> _logger;
+    private readonly SiloRuntimeOptions _options;
+    private readonly MessageSerializer _serializer;
+    private readonly IServiceProvider _services;
+    private Task? _acceptLoop;
     private CancellationTokenSource? _cts;
     private ITransportListener? _listener;
-    private Task? _acceptLoop;
 
     /// <summary>Initializes the message pump.</summary>
     public SiloMessagePump(
@@ -36,13 +36,21 @@ public sealed class SiloMessagePump : IAsyncDisposable
         _logger = logger;
     }
 
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync().ConfigureAwait(false);
+    }
+
     /// <summary>Starts the pump if a transport has been registered.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_acceptLoop is not null)
+        {
             return;
+        }
 
-        ITransport? transport = _services.GetService(typeof(ITransport)) as ITransport;
+        var transport = _services.GetService(typeof(ITransport)) as ITransport;
         if (transport is null)
         {
             _logger.LogDebug("No transport registered; silo message pump remains idle.");
@@ -97,9 +105,10 @@ public sealed class SiloMessagePump : IAsyncDisposable
     }
 
     /// <summary>Processes a single accepted connection until it closes.</summary>
-    public async Task ProcessConnectionAsync(ITransportConnection connection, CancellationToken cancellationToken = default)
+    public async Task ProcessConnectionAsync(ITransportConnection connection,
+        CancellationToken cancellationToken = default)
     {
-        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task executeTask = connection.ExecuteAsync(linkedCts.Token);
 
         try
@@ -109,7 +118,9 @@ public sealed class SiloMessagePump : IAsyncDisposable
                 MessageEnvelope? envelope = await _serializer.ReadAsync(connection.Transport.Input, linkedCts.Token)
                     .ConfigureAwait(false);
                 if (envelope is null)
+                {
                     break;
+                }
 
                 MessageEnvelope? response = await _dispatcher.DispatchAsync(envelope, linkedCts.Token)
                     .ConfigureAwait(false);
@@ -136,16 +147,15 @@ public sealed class SiloMessagePump : IAsyncDisposable
         }
     }
 
-    /// <inheritdoc/>
-    public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
-
     private async Task AcceptLoopAsync(ITransportListener listener, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             ITransportConnection? connection = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
             if (connection is null)
+            {
                 break;
+            }
 
             Task task = ProcessConnectionAsync(connection, cancellationToken);
             lock (_connectionTasks)
@@ -171,7 +181,9 @@ public sealed class SiloMessagePump : IAsyncDisposable
     private static EndPoint ResolveEndPoint(SiloAddress address)
     {
         if (IPAddress.TryParse(address.Host, out IPAddress? ipAddress))
+        {
             return new IPEndPoint(ipAddress, address.Port);
+        }
 
         IPAddress resolved = Dns.GetHostAddresses(address.Host)
                                  .FirstOrDefault(static ip => ip.AddressFamily == AddressFamily.InterNetwork)

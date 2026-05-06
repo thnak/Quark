@@ -6,15 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Persistence.InMemory\Quark.Persistence.InMemory.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj" />
-    <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Persistence.InMemory\Quark.Persistence.InMemory.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj"/>
 
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="xunit"/>
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>

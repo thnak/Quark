@@ -6,5 +6,7 @@ public sealed class RandomPlacement : PlacementStrategy
     /// <summary>The singleton instance.</summary>
     public static readonly RandomPlacement Singleton = new();
 
-    private RandomPlacement() { }
+    private RandomPlacement()
+    {
+    }
 }

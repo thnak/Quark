@@ -75,7 +75,7 @@ public sealed class RedisStorageTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(_records.TryGetValue(key, out RedisStorageRecord record)
-                ? (RedisStorageRecord?)record
+                ? record
                 : null);
         }
 
@@ -118,7 +118,9 @@ public sealed class RedisStorageTests
 
     private sealed class CounterStateCopier : IDeepCopier<CounterState>
     {
-        public CounterState DeepCopy(CounterState original, CopyContext context) =>
-            new() { Value = original.Value };
+        public CounterState DeepCopy(CounterState original, CopyContext context)
+        {
+            return new CounterState { Value = original.Value };
+        }
     }
 }

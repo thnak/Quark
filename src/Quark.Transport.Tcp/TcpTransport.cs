@@ -1,4 +1,3 @@
-using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
@@ -7,12 +6,12 @@ using Quark.Transport.Abstractions;
 namespace Quark.Transport.Tcp;
 
 /// <summary>
-/// TCP transport factory. Creates TCP listeners and outbound TCP connections.
+///     TCP transport factory. Creates TCP listeners and outbound TCP connections.
 /// </summary>
 public sealed class TcpTransport : ITransport
 {
-    private readonly TcpTransportOptions _options;
     private readonly ILogger<TcpTransport> _logger;
+    private readonly TcpTransportOptions _options;
 
     /// <summary>Initialises the transport with the specified options.</summary>
     public TcpTransport(TcpTransportOptions options, ILogger<TcpTransport> logger)
@@ -21,14 +20,16 @@ public sealed class TcpTransport : ITransport
         _logger = logger;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public string Name => "tcp";
 
-    /// <inheritdoc/>
-    public ITransportListener CreateListener(EndPoint endPoint) =>
-        new TcpTransportListener(endPoint, _options, _logger);
+    /// <inheritdoc />
+    public ITransportListener CreateListener(EndPoint endPoint)
+    {
+        return new TcpTransportListener(endPoint, _options, _logger);
+    }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<ITransportConnection> ConnectAsync(
         EndPoint endPoint,
         CancellationToken cancellationToken = default)
@@ -36,7 +37,7 @@ public sealed class TcpTransport : ITransport
         Socket socket = new(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         socket.NoDelay = true;
 
-        using CancellationTokenSource cts =
+        using var cts =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(_options.ConnectTimeout);
 

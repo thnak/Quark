@@ -6,11 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj" />
-    <ProjectReference Include="..\Quark.Serialization\Quark.Serialization.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
-    <PackageReference Include="StackExchange.Redis" />
+    <ProjectReference Include="..\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj"/>
+    <ProjectReference Include="..\Quark.Serialization\Quark.Serialization.csproj"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Options"/>
+    <PackageReference Include="StackExchange.Redis"/>
   </ItemGroup>
 </Project>

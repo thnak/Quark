@@ -1,8 +1,8 @@
 namespace Quark.Testing.Harness;
 
 /// <summary>
-/// An in-process Quark cluster used by tests.
-/// Starts one or more <see cref="TestSilo"/> instances and a connected test client.
+///     An in-process Quark cluster used by tests.
+///     Starts one or more <see cref="TestSilo" /> instances and a connected test client.
 /// </summary>
 public sealed class TestCluster : IAsyncDisposable
 {
@@ -16,7 +16,28 @@ public sealed class TestCluster : IAsyncDisposable
         _options = options;
     }
 
-    /// <summary>Builds and starts a <see cref="TestCluster"/> with default options.</summary>
+    /// <summary>All silos currently in the cluster.</summary>
+    public IReadOnlyList<TestSilo> Silos => _silos;
+
+    /// <summary>Gets the primary silo (first one started).</summary>
+    public TestSilo PrimarySilo => _silos.Count > 0
+        ? _silos[0]
+        : throw new InvalidOperationException("TestCluster has no started silos.");
+
+    /// <summary>
+    ///     Client facade for invoking grains in this cluster.
+    ///     Mirrors Orleans testing concept where TestCluster exposes client-side grain access.
+    /// </summary>
+    public TestClient Client => _client
+                                ?? throw new InvalidOperationException("TestCluster is not started.");
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Builds and starts a <see cref="TestCluster" /> with default options.</summary>
     public static async Task<TestCluster> CreateAsync(
         Action<TestClusterOptions>? configure = null,
         CancellationToken cancellationToken = default)
@@ -28,28 +49,15 @@ public sealed class TestCluster : IAsyncDisposable
         return cluster;
     }
 
-    /// <summary>All silos currently in the cluster.</summary>
-    public IReadOnlyList<TestSilo> Silos => _silos;
-
-    /// <summary>Gets the primary silo (first one started).</summary>
-    public TestSilo PrimarySilo => _silos.Count > 0
-        ? _silos[0]
-        : throw new InvalidOperationException("TestCluster has no started silos.");
-
     /// <summary>
-    /// Client facade for invoking grains in this cluster.
-    /// Mirrors Orleans testing concept where TestCluster exposes client-side grain access.
-    /// </summary>
-    public TestClient Client => _client
-        ?? throw new InvalidOperationException("TestCluster is not started.");
-
-    /// <summary>
-    /// Starts all configured silos.
+    ///     Starts all configured silos.
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_started)
+        {
             throw new InvalidOperationException("TestCluster is already started.");
+        }
 
         for (int i = 0; i < _options.InitialSilosCount; i++)
         {
@@ -78,14 +86,11 @@ public sealed class TestCluster : IAsyncDisposable
         }
 
         foreach (TestSilo silo in _silos)
+        {
             await silo.StopAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         _silos.Clear();
         _started = false;
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
-    {
-        await StopAsync().ConfigureAwait(false);
     }
 }

@@ -10,10 +10,8 @@ namespace Quark.Tests.Unit.Integration;
 
 public sealed class GrainCallFixture : IAsyncDisposable
 {
-    private readonly ServiceProvider _serviceProvider;
     private readonly GrainActivationTable _activationTable;
-
-    public IClusterClient Client { get; }
+    private readonly ServiceProvider _serviceProvider;
 
     public GrainCallFixture()
     {
@@ -63,16 +61,18 @@ public sealed class GrainCallFixture : IAsyncDisposable
             _serviceProvider.GetRequiredService<CounterGrainMethodInvoker>());
 
         GrainProxyFactoryRegistry proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
-        GrainInterfaceTypeRegistry interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
+        GrainInterfaceTypeRegistry interfaceRegistry =
+            _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
         interfaceRegistry.Register(typeof(ICounterGrain), new GrainType("CounterGrain"));
-        proxyRegistry.Register<ICounterGrain, CounterGrainProxy>(
-            (grainId, invoker) => new CounterGrainProxy(grainId, invoker));
+        proxyRegistry.Register<ICounterGrain, CounterGrainProxy>((grainId, invoker) =>
+            new CounterGrainProxy(grainId, invoker));
 
         // Construct LocalGrainCallInvoker manually (avoid hosted service dependency)
         _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
         IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
         IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
-        IGrainMethodInvokerRegistry methodInvokerReg = _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
+        IGrainMethodInvokerRegistry methodInvokerReg =
+            _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
         IOptions<SiloRuntimeOptions> siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
         NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
         NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
@@ -94,6 +94,8 @@ public sealed class GrainCallFixture : IAsyncDisposable
         Client = new LocalClusterClient(factory);
     }
 
+    public IClusterClient Client { get; }
+
     public async ValueTask DisposeAsync()
     {
         await _activationTable.DisposeAsync();
@@ -104,12 +106,27 @@ public sealed class GrainCallFixture : IAsyncDisposable
     private sealed class DeferredLocalGrainCallInvoker : IGrainCallInvoker
     {
         private IGrainCallInvoker? _inner;
-        public void SetInvoker(IGrainCallInvoker invoker) => _inner = invoker;
-        public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-            => _inner!.InvokeAsync(id, method, args, ct);
-        public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-            => _inner!.InvokeAsync<TResult>(id, method, args, ct);
+
+        public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null,
+            CancellationToken ct = default)
+        {
+            return _inner!.InvokeAsync(id, method, args, ct);
+        }
+
+        public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null,
+            CancellationToken ct = default)
+        {
+            return _inner!.InvokeAsync<TResult>(id, method, args, ct);
+        }
+
         public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-            => _inner!.InvokeVoidAsync(id, method, args, ct);
+        {
+            return _inner!.InvokeVoidAsync(id, method, args, ct);
+        }
+
+        public void SetInvoker(IGrainCallInvoker invoker)
+        {
+            _inner = invoker;
+        }
     }
 }

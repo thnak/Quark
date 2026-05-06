@@ -6,10 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\Quark.Serialization\Quark.Serialization.csproj" />
-    <ProjectReference Include="..\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
+    <ProjectReference Include="..\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj"/>
+    <ProjectReference Include="..\Quark.Serialization\Quark.Serialization.csproj"/>
+    <ProjectReference Include="..\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Options"/>
   </ItemGroup>
 </Project>

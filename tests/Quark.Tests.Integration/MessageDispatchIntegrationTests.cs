@@ -21,7 +21,10 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    public Task DisposeAsync() => _fixture.DisposeAsync().AsTask();
+    public Task DisposeAsync()
+    {
+        return _fixture.DisposeAsync().AsTask();
+    }
 
     [Fact]
     public async Task Request_Message_Is_Dispatched_To_Grain_And_Returns_Response()
@@ -89,7 +92,8 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         };
 
         MessageEnvelope? valueResponseEnvelope = await _fixture.Dispatcher.DispatchAsync(getValue);
-        GrainInvocationResponse valueResponse = _fixture.Serializer.DeserializeResponse(valueResponseEnvelope!.Payload.ToArray());
+        GrainInvocationResponse valueResponse =
+            _fixture.Serializer.DeserializeResponse(valueResponseEnvelope!.Payload.ToArray());
 
         Assert.True(valueResponse.Success);
         Assert.Equal(0L, valueResponse.Result);
@@ -106,8 +110,16 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
     {
         private long _value;
 
-        public Task<long> IncrementAsync() => Task.FromResult(++_value);
-        public Task<long> GetValueAsync() => Task.FromResult(_value);
+        public Task<long> IncrementAsync()
+        {
+            return Task.FromResult(++_value);
+        }
+
+        public Task<long> GetValueAsync()
+        {
+            return Task.FromResult(_value);
+        }
+
         public Task ResetAsync()
         {
             _value = 0;
@@ -123,7 +135,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
         public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
         {
-            DispatchCounterGrain typed = (DispatchCounterGrain)grain;
+            var typed = (DispatchCounterGrain)grain;
             return methodId switch
             {
                 IncrementMethodId => await typed.IncrementAsync(),
@@ -136,11 +148,8 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
     private sealed class MessageDispatchFixture : IAsyncDisposable
     {
-        private readonly ServiceProvider _serviceProvider;
         private readonly GrainActivationTable _activationTable;
-
-        public IMessageDispatcher Dispatcher { get; }
-        public GrainMessageSerializer Serializer { get; }
+        private readonly ServiceProvider _serviceProvider;
 
         public MessageDispatchFixture()
         {
@@ -164,16 +173,20 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
             typeRegistry.Register(new GrainType("DispatchCounterGrain"), typeof(DispatchCounterGrain));
 
-            GrainMethodInvokerRegistry invokerRegistry = _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
-            invokerRegistry.Register(typeof(DispatchCounterGrain), _serviceProvider.GetRequiredService<DispatchCounterGrainMethodInvoker>());
+            GrainMethodInvokerRegistry invokerRegistry =
+                _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
+            invokerRegistry.Register(typeof(DispatchCounterGrain),
+                _serviceProvider.GetRequiredService<DispatchCounterGrainMethodInvoker>());
 
             _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
             IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
             IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
-            IOptions<SiloRuntimeOptions> siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
+            IOptions<SiloRuntimeOptions> siloOptions =
+                _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
             NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
             NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
-            IGrainMethodInvokerRegistry methodInvokerReg = _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
+            IGrainMethodInvokerRegistry methodInvokerReg =
+                _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
             IGrainFactory grainFactory = _serviceProvider.GetRequiredService<IGrainFactory>();
 
             LocalGrainCallInvoker callInvoker = new(
@@ -192,6 +205,9 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             Dispatcher = new MessageDispatcher(callInvoker, Serializer);
         }
 
+        public IMessageDispatcher Dispatcher { get; }
+        public GrainMessageSerializer Serializer { get; }
+
         public async ValueTask DisposeAsync()
         {
             await _activationTable.DisposeAsync();
@@ -201,13 +217,44 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
     private sealed class NullGrainFactory : IGrainFactory
     {
-        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, string key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, Guid key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, long key) => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, string key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, Guid key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, long key)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -14,12 +14,18 @@ public sealed class CounterGrainProxy : ICounterGrain
         _invoker = invoker;
     }
 
-    public Task<long> IncrementAsync() =>
-        _invoker.InvokeAsync<long>(_grainId, CounterGrainMethodInvoker.IncrementMethodId);
+    public Task<long> IncrementAsync()
+    {
+        return _invoker.InvokeAsync<long>(_grainId, CounterGrainMethodInvoker.IncrementMethodId);
+    }
 
-    public Task<long> GetValueAsync() =>
-        _invoker.InvokeAsync<long>(_grainId, CounterGrainMethodInvoker.GetValueMethodId);
+    public Task<long> GetValueAsync()
+    {
+        return _invoker.InvokeAsync<long>(_grainId, CounterGrainMethodInvoker.GetValueMethodId);
+    }
 
-    public Task ResetAsync() =>
-        _invoker.InvokeVoidAsync(_grainId, CounterGrainMethodInvoker.ResetMethodId);
+    public Task ResetAsync()
+    {
+        return _invoker.InvokeVoidAsync(_grainId, CounterGrainMethodInvoker.ResetMethodId);
+    }
 }

@@ -1,17 +1,16 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Core.Hosting;
 using Quark.Serialization;
 
 namespace Quark.Core;
 
 /// <summary>
-/// Extension methods for registering Quark services into an <see cref="IServiceCollection"/>.
+///     Extension methods for registering Quark services into an <see cref="IServiceCollection" />.
 /// </summary>
 public static class QuarkServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds core Quark silo services to <paramref name="services"/>.
+    ///     Adds core Quark silo services to <paramref name="services" />.
     /// </summary>
     public static IServiceCollection AddQuarkSilo(
         this IServiceCollection services,
@@ -25,7 +24,7 @@ public static class QuarkServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Adds core Quark client services to <paramref name="services"/>.
+    ///     Adds core Quark client services to <paramref name="services" />.
     /// </summary>
     public static IServiceCollection AddQuarkClient(
         this IServiceCollection services,

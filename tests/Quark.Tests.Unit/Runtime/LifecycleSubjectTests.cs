@@ -1,4 +1,3 @@
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Lifecycle;
 using Quark.Runtime;
 using Xunit;
@@ -13,12 +12,21 @@ public sealed class LifecycleSubjectTests
         var subject = new LifecycleSubject();
         var order = new List<int>();
 
-        subject.Subscribe("obs3", 300, new ActionObserver(
-            start: async _ => { await Task.Yield(); order.Add(3); }));
-        subject.Subscribe("obs1", 100, new ActionObserver(
-            start: async _ => { await Task.Yield(); order.Add(1); }));
-        subject.Subscribe("obs2", 200, new ActionObserver(
-            start: async _ => { await Task.Yield(); order.Add(2); }));
+        subject.Subscribe("obs3", 300, new ActionObserver(async _ =>
+        {
+            await Task.Yield();
+            order.Add(3);
+        }));
+        subject.Subscribe("obs1", 100, new ActionObserver(async _ =>
+        {
+            await Task.Yield();
+            order.Add(1);
+        }));
+        subject.Subscribe("obs2", 200, new ActionObserver(async _ =>
+        {
+            await Task.Yield();
+            order.Add(2);
+        }));
 
         await subject.StartAsync();
 
@@ -32,11 +40,23 @@ public sealed class LifecycleSubjectTests
         var order = new List<int>();
 
         subject.Subscribe("obs1", 100, new ActionObserver(
-            stop: async _ => { await Task.Yield(); order.Add(1); }));
+            stop: async _ =>
+            {
+                await Task.Yield();
+                order.Add(1);
+            }));
         subject.Subscribe("obs2", 200, new ActionObserver(
-            stop: async _ => { await Task.Yield(); order.Add(2); }));
+            stop: async _ =>
+            {
+                await Task.Yield();
+                order.Add(2);
+            }));
         subject.Subscribe("obs3", 300, new ActionObserver(
-            stop: async _ => { await Task.Yield(); order.Add(3); }));
+            stop: async _ =>
+            {
+                await Task.Yield();
+                order.Add(3);
+            }));
 
         await subject.StartAsync();
         await subject.StopAsync();
@@ -50,8 +70,11 @@ public sealed class LifecycleSubjectTests
         var subject = new LifecycleSubject();
         bool called = false;
 
-        var sub = subject.Subscribe("obs", 100, new ActionObserver(
-            start: _ => { called = true; return Task.CompletedTask; }));
+        IDisposable sub = subject.Subscribe("obs", 100, new ActionObserver(_ =>
+        {
+            called = true;
+            return Task.CompletedTask;
+        }));
 
         sub.Dispose();
         await subject.StartAsync();
@@ -65,11 +88,14 @@ public sealed class LifecycleSubjectTests
         var subject = new LifecycleSubject();
         int callCount = 0;
 
-        subject.Subscribe("obs", 100, new ActionObserver(
-            start: _ => { callCount++; return Task.CompletedTask; }));
+        subject.Subscribe("obs", 100, new ActionObserver(_ =>
+        {
+            callCount++;
+            return Task.CompletedTask;
+        }));
 
         await subject.StartAsync();
-        await subject.StartAsync();   // second call should be a no-op
+        await subject.StartAsync(); // second call should be a no-op
 
         Assert.Equal(1, callCount);
     }
@@ -86,7 +112,7 @@ public sealed class LifecycleSubjectTests
 
         await subject.StartAsync();
 
-        var ex = await Assert.ThrowsAnyAsync<Exception>(() => subject.StopAsync());
+        Exception ex = await Assert.ThrowsAnyAsync<Exception>(() => subject.StopAsync());
         Assert.True(ex is AggregateException or InvalidOperationException);
     }
 
@@ -94,9 +120,14 @@ public sealed class LifecycleSubjectTests
         Func<CancellationToken, Task>? start = null,
         Func<CancellationToken, Task>? stop = null) : ILifecycleObserver
     {
-        public Task OnStart(CancellationToken ct) =>
-            start?.Invoke(ct) ?? Task.CompletedTask;
-        public Task OnStop(CancellationToken ct) =>
-            stop?.Invoke(ct) ?? Task.CompletedTask;
+        public Task OnStart(CancellationToken ct)
+        {
+            return start?.Invoke(ct) ?? Task.CompletedTask;
+        }
+
+        public Task OnStop(CancellationToken ct)
+        {
+            return stop?.Invoke(ct) ?? Task.CompletedTask;
+        }
     }
 }

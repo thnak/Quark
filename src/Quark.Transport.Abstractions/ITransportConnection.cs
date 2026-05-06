@@ -4,8 +4,8 @@ using System.Net;
 namespace Quark.Transport.Abstractions;
 
 /// <summary>
-/// Represents an active full-duplex transport connection between two nodes.
-/// The connection exposes a <see cref="System.IO.Pipelines.IDuplexPipe"/> for framed message I/O.
+///     Represents an active full-duplex transport connection between two nodes.
+///     The connection exposes a <see cref="System.IO.Pipelines.IDuplexPipe" /> for framed message I/O.
 /// </summary>
 public interface ITransportConnection : IAsyncDisposable
 {
@@ -21,15 +21,15 @@ public interface ITransportConnection : IAsyncDisposable
     /// <summary>Duplex pipe for reading/writing framed messages.</summary>
     IDuplexPipe Transport { get; }
 
+    /// <summary>Fires when the connection is closed, carrying an optional error.</summary>
+    Task Completion { get; }
+
     /// <summary>
-    /// Starts the connection's send/receive loops.
-    /// Completes when the connection closes (gracefully or due to error).
+    ///     Starts the connection's send/receive loops.
+    ///     Completes when the connection closes (gracefully or due to error).
     /// </summary>
     Task ExecuteAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Initiates a graceful close.</summary>
     Task CloseAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>Fires when the connection is closed, carrying an optional error.</summary>
-    Task Completion { get; }
 }

@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <ProjectReference Include="..\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
   </ItemGroup>
 </Project>

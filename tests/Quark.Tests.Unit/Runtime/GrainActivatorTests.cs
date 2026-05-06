@@ -44,7 +44,9 @@ public sealed class GrainActivatorTests
     {
         public Type GrainClass => typeof(GeneratedOnlyGrain);
 
-        public Grain Create(IServiceProvider services) =>
-            new GeneratedOnlyGrain(services.GetRequiredService<TestDependency>());
+        public Grain Create(IServiceProvider services)
+        {
+            return new GeneratedOnlyGrain(services.GetRequiredService<TestDependency>());
+        }
     }
 }

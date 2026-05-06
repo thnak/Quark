@@ -1,32 +1,14 @@
 ﻿using System.Buffers;
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Identity;
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Runtime;
 
 /// <summary>
-/// Serializes request/response payloads for transport-routed grain invocation.
+///     Serializes request/response payloads for transport-routed grain invocation.
 /// </summary>
 public sealed class GrainMessageSerializer
 {
-    private enum ValueKind : byte
-    {
-        Null = 0,
-        Boolean = 1,
-        Int32 = 2,
-        UInt32 = 3,
-        Int64 = 4,
-        UInt64 = 5,
-        String = 6,
-        Guid = 7,
-        ByteArray = 8,
-        Double = 9,
-        Single = 10,
-        Decimal = 11,
-    }
-
     /// <summary>Serializes a grain invocation request.</summary>
     public byte[] SerializeRequest(GrainInvocationRequest request)
     {
@@ -41,7 +23,9 @@ public sealed class GrainMessageSerializer
         object?[] args = request.Arguments ?? [];
         writer.WriteVarUInt32((uint)args.Length);
         foreach (object? arg in args)
+        {
             WriteValue(writer, arg);
+        }
 
         return buffer.WrittenMemory.ToArray();
     }
@@ -57,7 +41,9 @@ public sealed class GrainMessageSerializer
 
         object?[] arguments = new object?[argCount];
         for (int i = 0; i < argCount; i++)
+        {
             arguments[i] = ReadValue(reader);
+        }
 
         return new GrainInvocationRequest(new GrainId(grainType, key), methodId, arguments);
     }
@@ -135,7 +121,10 @@ public sealed class GrainMessageSerializer
             case decimal dec:
                 writer.WriteByte((byte)ValueKind.Decimal);
                 foreach (int part in decimal.GetBits(dec))
+                {
                     writer.WriteInt32(part);
+                }
+
                 break;
             default:
                 throw new NotSupportedException(
@@ -145,7 +134,7 @@ public sealed class GrainMessageSerializer
 
     private static object? ReadValue(CodecReader reader)
     {
-        ValueKind kind = (ValueKind)reader.ReadByte();
+        var kind = (ValueKind)reader.ReadByte();
         return kind switch
         {
             ValueKind.Null => null,
@@ -163,8 +152,25 @@ public sealed class GrainMessageSerializer
                 reader.ReadInt32(),
                 reader.ReadInt32(),
                 reader.ReadInt32(),
-                reader.ReadInt32()]),
+                reader.ReadInt32()
+            ]),
             _ => throw new NotSupportedException($"Unsupported serialized value kind '{kind}'.")
         };
+    }
+
+    private enum ValueKind : byte
+    {
+        Null = 0,
+        Boolean = 1,
+        Int32 = 2,
+        UInt32 = 3,
+        Int64 = 4,
+        UInt64 = 5,
+        String = 6,
+        Guid = 7,
+        ByteArray = 8,
+        Double = 9,
+        Single = 10,
+        Decimal = 11
     }
 }

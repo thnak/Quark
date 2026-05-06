@@ -1,7 +1,7 @@
 ﻿namespace Quark.Persistence.Redis;
 
 /// <summary>
-/// Configuration for the Redis grain storage provider.
+///     Configuration for the Redis grain storage provider.
 /// </summary>
 public sealed class RedisStorageOptions
 {

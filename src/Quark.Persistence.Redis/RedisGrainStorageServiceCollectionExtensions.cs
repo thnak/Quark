@@ -5,12 +5,12 @@ using Quark.Persistence.Abstractions;
 namespace Quark.Persistence.Redis;
 
 /// <summary>
-/// Service registration helpers for the Redis persistence provider.
+///     Service registration helpers for the Redis persistence provider.
 /// </summary>
 public static class RedisGrainStorageServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the Redis grain storage provider using optional options configuration.
+    ///     Registers the Redis grain storage provider using optional options configuration.
     /// </summary>
     public static IServiceCollection AddRedisGrainStorage(
         this IServiceCollection services,
@@ -29,7 +29,7 @@ public static class RedisGrainStorageServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the Redis grain storage provider using a connection string.
+    ///     Registers the Redis grain storage provider using a connection string.
     /// </summary>
     public static IServiceCollection AddRedisGrainStorage(
         this IServiceCollection services,

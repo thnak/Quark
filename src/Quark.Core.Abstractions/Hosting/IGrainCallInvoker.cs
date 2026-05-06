@@ -3,15 +3,15 @@ using Quark.Core.Abstractions.Identity;
 namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
-/// Routes an outbound grain call from a grain proxy to the runtime dispatcher.
-/// Implemented by the runtime and injected into generated proxy classes.
+///     Routes an outbound grain call from a grain proxy to the runtime dispatcher.
+///     Implemented by the runtime and injected into generated proxy classes.
 /// </summary>
 public interface IGrainCallInvoker
 {
     /// <summary>
-    /// Invokes a grain method and returns the raw boxed result.
-    /// This is used by the runtime dispatcher for network-routed calls where the result type is
-    /// not known at compile time.
+    ///     Invokes a grain method and returns the raw boxed result.
+    ///     This is used by the runtime dispatcher for network-routed calls where the result type is
+    ///     not known at compile time.
     /// </summary>
     Task<object?> InvokeAsync(
         GrainId grainId,
@@ -20,7 +20,7 @@ public interface IGrainCallInvoker
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Invokes a grain method that returns <see cref="Task{TResult}"/>.
+    ///     Invokes a grain method that returns <see cref="Task{TResult}" />.
     /// </summary>
     /// <typeparam name="TResult">The return type of the grain method.</typeparam>
     /// <param name="grainId">Target grain identity.</param>
@@ -34,7 +34,7 @@ public interface IGrainCallInvoker
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Invokes a grain method that returns <see cref="Task"/> (void-like).
+    ///     Invokes a grain method that returns <see cref="Task" /> (void-like).
     /// </summary>
     Task InvokeVoidAsync(
         GrainId grainId,

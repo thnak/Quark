@@ -1,12 +1,11 @@
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Placement;
 
 namespace Quark.Runtime;
 
 /// <summary>
-/// Default placement director supporting the Tier 1 placement strategies:
-/// random, prefer-local, and hash-based placement.
+///     Default placement director supporting the Tier 1 placement strategies:
+///     random, prefer-local, and hash-based placement.
 /// </summary>
 public sealed class PlacementDirector : IPlacementDirector
 {
@@ -18,7 +17,7 @@ public sealed class PlacementDirector : IPlacementDirector
         _strategyResolver = strategyResolver;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public SiloAddress SelectActivationSilo(
         GrainId grainId,
         Type grainClass,
@@ -42,7 +41,7 @@ public sealed class PlacementDirector : IPlacementDirector
             LocalPlacement => SelectPreferLocal(localSilo, availableSilos),
             StatelessWorkerPlacement => SelectPreferLocal(localSilo, availableSilos),
             HashBasedPlacement => SelectHashBased(grainId, availableSilos),
-            _ => SelectRandom(availableSilos),
+            _ => SelectRandom(availableSilos)
         };
     }
 
@@ -65,9 +64,12 @@ public sealed class PlacementDirector : IPlacementDirector
         GrainId grainId,
         IReadOnlyList<SiloAddress> availableSilos)
     {
-        List<SiloAddress> ordered = [.. availableSilos.OrderBy(static s => s.Host, StringComparer.Ordinal)
-            .ThenBy(static s => s.Port)
-            .ThenBy(static s => s.Generation)];
+        List<SiloAddress> ordered =
+        [
+            .. availableSilos.OrderBy(static s => s.Host, StringComparer.Ordinal)
+                .ThenBy(static s => s.Port)
+                .ThenBy(static s => s.Generation)
+        ];
 
         uint hash = ComputeStableHash($"{grainId.Type.Value}|{grainId.Key}");
         int index = (int)(hash % (uint)ordered.Count);

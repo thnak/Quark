@@ -1,8 +1,8 @@
 namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
-/// The client interface for interacting with a Quark cluster.
-/// Extends <see cref="IGrainFactory"/> so callers can obtain grain references directly.
+///     The client interface for interacting with a Quark cluster.
+///     Extends <see cref="IGrainFactory" /> so callers can obtain grain references directly.
 /// </summary>
 public interface IClusterClient : IGrainFactory, IAsyncDisposable
 {

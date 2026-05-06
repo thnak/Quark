@@ -1,15 +1,15 @@
 namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
-/// Wire type used in the binary field header, indicating how many bytes follow the tag.
-/// Mirrors the encoding used by the Orleans serializer for future binary compatibility.
+///     Wire type used in the binary field header, indicating how many bytes follow the tag.
+///     Mirrors the encoding used by the Orleans serializer for future binary compatibility.
 /// </summary>
 public enum WireType : byte
 {
     /// <summary>Variable-length integer (LEB128).</summary>
     VarInt = 0,
 
-    /// <summary>Tag-delimited composite (nested object), terminated by <see cref="EndTagDelimited"/>.</summary>
+    /// <summary>Tag-delimited composite (nested object), terminated by <see cref="EndTagDelimited" />.</summary>
     TagDelimited = 1,
 
     /// <summary>Length-prefixed bytes (string, byte array, embedded message).</summary>
@@ -27,6 +27,6 @@ public enum WireType : byte
     /// <summary>Extended encoding (null, default, schema version header).</summary>
     Extended = 6,
 
-    /// <summary>Terminates a <see cref="TagDelimited"/> composite.</summary>
-    EndTagDelimited = 7,
+    /// <summary>Terminates a <see cref="TagDelimited" /> composite.</summary>
+    EndTagDelimited = 7
 }

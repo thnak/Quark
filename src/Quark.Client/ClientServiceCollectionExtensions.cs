@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -9,14 +8,14 @@ using Quark.Core.Abstractions.Identity;
 namespace Quark.Client;
 
 /// <summary>
-/// Dependency-injection extension methods for the Quark client.
+///     Dependency-injection extension methods for the Quark client.
 /// </summary>
 public static class ClientServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the in-process cluster client and its dependencies.
-    /// The resulting <see cref="IClusterClient"/> routes calls directly to the local silo
-    /// (cohosted scenario, equivalent to running client and silo in the same process).
+    ///     Registers the in-process cluster client and its dependencies.
+    ///     The resulting <see cref="IClusterClient" /> routes calls directly to the local silo
+    ///     (cohosted scenario, equivalent to running client and silo in the same process).
     /// </summary>
     public static IServiceCollection AddLocalClusterClient(this IServiceCollection services)
     {
@@ -31,21 +30,22 @@ public static class ClientServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers a grain proxy factory so that <see cref="IClusterClient.GetGrain{T}"/> can
-    /// create a proxy for <typeparamref name="TInterface"/>.
+    ///     Registers a grain proxy factory so that <see cref="IClusterClient.GetGrain{T}" /> can
+    ///     create a proxy for <typeparamref name="TInterface" />.
     /// </summary>
     /// <typeparam name="TInterface">The grain interface (e.g. <c>ICounterGrain</c>).</typeparam>
     /// <typeparam name="TProxy">
-    ///   The generated proxy class that implements <typeparamref name="TInterface"/>
-    ///   and routes calls through <see cref="IGrainCallInvoker"/>.
+    ///     The generated proxy class that implements <typeparamref name="TInterface" />
+    ///     and routes calls through <see cref="IGrainCallInvoker" />.
     /// </typeparam>
     /// <param name="grainTypeName">
-    ///   Optional override for the grain-type name (defaults to the implementation class name
-    ///   without the leading "I", e.g. <c>CounterGrain</c>).
+    ///     Optional override for the grain-type name (defaults to the implementation class name
+    ///     without the leading "I", e.g. <c>CounterGrain</c>).
     /// </param>
     public static IServiceCollection AddGrainProxy<
         TInterface,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TProxy>(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TProxy>(
         this IServiceCollection services,
         string? grainTypeName = null)
         where TInterface : IGrain
@@ -63,7 +63,8 @@ public static class ClientServiceCollectionExtensions
         void Apply(GrainProxyFactoryRegistry proxyRegistry, GrainInterfaceTypeRegistry interfaceRegistry);
     }
 
-    private sealed class ProxyRegistration<TInterface, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TProxy>(string? grainTypeName)
+    private sealed class ProxyRegistration<TInterface,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TProxy>(string? grainTypeName)
         : IProxyRegistration
         where TInterface : IGrain
         where TProxy : class, TInterface
@@ -71,18 +72,17 @@ public static class ClientServiceCollectionExtensions
         public void Apply(GrainProxyFactoryRegistry proxyRegistry, GrainInterfaceTypeRegistry interfaceRegistry)
         {
             // Derive GrainType: strip leading "I" convention (ICounterGrain → CounterGrain).
-            var typeName = grainTypeName
-                ?? (typeof(TInterface).Name.StartsWith('I')
-                    ? typeof(TInterface).Name[1..]
-                    : typeof(TInterface).Name);
+            string typeName = grainTypeName
+                              ?? (typeof(TInterface).Name.StartsWith('I')
+                                  ? typeof(TInterface).Name[1..]
+                                  : typeof(TInterface).Name);
 
             var grainType = new GrainType(typeName);
 
             interfaceRegistry.Register(typeof(TInterface), grainType);
 
             // Factory: create TProxy(grainId, invoker) via constructor.
-            proxyRegistry.Register<TInterface, TProxy>(
-                (grainId, invoker) => CreateProxy(grainId, invoker));
+            proxyRegistry.Register<TInterface, TProxy>((grainId, invoker) => CreateProxy(grainId, invoker));
         }
 
         private static TProxy CreateProxy(GrainId grainId, IGrainCallInvoker invoker)

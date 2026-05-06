@@ -6,6 +6,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj" />
+    <ProjectReference Include="..\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj"/>
   </ItemGroup>
 </Project>

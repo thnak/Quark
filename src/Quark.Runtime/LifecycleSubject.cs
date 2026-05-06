@@ -3,17 +3,17 @@ using Quark.Core.Abstractions.Lifecycle;
 namespace Quark.Runtime;
 
 /// <summary>
-/// Concrete implementation of <see cref="ILifecycleSubject"/>.
-/// Observers are called in <em>ascending</em> stage order on start and
-/// <em>descending</em> stage order on stop (mirrors Orleans semantics).
+///     Concrete implementation of <see cref="ILifecycleSubject" />.
+///     Observers are called in <em>ascending</em> stage order on start and
+///     <em>descending</em> stage order on stop (mirrors Orleans semantics).
 /// </summary>
 public sealed class LifecycleSubject : ILifecycleSubject
 {
-    private readonly object _lock = new();
     private readonly List<ObserverEntry> _entries = new();
+    private readonly object _lock = new();
     private bool _started;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public IDisposable Subscribe(string observerName, int stage, ILifecycleObserver observer)
     {
         ArgumentNullException.ThrowIfNull(observerName);
@@ -24,18 +24,23 @@ public sealed class LifecycleSubject : ILifecycleSubject
         {
             _entries.Add(entry);
         }
+
         return new Unsubscriber(this, entry);
     }
 
     /// <summary>
-    /// Starts all subscribed observers in ascending stage order.
+    ///     Starts all subscribed observers in ascending stage order.
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         List<ObserverEntry> snapshot;
         lock (_lock)
         {
-            if (_started) return;
+            if (_started)
+            {
+                return;
+            }
+
             _started = true;
             snapshot = new List<ObserverEntry>(_entries);
         }
@@ -49,7 +54,7 @@ public sealed class LifecycleSubject : ILifecycleSubject
     }
 
     /// <summary>
-    /// Stops all subscribed observers in descending stage order (reverse of start).
+    ///     Stops all subscribed observers in descending stage order (reverse of start).
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
@@ -73,8 +78,15 @@ public sealed class LifecycleSubject : ILifecycleSubject
             }
         }
 
-        if (exceptions.Count == 1) throw exceptions[0];
-        if (exceptions.Count > 1) throw new AggregateException(exceptions);
+        if (exceptions.Count == 1)
+        {
+            throw exceptions[0];
+        }
+
+        if (exceptions.Count > 1)
+        {
+            throw new AggregateException(exceptions);
+        }
     }
 
     private void Remove(ObserverEntry entry)
@@ -98,7 +110,11 @@ public sealed class LifecycleSubject : ILifecycleSubject
 
         public void Dispose()
         {
-            if (_disposed) return;
+            if (_disposed)
+            {
+                return;
+            }
+
             _disposed = true;
             subject.Remove(entry);
         }

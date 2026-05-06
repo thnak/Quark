@@ -1,8 +1,8 @@
 namespace Quark.Transport.Abstractions;
 
 /// <summary>
-/// Wire-level envelope wrapping every Quark message.
-/// Provides the minimum metadata required to route the message and match responses to requests.
+///     Wire-level envelope wrapping every Quark message.
+///     Provides the minimum metadata required to route the message and match responses to requests.
 /// </summary>
 public sealed class MessageEnvelope
 {
@@ -13,8 +13,8 @@ public sealed class MessageEnvelope
     public MessageType MessageType { get; init; }
 
     /// <summary>
-    /// Serialized payload.  The actual type is determined by <see cref="MessageType"/> and
-    /// the codec registry.
+    ///     Serialized payload.  The actual type is determined by <see cref="MessageType" /> and
+    ///     the codec registry.
     /// </summary>
     public ReadOnlyMemory<byte> Payload { get; init; }
 

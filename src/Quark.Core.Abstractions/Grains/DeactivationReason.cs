@@ -30,8 +30,9 @@ public sealed class DeactivationReason
     /// <summary>Optional exception that triggered deactivation.</summary>
     public Exception? Exception { get; }
 
-    /// <inheritdoc/>
-    public override string ToString() =>
-        Exception is null ? Description : $"{Description}: {Exception.Message}";
+    /// <inheritdoc />
+    public override string ToString()
+    {
+        return Exception is null ? Description : $"{Description}: {Exception.Message}";
+    }
 }
-

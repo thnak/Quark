@@ -29,15 +29,15 @@ public sealed class GrainIdTests
     [Fact]
     public void GrainId_Create_FromGuid()
     {
-        Guid key = Guid.NewGuid();
-        GrainId id = GrainId.Create(new GrainType("grain"), key);
+        var key = Guid.NewGuid();
+        var id = GrainId.Create(new GrainType("grain"), key);
         Assert.Equal(key.ToString("N"), id.Key);
     }
 
     [Fact]
     public void GrainId_Create_FromLong()
     {
-        GrainId id = GrainId.Create(new GrainType("grain"), 42L);
+        var id = GrainId.Create(new GrainType("grain"), 42L);
         Assert.Equal("42", id.Key);
     }
 

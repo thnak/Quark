@@ -1,16 +1,18 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
-/// A forward-only writer for Quark's binary encoding, backed by any <see cref="IBufferWriter{T}"/>.
+///     A forward-only writer for Quark's binary encoding, backed by any <see cref="IBufferWriter{T}" />.
 /// </summary>
 public sealed class CodecWriter
 {
     private readonly IBufferWriter<byte> _output;
 
-    /// <summary>Initialises a new <see cref="CodecWriter"/> backed by <paramref name="output"/>.</summary>
+    /// <summary>Initialises a new <see cref="CodecWriter" /> backed by <paramref name="output" />.</summary>
     public CodecWriter(IBufferWriter<byte> output)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -42,6 +44,7 @@ public sealed class CodecWriter
             WriteByte((byte)((value & 0x7F) | 0x80));
             value >>= 7;
         }
+
         WriteByte((byte)value);
     }
 
@@ -53,22 +56,27 @@ public sealed class CodecWriter
             WriteByte((byte)((value & 0x7F) | 0x80));
             value >>= 7;
         }
+
         WriteByte((byte)value);
     }
 
     /// <summary>Writes a signed 32-bit integer using ZigZag + LEB128 encoding.</summary>
-    public void WriteInt32(int value) =>
+    public void WriteInt32(int value)
+    {
         WriteVarUInt32((uint)((value << 1) ^ (value >> 31)));
+    }
 
     /// <summary>Writes a signed 64-bit integer using ZigZag + LEB128 encoding.</summary>
-    public void WriteInt64(long value) =>
+    public void WriteInt64(long value)
+    {
         WriteVarUInt64((ulong)((value << 1) ^ (value >> 63)));
+    }
 
     /// <summary>Writes a 32-bit fixed-width little-endian integer.</summary>
     public void WriteFixed32(uint value)
     {
         Span<byte> span = _output.GetSpan(4);
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(span, value);
+        BinaryPrimitives.WriteUInt32LittleEndian(span, value);
         _output.Advance(4);
     }
 
@@ -76,7 +84,7 @@ public sealed class CodecWriter
     public void WriteFixed64(ulong value)
     {
         Span<byte> span = _output.GetSpan(8);
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(span, value);
+        BinaryPrimitives.WriteUInt64LittleEndian(span, value);
         _output.Advance(8);
     }
 
@@ -89,10 +97,10 @@ public sealed class CodecWriter
             return;
         }
 
-        int byteCount = System.Text.Encoding.UTF8.GetByteCount(value);
+        int byteCount = Encoding.UTF8.GetByteCount(value);
         WriteVarUInt32((uint)byteCount);
         Span<byte> span = _output.GetSpan(byteCount);
-        System.Text.Encoding.UTF8.GetBytes(value, span);
+        Encoding.UTF8.GetBytes(value, span);
         _output.Advance(byteCount);
     }
 

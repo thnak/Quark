@@ -1,11 +1,11 @@
-using Quark.Persistence.Abstractions;
-using Quark.Persistence.InMemory;
-using Quark.Runtime;
-using Quark.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
+using Quark.Persistence.InMemory;
+using Quark.Runtime;
+using Quark.Serialization;
 using Quark.Serialization.Abstractions.Abstractions;
 using Xunit;
 
@@ -55,19 +55,52 @@ public sealed class PersistentGrainTests
 
     private sealed class CounterStateCopier : IDeepCopier<CounterState>
     {
-        public CounterState DeepCopy(CounterState original, CopyContext context) =>
-            new() { Value = original.Value };
+        public CounterState DeepCopy(CounterState original, CopyContext context)
+        {
+            return new CounterState { Value = original.Value };
+        }
     }
 
     private sealed class NullGrainFactory : IGrainFactory
     {
-        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, string key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, Guid key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, long key) => throw new NotImplementedException();
+        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, string key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, Guid key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IGrain GetGrain(Type t, long key)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

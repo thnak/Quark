@@ -1,13 +1,12 @@
-﻿using Quark.Serialization.Abstractions;
-using Quark.Serialization.Abstractions.Abstractions;
+﻿using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Serialization.Codecs;
 
-/// <summary>Codec for <see cref="DateTimeOffset"/>.</summary>
+/// <summary>Codec for <see cref="DateTimeOffset" />.</summary>
 public sealed class DateTimeOffsetCodec : IFieldCodec<DateTimeOffset>
 {
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public void WriteField(CodecWriter writer, uint fieldId, Type expectedType, DateTimeOffset value)
     {
         writer.WriteFieldHeader(fieldId, WireType.LengthPrefixed);
@@ -17,12 +16,15 @@ public sealed class DateTimeOffsetCodec : IFieldCodec<DateTimeOffset>
         writer.WriteFixed32((uint)(int)value.Offset.TotalMinutes);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public DateTimeOffset ReadValue(CodecReader reader, Field field)
     {
         uint length = reader.ReadVarUInt32();
         if (length != 12)
+        {
             throw new InvalidDataException($"Expected 12 bytes for DateTimeOffset, got {length}.");
+        }
+
         long utcTicks = (long)reader.ReadFixed64();
         int offsetMinutes = (int)reader.ReadFixed32();
         return new DateTimeOffset(utcTicks, TimeSpan.FromMinutes(offsetMinutes));

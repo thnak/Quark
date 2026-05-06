@@ -4,13 +4,13 @@ using StackExchange.Redis;
 namespace Quark.Persistence.Redis;
 
 /// <summary>
-/// StackExchange.Redis-backed implementation of <see cref="IRedisStorageConnection"/>.
+///     StackExchange.Redis-backed implementation of <see cref="IRedisStorageConnection" />.
 /// </summary>
 public sealed class RedisStorageConnection : IRedisStorageConnection, IDisposable
 {
     private static readonly RedisValue[] RequestedFields = ["payload", "etag"];
-    private readonly ConnectionMultiplexer _multiplexer;
     private readonly IDatabase _database;
+    private readonly ConnectionMultiplexer _multiplexer;
 
     /// <summary>Creates a new Redis storage connection.</summary>
     public RedisStorageConnection(IOptions<RedisStorageOptions> options)
@@ -22,7 +22,13 @@ public sealed class RedisStorageConnection : IRedisStorageConnection, IDisposabl
         _database = _multiplexer.GetDatabase(value.Database);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _multiplexer.Dispose();
+    }
+
+    /// <inheritdoc />
     public async Task<RedisStorageRecord?> ReadAsync(string key, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -38,7 +44,7 @@ public sealed class RedisStorageConnection : IRedisStorageConnection, IDisposabl
         return new RedisStorageRecord(payload, eTag);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task WriteAsync(string key, RedisStorageRecord record, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -52,13 +58,10 @@ public sealed class RedisStorageConnection : IRedisStorageConnection, IDisposabl
         return _database.HashSetAsync(key, entries);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         await _database.KeyDeleteAsync(key).ConfigureAwait(false);
     }
-
-    /// <inheritdoc/>
-    public void Dispose() => _multiplexer.Dispose();
 }

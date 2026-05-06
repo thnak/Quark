@@ -1,7 +1,7 @@
 namespace Quark.Core.Abstractions.Lifecycle;
 
 /// <summary>
-/// Well-known stage numbers for the grain activation lifecycle.
+///     Well-known stage numbers for the grain activation lifecycle.
 /// </summary>
 public static class GrainLifecycleStage
 {

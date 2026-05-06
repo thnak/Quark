@@ -8,14 +8,16 @@ namespace Quark.Transport.Tcp;
 public static class TcpTransportServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds the Quark TCP transport as the default <see cref="ITransport"/>.
+    ///     Adds the Quark TCP transport as the default <see cref="ITransport" />.
     /// </summary>
     public static IServiceCollection AddTcpTransport(
         this IServiceCollection services,
         Action<TcpTransportOptions>? configure = null)
     {
         if (configure is not null)
+        {
             services.Configure(configure);
+        }
 
         services.TryAddSingleton<TcpTransport>();
         services.TryAddSingleton<ITransport>(sp => sp.GetRequiredService<TcpTransport>());

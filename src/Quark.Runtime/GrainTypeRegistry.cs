@@ -1,4 +1,3 @@
-using Quark.Core.Abstractions;
 using System.Collections.Concurrent;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
@@ -7,15 +6,30 @@ using Quark.Core.Abstractions.Identity;
 namespace Quark.Runtime;
 
 /// <summary>
-/// Maps <see cref="GrainType"/> keys to concrete CLR types.
-/// Registration is explicit and AOT-safe — no assembly scanning.
+///     Maps <see cref="GrainType" /> keys to concrete CLR types.
+///     Registration is explicit and AOT-safe — no assembly scanning.
 /// </summary>
 public sealed class GrainTypeRegistry : IGrainTypeRegistry
 {
     private readonly ConcurrentDictionary<string, Type> _map = new(StringComparer.Ordinal);
 
+    /// <inheritdoc />
+    public bool TryGetGrainClass(GrainType grainType, out Type? grainClass)
+    {
+        return _map.TryGetValue(grainType.Value, out grainClass);
+    }
+
+    /// <inheritdoc />
+    public IEnumerable<(GrainType GrainType, Type GrainClass)> GetAll()
+    {
+        foreach (KeyValuePair<string, Type> kvp in _map)
+        {
+            yield return (new GrainType(kvp.Key), kvp.Value);
+        }
+    }
+
     /// <summary>
-    /// Registers a grain implementation type under its <see cref="GrainType"/> key.
+    ///     Registers a grain implementation type under its <see cref="GrainType" /> key.
     /// </summary>
     public void Register(GrainType grainType, Type grainClass)
     {
@@ -24,17 +38,8 @@ public sealed class GrainTypeRegistry : IGrainTypeRegistry
     }
 
     /// <summary>Convenience overload: infers the grain type key from the CLR type name.</summary>
-    public void Register<TGrain>() where TGrain : Grain =>
-        Register(new GrainType(typeof(TGrain).Name), typeof(TGrain));
-
-    /// <inheritdoc/>
-    public bool TryGetGrainClass(GrainType grainType, out Type? grainClass) =>
-        _map.TryGetValue(grainType.Value, out grainClass);
-
-    /// <inheritdoc/>
-    public IEnumerable<(GrainType GrainType, Type GrainClass)> GetAll()
+    public void Register<TGrain>() where TGrain : Grain
     {
-        foreach (var kvp in _map)
-            yield return (new GrainType(kvp.Key), kvp.Value);
+        Register(new GrainType(typeof(TGrain).Name), typeof(TGrain));
     }
 }

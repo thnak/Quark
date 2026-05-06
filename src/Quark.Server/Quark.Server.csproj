@@ -7,6 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj" />
+    <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj"/>
   </ItemGroup>
 </Project>

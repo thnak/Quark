@@ -1,4 +1,3 @@
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -7,7 +6,7 @@ using Quark.Core.Abstractions.Lifecycle;
 namespace Quark.Runtime;
 
 /// <summary>
-/// Concrete implementation of <see cref="IGrainContext"/> for a single grain activation.
+///     Concrete implementation of <see cref="IGrainContext" /> for a single grain activation.
 /// </summary>
 public sealed class GrainContext : IGrainContext
 {
@@ -22,28 +21,28 @@ public sealed class GrainContext : IGrainContext
         Lifecycle = new LifecycleSubject();
     }
 
-    /// <inheritdoc/>
-    public GrainId GrainId { get; }
-
-    /// <inheritdoc/>
-    public IGrainFactory GrainFactory { get; }
-
-    /// <inheritdoc/>
-    public IServiceProvider ServiceProvider { get; }
-
     /// <summary>The lifecycle subject for this activation.</summary>
     public LifecycleSubject Lifecycle { get; }
-
-    /// <inheritdoc/>
-    public ILifecycleSubject ObservableLifecycle => Lifecycle;
-
-    /// <inheritdoc/>
-    public GrainActivationStatus ActivationStatus => _status;
 
     /// <summary>The reason this grain was asked to deactivate (set during deactivation).</summary>
     public DeactivationReason? DeactivationReason { get; private set; }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
+    public GrainId GrainId { get; }
+
+    /// <inheritdoc />
+    public IGrainFactory GrainFactory { get; }
+
+    /// <inheritdoc />
+    public IServiceProvider ServiceProvider { get; }
+
+    /// <inheritdoc />
+    public ILifecycleSubject ObservableLifecycle => Lifecycle;
+
+    /// <inheritdoc />
+    public GrainActivationStatus ActivationStatus => _status;
+
+    /// <inheritdoc />
     public void Deactivate(DeactivationReason reason)
     {
         if (_status == GrainActivationStatus.Active ||
@@ -56,7 +55,7 @@ public sealed class GrainContext : IGrainContext
     }
 
     /// <summary>
-    /// Runs the activation sequence: sets the context on the grain and calls lifecycle start.
+    ///     Runs the activation sequence: sets the context on the grain and calls lifecycle start.
     /// </summary>
     public async Task ActivateAsync(Grain grain, CancellationToken cancellationToken = default)
     {

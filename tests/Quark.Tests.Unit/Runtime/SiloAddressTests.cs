@@ -36,7 +36,7 @@ public sealed class SiloAddressTests
     [Fact]
     public void Equality_DifferentGeneration_NotEqual()
     {
-        var a = new SiloAddress("host", 100, 0);
+        var a = new SiloAddress("host", 100);
         var b = new SiloAddress("host", 100, 1);
         Assert.NotEqual(a, b);
     }

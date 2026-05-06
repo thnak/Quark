@@ -5,7 +5,7 @@ using Xunit;
 namespace Quark.Tests.Unit.Serialization;
 
 /// <summary>
-/// Tests for the raw CodecWriter/CodecReader binary encoding.
+///     Tests for the raw CodecWriter/CodecReader binary encoding.
 /// </summary>
 public sealed class BinaryEncodingTests
 {

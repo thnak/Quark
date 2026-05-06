@@ -1,8 +1,8 @@
 namespace Quark.Core.Abstractions.Lifecycle;
 
 /// <summary>
-/// Well-known stage numbers for the silo service lifecycle.
-/// Higher numbers start later and stop earlier.
+///     Well-known stage numbers for the silo service lifecycle.
+///     Higher numbers start later and stop earlier.
 /// </summary>
 public static class ServiceLifecycleStage
 {

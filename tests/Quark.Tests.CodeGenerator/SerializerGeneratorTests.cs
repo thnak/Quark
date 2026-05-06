@@ -11,17 +11,17 @@ public sealed class SerializerGeneratorTests
     public void Generates_Codec_And_Copier_For_Attributed_Type()
     {
         const string source = """
-using Quark.Serialization.Abstractions;
+                              using Quark.Serialization.Abstractions;
 
-namespace Demo;
+                              namespace Demo;
 
-[GenerateSerializer]
-public sealed class Person
-{
-    [Id(0)] public string? Name { get; set; }
-    [Id(1)] public int Age { get; set; }
-}
-""";
+                              [GenerateSerializer]
+                              public sealed class Person
+                              {
+                                  [Id(0)] public string? Name { get; set; }
+                                  [Id(1)] public int Age { get; set; }
+                              }
+                              """;
 
         GeneratorTestResult result = GeneratorTestDriver.Run(source, new SerializerGenerator());
 
@@ -33,7 +33,8 @@ public sealed class Person
         Assert.Contains("if (field.WireType == global::Quark.Serialization.Abstractions.WireType.Extended", generated);
         Assert.Contains("case 0: result.Name =", generated);
         Assert.Contains("case 1: result.Age =", generated);
-        Assert.Contains("private readonly global::Quark.Serialization.Abstractions.ICopierProvider _copiers;", generated);
+        Assert.Contains("private readonly global::Quark.Serialization.Abstractions.ICopierProvider _copiers;",
+            generated);
         Assert.Contains("_copiers.GetRequiredCopier<", generated);
         Assert.Contains("DeepCopy(input.Name, context)", generated);
     }
@@ -42,16 +43,16 @@ public sealed class Person
     public void Ignores_Types_Without_Id_Members()
     {
         const string source = """
-using Quark.Serialization.Abstractions;
+                              using Quark.Serialization.Abstractions;
 
-namespace Demo;
+                              namespace Demo;
 
-[GenerateSerializer]
-public sealed class EmptyPayload
-{
-    public string? Name { get; set; }
-}
-""";
+                              [GenerateSerializer]
+                              public sealed class EmptyPayload
+                              {
+                                  public string? Name { get; set; }
+                              }
+                              """;
 
         GeneratorTestResult result = GeneratorTestDriver.Run(source, new SerializerGenerator());
 

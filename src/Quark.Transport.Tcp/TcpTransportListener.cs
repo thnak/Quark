@@ -1,4 +1,3 @@
-using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
@@ -7,12 +6,12 @@ using Quark.Transport.Abstractions;
 namespace Quark.Transport.Tcp;
 
 /// <summary>
-/// TCP listener that accepts inbound connections.
+///     TCP listener that accepts inbound connections.
 /// </summary>
 internal sealed class TcpTransportListener : ITransportListener
 {
-    private readonly Socket _serverSocket;
     private readonly ILogger _logger;
+    private readonly Socket _serverSocket;
     private bool _stopped;
 
     internal TcpTransportListener(EndPoint endPoint, TcpTransportOptions options, ILogger logger)
@@ -24,22 +23,24 @@ internal sealed class TcpTransportListener : ITransportListener
         _logger = logger;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public EndPoint LocalEndPoint { get; }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task BindAsync(CancellationToken cancellationToken = default)
     {
-        _serverSocket.Listen(backlog: 512);
+        _serverSocket.Listen(512);
         _logger.LogInformation("TCP listener bound to {EndPoint}.", LocalEndPoint);
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async ValueTask<ITransportConnection?> AcceptAsync(CancellationToken cancellationToken = default)
     {
         if (_stopped)
+        {
             return null;
+        }
 
         try
         {
@@ -59,7 +60,7 @@ internal sealed class TcpTransportListener : ITransportListener
         }
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken = default)
     {
         _stopped = true;
@@ -67,7 +68,7 @@ internal sealed class TcpTransportListener : ITransportListener
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         _serverSocket.Dispose();

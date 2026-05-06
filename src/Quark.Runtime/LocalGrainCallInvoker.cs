@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -8,21 +7,21 @@ using Quark.Core.Abstractions.Identity;
 namespace Quark.Runtime;
 
 /// <summary>
-/// In-process <see cref="IGrainCallInvoker"/> that activates grains locally and routes
-/// method calls through each grain's sequential scheduler.
+///     In-process <see cref="IGrainCallInvoker" /> that activates grains locally and routes
+///     method calls through each grain's sequential scheduler.
 /// </summary>
 public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 {
+    private readonly ILogger<GrainActivation> _activationLogger;
     private readonly GrainActivationTable _activationTable;
     private readonly IGrainActivator _activator;
-    private readonly IGrainTypeRegistry _typeRegistry;
     private readonly IGrainDirectory _directory;
-    private readonly IGrainMethodInvokerRegistry _methodInvokerRegistry;
     private readonly IGrainFactory _grainFactory;
+    private readonly ILogger<LocalGrainCallInvoker> _logger;
+    private readonly IGrainMethodInvokerRegistry _methodInvokerRegistry;
     private readonly IServiceProvider _services;
     private readonly SiloAddress _siloAddress;
-    private readonly ILogger<LocalGrainCallInvoker> _logger;
-    private readonly ILogger<GrainActivation> _activationLogger;
+    private readonly IGrainTypeRegistry _typeRegistry;
 
     /// <summary>Initialises the local grain invoker.</summary>
     public LocalGrainCallInvoker(
@@ -49,7 +48,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _activationLogger = activationLogger;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<object?> InvokeAsync(
         GrainId grainId,
         uint methodId,
@@ -77,7 +76,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         return await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<TResult> InvokeAsync<TResult>(
         GrainId grainId,
         uint methodId,
@@ -88,7 +87,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         return result is TResult typed ? typed : (TResult)result!;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task InvokeVoidAsync(
         GrainId grainId,
         uint methodId,

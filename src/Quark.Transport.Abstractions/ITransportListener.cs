@@ -3,7 +3,7 @@ using System.Net;
 namespace Quark.Transport.Abstractions;
 
 /// <summary>
-/// A bound listener that accepts inbound <see cref="ITransportConnection"/>s.
+///     A bound listener that accepts inbound <see cref="ITransportConnection" />s.
 /// </summary>
 public interface ITransportListener : IAsyncDisposable
 {

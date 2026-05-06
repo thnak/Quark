@@ -12,7 +12,10 @@ public sealed class CounterGrain : Grain, ICounterGrain
         return Task.FromResult(_value);
     }
 
-    public Task<long> GetValueAsync() => Task.FromResult(_value);
+    public Task<long> GetValueAsync()
+    {
+        return Task.FromResult(_value);
+    }
 
     public Task ResetAsync()
     {

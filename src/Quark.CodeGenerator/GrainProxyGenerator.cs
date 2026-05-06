@@ -1,20 +1,16 @@
+using System.Collections.Immutable;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading;
 
 namespace Quark.CodeGenerator;
 
 /// <summary>
-/// Generates an AOT-safe grain proxy class for every interface that extends <c>IGrain</c>.
-/// The proxy routes each method through <c>IGrainCallInvoker</c> so no runtime code generation
-/// or reflection is required at call time.
-///
-/// Generated class naming: <c>{InterfaceName}Proxy</c> (strips leading 'I' if present).
+///     Generates an AOT-safe grain proxy class for every interface that extends <c>IGrain</c>.
+///     The proxy routes each method through <c>IGrainCallInvoker</c> so no runtime code generation
+///     or reflection is required at call time.
+///     Generated class naming: <c>{InterfaceName}Proxy</c> (strips leading 'I' if present).
 /// </summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class GrainProxyGenerator : IIncrementalGenerator
@@ -22,13 +18,13 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     private const string IGrainFqn = "Quark.Core.Abstractions.IGrain";
     private const string IGrainCallInvokerFqn = "Quark.Core.Abstractions.IGrainCallInvoker";
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<InterfaceModel?> models = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (node, _) => node is InterfaceDeclarationSyntax,
-                transform: ExtractModel)
+                static (node, _) => node is InterfaceDeclarationSyntax,
+                ExtractModel)
             .Where(static m => m is not null);
 
         context.RegisterSourceOutput(
@@ -45,9 +41,14 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         CancellationToken ct)
     {
         if (ctx.Node is not InterfaceDeclarationSyntax)
+        {
             return null;
+        }
+
         if (ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) is not INamedTypeSymbol iface)
+        {
             return null;
+        }
 
         // Check that IGrain is in the interface hierarchy.
         bool isGrain = false;
@@ -59,9 +60,13 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 break;
             }
         }
-        if (!isGrain) return null;
 
-        var ns = iface.ContainingNamespace.IsGlobalNamespace
+        if (!isGrain)
+        {
+            return null;
+        }
+
+        string ns = iface.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : iface.ContainingNamespace.ToDisplayString();
 
@@ -72,7 +77,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         {
             ct.ThrowIfCancellationRequested();
             if (member is not IMethodSymbol method)
+            {
                 continue;
+            }
 
             // Determine return style: Task, Task<T>, ValueTask, ValueTask<T>
             string retType = method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -84,7 +91,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
             string retName = method.ReturnType.ToDisplayString();
             if (retName == "System.Threading.Tasks.Task")
+            {
                 isTask = true;
+            }
             else if (method.ReturnType is INamedTypeSymbol nts &&
                      nts.ConstructedFrom.ToDisplayString() == "System.Threading.Tasks.Task<TResult>")
             {
@@ -93,7 +102,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                     .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             }
             else if (retName == "System.Threading.Tasks.ValueTask")
+            {
                 isValueTask = true;
+            }
             else if (method.ReturnType is INamedTypeSymbol nvts &&
                      nvts.ConstructedFrom.ToDisplayString() == "System.Threading.Tasks.ValueTask<TResult>")
             {
@@ -116,7 +127,10 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 parameters));
         }
 
-        if (methods.Count == 0) return null;
+        if (methods.Count == 0)
+        {
+            return null;
+        }
 
         string proxySuffix = iface.Name.StartsWith("I") && iface.Name.Length > 1
             ? iface.Name.Substring(1) + "Proxy"
@@ -165,7 +179,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
 
-        sb.AppendLine($"[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
+        sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
         sb.AppendLine($"internal sealed class {m.ProxyClassName} : {m.FqInterfaceName}");
         sb.AppendLine("{");
         sb.AppendLine("    private readonly global::Quark.Core.Abstractions.GrainId _grainId;");
@@ -192,7 +206,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     private static void EmitMethod(StringBuilder sb, MethodModel method)
     {
         // Build parameter list string
-        var paramList = string.Join(", ", method.Parameters.Select(p => $"{p.FqTypeName} {p.Name}"));
+        string paramList = string.Join(", ", method.Parameters.Select(p => $"{p.FqTypeName} {p.Name}"));
         // Build args array
         string argsArray = method.Parameters.Count == 0
             ? "null"
@@ -209,20 +223,24 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         }
         else if (method.IsTaskOfT)
         {
-            sb.AppendLine($"        return _invoker.InvokeAsync<{method.TaskResultType}>(_grainId, {method.MethodId}u, {argsArray});");
+            sb.AppendLine(
+                $"        return _invoker.InvokeAsync<{method.TaskResultType}>(_grainId, {method.MethodId}u, {argsArray});");
         }
         else if (method.IsValueTask)
         {
-            sb.AppendLine($"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, {method.MethodId}u, {argsArray}));");
+            sb.AppendLine(
+                $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, {method.MethodId}u, {argsArray}));");
         }
         else if (method.IsValueTaskOfT)
         {
-            sb.AppendLine($"        return new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>(_invoker.InvokeAsync<{method.TaskResultType}>(_grainId, {method.MethodId}u, {argsArray}));");
+            sb.AppendLine(
+                $"        return new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>(_invoker.InvokeAsync<{method.TaskResultType}>(_grainId, {method.MethodId}u, {argsArray}));");
         }
         else
         {
             // Unknown return type — emit a throw for now (analyzer will flag this).
-            sb.AppendLine($"        throw new global::System.NotSupportedException(\"Grain methods must return Task or Task<T>.\");");
+            sb.AppendLine(
+                "        throw new global::System.NotSupportedException(\"Grain methods must return Task or Task<T>.\");");
         }
 
         sb.AppendLine("    }");
@@ -275,4 +293,3 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         public string FqTypeName { get; } = fqTypeName;
     }
 }
-

@@ -6,9 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Server\Quark.Server.csproj" />
-    <ProjectReference Include="..\Quark.Client\Quark.Client.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <ProjectReference Include="..\Quark.Server\Quark.Server.csproj"/>
+    <ProjectReference Include="..\Quark.Client\Quark.Client.csproj"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
   </ItemGroup>
 </Project>

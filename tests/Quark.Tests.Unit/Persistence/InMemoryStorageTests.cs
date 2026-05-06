@@ -59,7 +59,9 @@ public sealed class InMemoryStorageTests
 
     private sealed class CounterStateCopier : IDeepCopier<CounterState>
     {
-        public CounterState DeepCopy(CounterState original, CopyContext context) =>
-            new() { Value = original.Value };
+        public CounterState DeepCopy(CounterState original, CopyContext context)
+        {
+            return new CounterState { Value = original.Value };
+        }
     }
 }

@@ -1,4 +1,3 @@
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -6,16 +5,16 @@ using Quark.Core.Abstractions.Identity;
 namespace Quark.Client;
 
 /// <summary>
-/// Holds per-interface proxy factory delegates.
-/// Populated at startup via <c>AddGrainProxy&lt;TInterface, TProxy&gt;()</c>.
+///     Holds per-interface proxy factory delegates.
+///     Populated at startup via <c>AddGrainProxy&lt;TInterface, TProxy&gt;()</c>.
 /// </summary>
 public sealed class GrainProxyFactoryRegistry
 {
     private readonly Dictionary<Type, object> _factories = new();
 
     /// <summary>
-    /// Registers a factory that creates <typeparamref name="TProxy"/> for
-    /// <typeparamref name="TInterface"/>.
+    ///     Registers a factory that creates <typeparamref name="TProxy" /> for
+    ///     <typeparamref name="TInterface" />.
     /// </summary>
     public void Register<TInterface, TProxy>(Func<GrainId, IGrainCallInvoker, TProxy> factory)
         where TInterface : IGrain
@@ -25,12 +24,12 @@ public sealed class GrainProxyFactoryRegistry
     }
 
     /// <summary>
-    /// Creates a proxy for <typeparamref name="TInterface"/> with the given identity and invoker.
+    ///     Creates a proxy for <typeparamref name="TInterface" /> with the given identity and invoker.
     /// </summary>
     public TInterface CreateProxy<TInterface>(GrainId grainId, IGrainCallInvoker invoker)
         where TInterface : IGrain
     {
-        if (_factories.TryGetValue(typeof(TInterface), out var raw))
+        if (_factories.TryGetValue(typeof(TInterface), out object? raw))
         {
             var factory = (Func<GrainId, IGrainCallInvoker, TInterface>)raw;
             return factory(grainId, invoker);
@@ -42,11 +41,11 @@ public sealed class GrainProxyFactoryRegistry
     }
 
     /// <summary>
-    /// Creates a proxy for the interface type provided as a <see cref="Type"/> parameter.
+    ///     Creates a proxy for the interface type provided as a <see cref="Type" /> parameter.
     /// </summary>
     public IGrain CreateProxy(Type interfaceType, GrainId grainId, IGrainCallInvoker invoker)
     {
-        if (_factories.TryGetValue(interfaceType, out var raw))
+        if (_factories.TryGetValue(interfaceType, out object? raw))
         {
             // raw is Func<GrainId, IGrainCallInvoker, TInterface> — invoke dynamically.
             var del = (Delegate)raw;

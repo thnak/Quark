@@ -36,14 +36,20 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    public Task DisposeAsync() => _fixture.DisposeAsync().AsTask();
+    public Task DisposeAsync()
+    {
+        return _fixture.DisposeAsync().AsTask();
+    }
 
-    private ICounterGrain GetCounter(string key) => _fixture.Client.GetGrain<ICounterGrain>(key);
+    private ICounterGrain GetCounter(string key)
+    {
+        return _fixture.Client.GetGrain<ICounterGrain>(key);
+    }
 
     [Fact]
     public async Task GetGrain_ReturnsProxy_WithCorrectInterface()
     {
-        var grain = GetCounter("test-grain");
+        ICounterGrain grain = GetCounter("test-grain");
         Assert.NotNull(grain);
         Assert.IsAssignableFrom<ICounterGrain>(grain);
     }
@@ -51,18 +57,18 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task IncrementAsync_IncrementsCounter()
     {
-        var grain = GetCounter("counter-1");
-        var result = await grain.IncrementAsync();
+        ICounterGrain grain = GetCounter("counter-1");
+        long result = await grain.IncrementAsync();
         Assert.Equal(1L, result);
     }
 
     [Fact]
     public async Task MultipleIncrements_SequentialExecution()
     {
-        var grain = GetCounter("counter-seq");
-        var v1 = await grain.IncrementAsync();
-        var v2 = await grain.IncrementAsync();
-        var v3 = await grain.IncrementAsync();
+        ICounterGrain grain = GetCounter("counter-seq");
+        long v1 = await grain.IncrementAsync();
+        long v2 = await grain.IncrementAsync();
+        long v3 = await grain.IncrementAsync();
         Assert.Equal(1L, v1);
         Assert.Equal(2L, v2);
         Assert.Equal(3L, v3);
@@ -71,8 +77,8 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetValue_SameKey_ReturnsSameActivation()
     {
-        var grain1 = GetCounter("shared-grain");
-        var grain2 = GetCounter("shared-grain");
+        ICounterGrain grain1 = GetCounter("shared-grain");
+        ICounterGrain grain2 = GetCounter("shared-grain");
         await grain1.IncrementAsync();
         await grain1.IncrementAsync();
         Assert.Equal(2L, await grain2.GetValueAsync());
@@ -81,7 +87,7 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ResetAsync_ResetsCounterToZero()
     {
-        var grain = GetCounter("reset-grain");
+        ICounterGrain grain = GetCounter("reset-grain");
         await grain.IncrementAsync();
         await grain.IncrementAsync();
         await grain.ResetAsync();
@@ -91,8 +97,8 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task DifferentKeys_IndependentActivations()
     {
-        var grainA = GetCounter("key-a");
-        var grainB = GetCounter("key-b");
+        ICounterGrain grainA = GetCounter("key-a");
+        ICounterGrain grainB = GetCounter("key-b");
         await grainA.IncrementAsync();
         await grainA.IncrementAsync();
         await grainB.IncrementAsync();
@@ -103,11 +109,11 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ConcurrentCalls_SameGrain_AreSerialized()
     {
-        var grain = GetCounter("concurrent-grain");
+        ICounterGrain grain = GetCounter("concurrent-grain");
         var tasks = Enumerable.Range(0, 20)
             .Select(_ => grain.IncrementAsync())
             .ToList();
-        var results = await Task.WhenAll(tasks);
+        long[] results = await Task.WhenAll(tasks);
         Assert.Equal(20L, await grain.GetValueAsync());
         Assert.Equal(
             Enumerable.Range(1, 20).Select(i => (long)i).OrderBy(x => x),
@@ -117,7 +123,7 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetValue_BeforeAnyCall_ReturnsZero()
     {
-        var grain = GetCounter("fresh-grain");
+        ICounterGrain grain = GetCounter("fresh-grain");
         Assert.Equal(0L, await grain.GetValueAsync());
     }
 }

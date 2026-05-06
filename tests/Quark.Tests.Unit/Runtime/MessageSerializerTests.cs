@@ -1,6 +1,6 @@
 using Quark.Core.Abstractions.Identity;
-using Quark.Transport.Abstractions;
 using Quark.Runtime;
+using Quark.Transport.Abstractions;
 using Xunit;
 
 namespace Quark.Tests.Unit.Runtime;

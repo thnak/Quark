@@ -1,8 +1,8 @@
 ﻿namespace Quark.Persistence.Abstractions;
 
 /// <summary>
-/// Mutable container holding a grain's persisted state snapshot and metadata.
-/// Modeled after Orleans' <c>GrainState&lt;T&gt;</c> contract.
+///     Mutable container holding a grain's persisted state snapshot and metadata.
+///     Modeled after Orleans' <c>GrainState&lt;T&gt;</c> contract.
 /// </summary>
 public sealed class GrainState<TState> where TState : new()
 {

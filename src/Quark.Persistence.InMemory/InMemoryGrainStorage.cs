@@ -1,20 +1,18 @@
 using System.Collections.Concurrent;
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Persistence.InMemory;
 
 /// <summary>
-/// In-memory implementation of <see cref="IGrainStorage"/> intended for development and tests.
-/// State is copied on both read and write to preserve Orleans-style isolation semantics.
+///     In-memory implementation of <see cref="IGrainStorage" /> intended for development and tests.
+///     State is copied on both read and write to preserve Orleans-style isolation semantics.
 /// </summary>
 public sealed class InMemoryGrainStorage : IGrainStorage
 {
-    private readonly ConcurrentDictionary<string, Entry> _store = new(StringComparer.Ordinal);
     private readonly ICopierProvider _copiers;
+    private readonly ConcurrentDictionary<string, Entry> _store = new(StringComparer.Ordinal);
 
     /// <summary>Initializes the in-memory storage provider.</summary>
     public InMemoryGrainStorage(ICopierProvider copiers)
@@ -22,7 +20,7 @@ public sealed class InMemoryGrainStorage : IGrainStorage
         _copiers = copiers;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task ReadStateAsync<TState>(
         string stateName,
         GrainId grainId,
@@ -49,7 +47,7 @@ public sealed class InMemoryGrainStorage : IGrainStorage
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task WriteStateAsync<TState>(
         string stateName,
         GrainId grainId,
@@ -70,7 +68,7 @@ public sealed class InMemoryGrainStorage : IGrainStorage
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task ClearStateAsync<TState>(
         string stateName,
         GrainId grainId,
@@ -94,8 +92,10 @@ public sealed class InMemoryGrainStorage : IGrainStorage
         return copier.DeepCopy(value, new CopyContext());
     }
 
-    private static string GetStorageKey<TState>(string stateName, GrainId grainId) =>
-        $"{grainId.Type.Value}|{grainId.Key}|{stateName}|{typeof(TState).AssemblyQualifiedName}";
+    private static string GetStorageKey<TState>(string stateName, GrainId grainId)
+    {
+        return $"{grainId.Type.Value}|{grainId.Key}|{stateName}|{typeof(TState).AssemblyQualifiedName}";
+    }
 
     private sealed record Entry(object Value, string ETag);
 }

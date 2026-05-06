@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Quark.Testing.Harness;
 
 /// <summary>
-/// Represents a single silo running in-process for testing purposes.
+///     Represents a single silo running in-process for testing purposes.
 /// </summary>
 public sealed class TestSilo : IAsyncDisposable
 {
@@ -35,17 +35,25 @@ public sealed class TestSilo : IAsyncDisposable
 
     /// <summary>Service provider for this silo host.</summary>
     public IServiceProvider Services => _host?.Services
-        ?? throw new InvalidOperationException("TestSilo is not started.");
+                                        ?? throw new InvalidOperationException("TestSilo is not started.");
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync().ConfigureAwait(false);
+    }
 
     /// <summary>Resolves a service from this silo's DI container.</summary>
-    public T GetRequiredService<T>() where T : notnull =>
-        Services.GetRequiredService<T>();
+    public T GetRequiredService<T>() where T : notnull
+    {
+        return Services.GetRequiredService<T>();
+    }
 
     /// <summary>Starts the silo.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder();
-        builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Warning);
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
         // Minimal silo setup — will expand in M3 to include real silo runtime.
         Options.ConfigureSiloServices?.Invoke(builder.Services);
@@ -64,11 +72,5 @@ public sealed class TestSilo : IAsyncDisposable
             _host.Dispose();
             _host = null;
         }
-    }
-
-    /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
-    {
-        await StopAsync().ConfigureAwait(false);
     }
 }

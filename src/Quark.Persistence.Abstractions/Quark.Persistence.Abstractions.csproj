@@ -6,6 +6,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj"/>
   </ItemGroup>
 </Project>

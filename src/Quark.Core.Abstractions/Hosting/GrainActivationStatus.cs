@@ -13,5 +13,5 @@ public enum GrainActivationStatus
     Deactivating,
 
     /// <summary>Activation is fully stopped.</summary>
-    Inactive,
+    Inactive
 }

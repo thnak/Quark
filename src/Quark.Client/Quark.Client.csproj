@@ -6,10 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Core\Quark.Core.csproj" />
-    <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj" />
-    <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <ProjectReference Include="..\Quark.Core\Quark.Core.csproj"/>
+    <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj"/>
+    <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
   </ItemGroup>
 </Project>

@@ -1,9 +1,8 @@
-﻿using Quark.Core.Abstractions;
-using Quark.Core.Abstractions.Identity;
+﻿using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 
 /// <summary>
-/// Payload contract for a network-routed grain call.
+///     Payload contract for a network-routed grain call.
 /// </summary>
 public sealed record GrainInvocationRequest(GrainId GrainId, uint MethodId, object?[]? Arguments);

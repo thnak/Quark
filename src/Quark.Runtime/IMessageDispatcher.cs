@@ -3,7 +3,7 @@
 namespace Quark.Runtime;
 
 /// <summary>
-/// Routes incoming message envelopes to the appropriate grain activation.
+///     Routes incoming message envelopes to the appropriate grain activation.
 /// </summary>
 public interface IMessageDispatcher
 {

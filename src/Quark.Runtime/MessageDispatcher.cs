@@ -1,11 +1,10 @@
-﻿using Quark.Core.Abstractions;
-using Quark.Core.Abstractions.Hosting;
+﻿using Quark.Core.Abstractions.Hosting;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
 
 /// <summary>
-/// Default dispatcher for request/one-way message envelopes.
+///     Default dispatcher for request/one-way message envelopes.
 /// </summary>
 public sealed class MessageDispatcher : IMessageDispatcher
 {
@@ -19,17 +18,18 @@ public sealed class MessageDispatcher : IMessageDispatcher
         _serializer = serializer;
     }
 
-    /// <inheritdoc/>
-    public async Task<MessageEnvelope?> DispatchAsync(MessageEnvelope envelope, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<MessageEnvelope?> DispatchAsync(MessageEnvelope envelope,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
         switch (envelope.MessageType)
         {
             case MessageType.Request:
-                return await DispatchRequestAsync(envelope, expectResponse: true, cancellationToken).ConfigureAwait(false);
+                return await DispatchRequestAsync(envelope, true, cancellationToken).ConfigureAwait(false);
             case MessageType.OneWayRequest:
-                _ = await DispatchRequestAsync(envelope, expectResponse: false, cancellationToken).ConfigureAwait(false);
+                _ = await DispatchRequestAsync(envelope, false, cancellationToken).ConfigureAwait(false);
                 return null;
             default:
                 return null;
@@ -52,7 +52,8 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 return null;
             }
 
-            object? result = await _invoker.InvokeAsync(request.GrainId, request.MethodId, request.Arguments, cancellationToken)
+            object? result = await _invoker
+                .InvokeAsync(request.GrainId, request.MethodId, request.Arguments, cancellationToken)
                 .ConfigureAwait(false);
 
             GrainInvocationResponse response = new(true, result, null);

@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Quark.Core.Hosting;
 
 /// <summary>
-/// Builder interface for configuring a Quark cluster client.
+///     Builder interface for configuring a Quark cluster client.
 /// </summary>
 public interface IClientBuilder
 {

@@ -1,33 +1,31 @@
+using System.Collections.Immutable;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading;
 
 namespace Quark.CodeGenerator;
 
 /// <summary>
-/// Generates AOT-safe grain activator factories for concrete grain classes.
-/// Each generated factory constructs the grain directly and resolves constructor
-/// dependencies from <see cref="System.IServiceProvider"/>, mirroring Orleans-style DI activation.
+///     Generates AOT-safe grain activator factories for concrete grain classes.
+///     Each generated factory constructs the grain directly and resolves constructor
+///     dependencies from <see cref="System.IServiceProvider" />, mirroring Orleans-style DI activation.
 /// </summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class GrainActivatorGenerator : IIncrementalGenerator
 {
     private const string GrainFqn = "Quark.Core.Abstractions.Grain";
+
     private const string ActivatorUtilitiesConstructorFqn =
         "Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructorAttribute";
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<GrainModel?> models = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (node, _) => node is ClassDeclarationSyntax,
-                transform: ExtractModel)
+                static (node, _) => node is ClassDeclarationSyntax,
+                ExtractModel)
             .Where(static model => model is not null);
 
         context.RegisterSourceOutput(
@@ -38,13 +36,19 @@ public sealed class GrainActivatorGenerator : IIncrementalGenerator
     private static GrainModel? ExtractModel(GeneratorSyntaxContext ctx, CancellationToken ct)
     {
         if (ctx.Node is not ClassDeclarationSyntax declaration)
+        {
             return null;
+        }
 
         if (ctx.SemanticModel.GetDeclaredSymbol(declaration, ct) is not INamedTypeSymbol typeSymbol)
+        {
             return null;
+        }
 
         if (typeSymbol.IsAbstract || typeSymbol.IsGenericType)
+        {
             return null;
+        }
 
         bool isGrain = false;
         for (INamedTypeSymbol? current = typeSymbol.BaseType; current is not null; current = current.BaseType)
@@ -57,17 +61,21 @@ public sealed class GrainActivatorGenerator : IIncrementalGenerator
         }
 
         if (!isGrain)
+        {
             return null;
+        }
 
         IMethodSymbol? ctor = SelectConstructor(typeSymbol);
         if (ctor is null)
+        {
             return null;
+        }
 
         string ns = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : typeSymbol.ContainingNamespace.ToDisplayString();
 
-        List<ParameterModel> parameters = ctor.Parameters
+        var parameters = ctor.Parameters
             .Select(p => new ParameterModel(
                 p.Name,
                 p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
@@ -83,17 +91,22 @@ public sealed class GrainActivatorGenerator : IIncrementalGenerator
 
     private static IMethodSymbol? SelectConstructor(INamedTypeSymbol typeSymbol)
     {
-        ImmutableArray<IMethodSymbol> publicConstructors = typeSymbol.InstanceConstructors
-            .Where(static ctor => ctor.MethodKind == MethodKind.Constructor && ctor.DeclaredAccessibility == Accessibility.Public)
+        var publicConstructors = typeSymbol.InstanceConstructors
+            .Where(static ctor => ctor.MethodKind == MethodKind.Constructor &&
+                                  ctor.DeclaredAccessibility == Accessibility.Public)
             .ToImmutableArray();
 
         if (publicConstructors.Length == 0)
+        {
             return null;
+        }
 
         foreach (IMethodSymbol ctor in publicConstructors)
         {
             if (ctor.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == ActivatorUtilitiesConstructorFqn))
+            {
                 return ctor;
+            }
         }
 
         return publicConstructors
@@ -132,7 +145,8 @@ public sealed class GrainActivatorGenerator : IIncrementalGenerator
         sb.AppendLine("{");
         sb.AppendLine($"    public global::System.Type GrainClass => typeof({model.FqTypeName});");
         sb.AppendLine();
-        sb.AppendLine("    public global::Quark.Core.Abstractions.Grain Create(global::System.IServiceProvider services)");
+        sb.AppendLine(
+            "    public global::Quark.Core.Abstractions.Grain Create(global::System.IServiceProvider services)");
         sb.AppendLine("    {");
 
         if (model.Parameters.Count == 0)
@@ -149,6 +163,7 @@ public sealed class GrainActivatorGenerator : IIncrementalGenerator
                 sb.AppendLine(
                     $"            global::Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<{parameter.FqTypeName}>(services){suffix}");
             }
+
             sb.AppendLine("        );");
         }
 

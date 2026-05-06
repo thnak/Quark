@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
@@ -7,16 +8,16 @@ using Quark.Transport.Abstractions;
 namespace Quark.Transport.Tcp;
 
 /// <summary>
-/// Wraps a <see cref="Socket"/> as an <see cref="ITransportConnection"/> backed by
-/// <see cref="System.IO.Pipelines"/> for efficient buffer management.
+///     Wraps a <see cref="Socket" /> as an <see cref="ITransportConnection" /> backed by
+///     <see cref="System.IO.Pipelines" /> for efficient buffer management.
 /// </summary>
 internal sealed class TcpTransportConnection : ITransportConnection
 {
-    private readonly Socket _socket;
-    private readonly ILogger _logger;
-    private readonly Pipe _inputPipe = new();
-    private readonly Pipe _outputPipe = new();
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly Pipe _inputPipe = new();
+    private readonly ILogger _logger;
+    private readonly Pipe _outputPipe = new();
+    private readonly Socket _socket;
 
     internal TcpTransportConnection(Socket socket, ILogger logger)
     {
@@ -28,22 +29,22 @@ internal sealed class TcpTransportConnection : ITransportConnection
         _logger = logger;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public string ConnectionId { get; }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public EndPoint? LocalEndPoint { get; }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public EndPoint? RemoteEndPoint { get; }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public IDuplexPipe Transport { get; }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task Completion => _completion.Task;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task ExecuteAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -60,14 +61,14 @@ internal sealed class TcpTransportConnection : ITransportConnection
         }
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Task CloseAsync(CancellationToken cancellationToken = default)
     {
         _socket.Shutdown(SocketShutdown.Both);
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         _socket.Dispose();
@@ -83,10 +84,17 @@ internal sealed class TcpTransportConnection : ITransportConnection
             {
                 Memory<byte> buffer = writer.GetMemory(4096);
                 int read = await _socket.ReceiveAsync(buffer, SocketFlags.None, ct).ConfigureAwait(false);
-                if (read == 0) break;
+                if (read == 0)
+                {
+                    break;
+                }
+
                 writer.Advance(read);
                 FlushResult result = await writer.FlushAsync(ct).ConfigureAwait(false);
-                if (result.IsCompleted) break;
+                if (result.IsCompleted)
+                {
+                    break;
+                }
             }
         }
         catch (Exception ex)
@@ -95,6 +103,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
             await writer.CompleteAsync(ex).ConfigureAwait(false);
             return;
         }
+
         await writer.CompleteAsync().ConfigureAwait(false);
     }
 
@@ -106,7 +115,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
             while (true)
             {
                 ReadResult result = await reader.ReadAsync(ct).ConfigureAwait(false);
-                System.Buffers.ReadOnlySequence<byte> buffer = result.Buffer;
+                ReadOnlySequence<byte> buffer = result.Buffer;
 
                 foreach (ReadOnlyMemory<byte> segment in buffer)
                 {
@@ -114,7 +123,10 @@ internal sealed class TcpTransportConnection : ITransportConnection
                 }
 
                 reader.AdvanceTo(buffer.End);
-                if (result.IsCompleted) break;
+                if (result.IsCompleted)
+                {
+                    break;
+                }
             }
         }
         catch (Exception ex)
@@ -123,6 +135,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
             await reader.CompleteAsync(ex).ConfigureAwait(false);
             return;
         }
+
         await reader.CompleteAsync().ConfigureAwait(false);
     }
 
@@ -133,6 +146,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
             Input = input;
             Output = output;
         }
+
         public PipeReader Input { get; }
         public PipeWriter Output { get; }
     }

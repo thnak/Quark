@@ -1,13 +1,13 @@
 ﻿namespace Quark.Core.Hosting;
 
 /// <summary>
-/// Extension methods for <see cref="ISiloBuilder"/>.
+///     Extension methods for <see cref="ISiloBuilder" />.
 /// </summary>
 public static class SiloBuilderExtensions
 {
     /// <summary>
-    /// Configures the silo for single-node local development (localhost clustering).
-    /// Drop-in equivalent of Orleans' <c>UseLocalhostClustering()</c>.
+    ///     Configures the silo for single-node local development (localhost clustering).
+    ///     Drop-in equivalent of Orleans' <c>UseLocalhostClustering()</c>.
     /// </summary>
     public static ISiloBuilder UseLocalhostClustering(
         this ISiloBuilder builder,

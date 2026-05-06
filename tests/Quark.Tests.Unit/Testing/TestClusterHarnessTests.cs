@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Quark.Testing;
 using Quark.Testing.Harness;
 using Xunit;
 
@@ -42,5 +41,6 @@ public sealed class TestClusterHarnessTests
     }
 
     private sealed class SiloMarker;
+
     private sealed class ClientMarker;
 }

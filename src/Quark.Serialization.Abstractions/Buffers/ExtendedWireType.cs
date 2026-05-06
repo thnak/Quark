@@ -1,6 +1,6 @@
 ﻿namespace Quark.Serialization.Abstractions.Buffers;
 
-/// <summary>Sub-type for <see cref="WireType.Extended"/> fields.</summary>
+/// <summary>Sub-type for <see cref="WireType.Extended" /> fields.</summary>
 public enum ExtendedWireType : byte
 {
     /// <summary>Null reference.</summary>
@@ -13,5 +13,5 @@ public enum ExtendedWireType : byte
     PolymorphicType = 2,
 
     /// <summary>The field holds its default (zero/empty) value.</summary>
-    DefaultValue = 3,
+    DefaultValue = 3
 }

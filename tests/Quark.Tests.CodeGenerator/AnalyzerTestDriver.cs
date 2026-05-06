@@ -13,11 +13,11 @@ internal static class AnalyzerTestDriver
             source,
             new CSharpParseOptions(LanguageVersion.Preview));
 
-        CSharpCompilation compilation = CSharpCompilation.Create(
-            assemblyName: "AnalyzerTests",
-            syntaxTrees: [syntaxTree],
-            references: GeneratorTestDriver.GetMetadataReferences(),
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = CSharpCompilation.Create(
+            "AnalyzerTests",
+            [syntaxTree],
+            GeneratorTestDriver.GetMetadataReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         CompilationWithAnalyzers withAnalyzers = compilation.WithAnalyzers([analyzer]);
         return withAnalyzers.GetAnalyzerDiagnosticsAsync().GetAwaiter().GetResult().ToImmutableArray();

@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Quark.Core.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -7,15 +6,15 @@ using Quark.Core.Abstractions.Identity;
 namespace Quark.Runtime;
 
 /// <summary>
-/// Default <see cref="IGrainActivator"/> that prefers registered generated factories and
-/// falls back to DI-based activation when none is available.
-/// Grain types must be registered with <c>AddGrain&lt;T&gt;()</c> for this to work.
+///     Default <see cref="IGrainActivator" /> that prefers registered generated factories and
+///     falls back to DI-based activation when none is available.
+///     Grain types must be registered with <c>AddGrain&lt;T&gt;()</c> for this to work.
 /// </summary>
 public sealed class DefaultGrainActivator : IGrainActivator
 {
-    private readonly IServiceProvider _services;
-    private readonly IGrainTypeRegistry _registry;
     private readonly Dictionary<Type, IGrainActivatorFactory> _factories;
+    private readonly IGrainTypeRegistry _registry;
+    private readonly IServiceProvider _services;
 
     /// <summary>Initialises the activator.</summary>
     public DefaultGrainActivator(
@@ -33,13 +32,15 @@ public sealed class DefaultGrainActivator : IGrainActivator
         }
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public Grain CreateInstance(GrainType grainType)
     {
         if (!_registry.TryGetGrainClass(grainType, out Type? grainClass) || grainClass is null)
+        {
             throw new InvalidOperationException(
                 $"No grain class registered for grain type '{grainType.Value}'. " +
                 "Call services.AddGrain<TGrain>() during startup.");
+        }
 
         if (_factories.TryGetValue(grainClass, out IGrainActivatorFactory? factory))
         {
@@ -56,8 +57,11 @@ public sealed class DefaultGrainActivator : IGrainActivator
         // Fallback path: resolve from DI so constructor dependencies are injected.
         object instance = _services.GetRequiredService(grainClass);
         if (instance is not Grain grain)
+        {
             throw new InvalidOperationException(
                 $"Type '{grainClass.FullName}' does not inherit from {nameof(Grain)}.");
+        }
+
         return grain;
     }
 }

@@ -1,13 +1,12 @@
-using Quark.Serialization.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Serialization.Codecs;
 
-/// <summary>Codec for <see cref="string"/> (UTF-8, null-safe).</summary>
+/// <summary>Codec for <see cref="string" /> (UTF-8, null-safe).</summary>
 public sealed class StringCodec : IFieldCodec<string?>
 {
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public void WriteField(CodecWriter writer, uint fieldId, Type expectedType, string? value)
     {
         if (value is null)
@@ -17,15 +16,19 @@ public sealed class StringCodec : IFieldCodec<string?>
             writer.WriteByte((byte)ExtendedWireType.Null);
             return;
         }
+
         writer.WriteFieldHeader(fieldId, WireType.LengthPrefixed);
         writer.WriteString(value);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public string? ReadValue(CodecReader reader, Field field)
     {
         if (field.WireType == WireType.Extended && field.ExtendedWireType == ExtendedWireType.Null)
+        {
             return null;
+        }
+
         return reader.ReadString();
     }
 }

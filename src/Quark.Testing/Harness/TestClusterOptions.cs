@@ -1,11 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace Quark.Testing.Harness;
 
 /// <summary>
-/// Options for configuring a <see cref="TestCluster"/>.
+///     Options for configuring a <see cref="TestCluster" />.
 /// </summary>
 public sealed class TestClusterOptions
 {

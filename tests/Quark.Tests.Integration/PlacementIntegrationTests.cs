@@ -19,8 +19,8 @@ public sealed class PlacementIntegrationTests
         using ServiceProvider provider = services.BuildServiceProvider();
         IPlacementDirector director = provider.GetRequiredService<IPlacementDirector>();
 
-        SiloAddress local = SiloAddress.Loopback(11111);
-        SiloAddress remote = SiloAddress.Loopback(11112);
+        var local = SiloAddress.Loopback(11111);
+        var remote = SiloAddress.Loopback(11112);
         GrainId grainId = new(new GrainType(nameof(PreferLocalCounterGrain)), "counter-1");
 
         SiloAddress selected = director.SelectActivationSilo(
@@ -41,13 +41,15 @@ public sealed class PlacementIntegrationTests
         using ServiceProvider provider = services.BuildServiceProvider();
         IPlacementDirector director = provider.GetRequiredService<IPlacementDirector>();
 
-        SiloAddress local = SiloAddress.Loopback(11111);
-        SiloAddress remote1 = SiloAddress.Loopback(11112);
-        SiloAddress remote2 = SiloAddress.Loopback(11113);
+        var local = SiloAddress.Loopback(11111);
+        var remote1 = SiloAddress.Loopback(11112);
+        var remote2 = SiloAddress.Loopback(11113);
         GrainId grainId = new(new GrainType(nameof(HashPlacedCounterGrain)), "shopping-cart-42");
 
-        SiloAddress first = director.SelectActivationSilo(grainId, typeof(HashPlacedCounterGrain), local, [local, remote1, remote2]);
-        SiloAddress second = director.SelectActivationSilo(grainId, typeof(HashPlacedCounterGrain), local, [remote2, local, remote1]);
+        SiloAddress first =
+            director.SelectActivationSilo(grainId, typeof(HashPlacedCounterGrain), local, [local, remote1, remote2]);
+        SiloAddress second =
+            director.SelectActivationSilo(grainId, typeof(HashPlacedCounterGrain), local, [remote2, local, remote1]);
 
         Assert.Equal(first, second);
     }
@@ -63,8 +65,8 @@ public sealed class PlacementIntegrationTests
         await using ServiceProvider provider = services.BuildServiceProvider();
         IPlacementDirector director = provider.GetRequiredService<IPlacementDirector>();
 
-        SiloAddress local = SiloAddress.Loopback(cluster.Silos[0].SiloPort);
-        SiloAddress remote = SiloAddress.Loopback(cluster.Silos[1].SiloPort);
+        var local = SiloAddress.Loopback(cluster.Silos[0].SiloPort);
+        var remote = SiloAddress.Loopback(cluster.Silos[1].SiloPort);
         GrainId grainId = new(new GrainType(nameof(RandomPlacedCounterGrain)), "counter-2");
 
         SiloAddress selected = director.SelectActivationSilo(
