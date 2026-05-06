@@ -1,6 +1,7 @@
 using Quark.Core.Abstractions;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using Quark.Core.Abstractions.Grains;
 
 namespace Quark.Runtime;
 

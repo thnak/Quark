@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Filter used by the serializer infrastructure to decide which types are handled

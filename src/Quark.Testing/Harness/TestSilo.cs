@@ -1,9 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Quark.Testing.Harness;
 
-namespace Quark.Testing;
+namespace Quark.Testing.Harness;
 
 /// <summary>
 /// Represents a single silo running in-process for testing purposes.

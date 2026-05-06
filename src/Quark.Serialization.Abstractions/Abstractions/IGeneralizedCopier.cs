@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Core contract for a deep-copy provider that can handle any type it recognises.

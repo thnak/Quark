@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
 /// Stateless-worker placement: multiple activations of the same grain may exist

@@ -1,4 +1,6 @@
-namespace Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Identity;
+
+namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// Routes an outbound grain call from a grain proxy to the runtime dispatcher.

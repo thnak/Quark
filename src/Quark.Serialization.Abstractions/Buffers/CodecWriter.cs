@@ -1,7 +1,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
 /// A forward-only writer for Quark's binary encoding, backed by any <see cref="IBufferWriter{T}"/>.

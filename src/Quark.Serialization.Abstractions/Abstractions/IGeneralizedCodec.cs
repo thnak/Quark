@@ -1,4 +1,6 @@
-namespace Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
+
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Core contract for a codec that can handle any type it recognises.

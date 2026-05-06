@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Attributes;
 
 /// <summary>
 /// Provides an alternative short name for a type used during serialization.

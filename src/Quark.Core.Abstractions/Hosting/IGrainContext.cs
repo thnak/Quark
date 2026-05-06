@@ -1,6 +1,8 @@
+using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Lifecycle;
 
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// Represents the context of a single grain activation in the runtime.

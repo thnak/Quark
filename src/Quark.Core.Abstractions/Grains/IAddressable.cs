@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Grains;
 
 /// <summary>
 /// Marker interface for anything that can be addressed in the cluster.

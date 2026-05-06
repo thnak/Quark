@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
 /// Applies <see cref="RandomPlacement"/> to a grain class.

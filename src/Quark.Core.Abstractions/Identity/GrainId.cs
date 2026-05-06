@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Identity;
 
 /// <summary>
 /// The stable, cluster-wide identity of a grain instance.

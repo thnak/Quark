@@ -1,4 +1,6 @@
-﻿namespace Quark.Core.Abstractions.Exceptions;
+﻿using Quark.Core.Abstractions.Identity;
+
+namespace Quark.Core.Abstractions.Exceptions;
 
 /// <summary>Thrown when a grain with the requested key does not exist and cannot be created.</summary>
 public sealed class GrainNotFoundException : QuarkException

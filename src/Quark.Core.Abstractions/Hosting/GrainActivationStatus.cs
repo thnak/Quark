@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>Current state of a grain activation.</summary>
 public enum GrainActivationStatus

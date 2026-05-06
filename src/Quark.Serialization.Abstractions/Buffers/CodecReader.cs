@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
 /// A forward-only reader for Quark's binary encoding, backed by a <see cref="ReadOnlyMemory{T}"/>.

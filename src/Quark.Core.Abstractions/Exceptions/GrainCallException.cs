@@ -1,4 +1,6 @@
-﻿namespace Quark.Core.Abstractions.Exceptions;
+﻿using Quark.Core.Abstractions.Identity;
+
+namespace Quark.Core.Abstractions.Exceptions;
 
 /// <summary>Thrown when a grain call fails (the grain threw an exception).</summary>
 public sealed class GrainCallException : QuarkException

@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// Registry that maps grain implementation CLR types to their <see cref="IGrainMethodInvoker"/>.

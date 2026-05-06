@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Grains;
 
 /// <summary>
 /// Base marker interface for all grains.

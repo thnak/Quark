@@ -1,4 +1,5 @@
 ﻿using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;

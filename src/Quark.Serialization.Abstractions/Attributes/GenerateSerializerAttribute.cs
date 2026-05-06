@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Attributes;
 
 /// <summary>
 /// Marks a type for AOT-safe Quark serialization code generation.

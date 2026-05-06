@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// The client interface for interacting with a Quark cluster.

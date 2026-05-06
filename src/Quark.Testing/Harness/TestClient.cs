@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Quark.Core.Abstractions;
 
-namespace Quark.Testing;
+namespace Quark.Testing.Harness;
 
 /// <summary>
 /// Lightweight testing client facade exposed by <see cref="TestCluster"/>.

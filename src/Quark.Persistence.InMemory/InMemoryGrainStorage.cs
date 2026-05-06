@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Persistence.InMemory;
 

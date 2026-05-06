@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Testing;
+using Quark.Testing.Harness;
 using Xunit;
 
 namespace Quark.Tests.Unit.Testing;

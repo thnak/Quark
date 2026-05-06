@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Codecs;
 using Quark.Serialization.Copiers;
 using Quark.Serialization.Providers;

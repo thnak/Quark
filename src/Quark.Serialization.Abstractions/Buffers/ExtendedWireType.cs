@@ -1,4 +1,4 @@
-﻿namespace Quark.Serialization.Abstractions;
+﻿namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>Sub-type for <see cref="WireType.Extended"/> fields.</summary>
 public enum ExtendedWireType : byte

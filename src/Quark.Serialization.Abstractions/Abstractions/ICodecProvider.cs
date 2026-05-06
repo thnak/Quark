@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Resolves <see cref="IFieldCodec{T}"/> instances and <see cref="IGeneralizedCodec"/>s

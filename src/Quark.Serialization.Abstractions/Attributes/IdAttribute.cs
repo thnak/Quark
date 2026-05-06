@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Attributes;
 
 /// <summary>
 /// Assigns a stable numeric identifier to a field or property that participates in serialization.

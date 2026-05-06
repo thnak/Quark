@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Typed deep-copier.

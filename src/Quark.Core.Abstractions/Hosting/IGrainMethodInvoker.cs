@@ -1,4 +1,6 @@
-namespace Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Grains;
+
+namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// Dispatches method calls to a grain instance by method ID.

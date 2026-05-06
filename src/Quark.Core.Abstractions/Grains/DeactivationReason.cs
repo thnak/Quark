@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Grains;
 
 /// <summary>Describes the reason a grain activation is being deactivated.</summary>
 public sealed class DeactivationReason

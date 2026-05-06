@@ -1,4 +1,6 @@
-namespace Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Grains;
+
+namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// Factory for obtaining grain references from an <see cref="IClusterClient"/> or from inside a grain.

@@ -1,4 +1,5 @@
 using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Serialization.Copiers;
 

@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>Singleton random placement strategy.</summary>
 public sealed class RandomPlacement : PlacementStrategy

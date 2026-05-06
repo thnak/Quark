@@ -1,4 +1,6 @@
-namespace Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Identity;
+
+namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 /// Maps a <see cref="GrainType"/> key to the concrete CLR <see cref="Type"/> that implements

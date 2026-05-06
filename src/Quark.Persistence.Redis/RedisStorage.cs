@@ -1,4 +1,5 @@
 ﻿using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 
 namespace Quark.Persistence.Redis;

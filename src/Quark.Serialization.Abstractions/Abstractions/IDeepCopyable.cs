@@ -1,4 +1,4 @@
-﻿namespace Quark.Serialization.Abstractions;
+﻿namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Deep-copy interface — returns a detached copy of the object graph.

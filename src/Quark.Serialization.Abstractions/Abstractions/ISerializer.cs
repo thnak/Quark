@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Top-level serializer interface: serialize/deserialize a full object graph.

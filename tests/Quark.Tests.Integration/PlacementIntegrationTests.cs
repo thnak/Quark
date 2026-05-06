@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions;
 using Quark.Runtime;
 using Quark.Testing;
+using Quark.Testing.Harness;
 using Xunit;
 
 namespace Quark.Tests.Integration;

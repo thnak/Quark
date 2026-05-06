@@ -1,4 +1,4 @@
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Identity;
 
 /// <summary>
 /// Stable identifier for a grain interface type, used by the messaging layer

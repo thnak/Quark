@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
 /// Wire type used in the binary field header, indicating how many bytes follow the tag.

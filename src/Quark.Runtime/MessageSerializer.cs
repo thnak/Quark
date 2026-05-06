@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
 using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;

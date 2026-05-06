@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
 /// Hash-based (consistent) placement: grains with the same key hash always land on the

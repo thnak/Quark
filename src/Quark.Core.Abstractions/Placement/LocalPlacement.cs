@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
 /// Prefers placing a new activation on the local silo when possible.

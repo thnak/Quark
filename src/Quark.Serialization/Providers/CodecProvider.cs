@@ -1,4 +1,5 @@
 using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Exceptions;
 
 namespace Quark.Serialization.Providers;

@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Persistence.Abstractions;
 
 /// <summary>
 /// Orleans-compatible contract for grains which own a single persisted state object.

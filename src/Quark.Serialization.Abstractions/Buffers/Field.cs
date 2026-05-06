@@ -1,4 +1,4 @@
-namespace Quark.Serialization.Abstractions;
+namespace Quark.Serialization.Abstractions.Buffers;
 
 /// <summary>
 /// Describes a single field header read from the wire.

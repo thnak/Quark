@@ -1,6 +1,7 @@
-using Quark.Core.Abstractions.Lifecycle;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
 
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Grains;
 
 /// <summary>
 /// Abstract base class for all grain implementations.

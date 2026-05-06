@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Serialization.Codecs;
 

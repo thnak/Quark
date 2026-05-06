@@ -1,8 +1,4 @@
-using System.Buffers.Text;
-using System.Runtime.CompilerServices;
-using System.Text;
-
-namespace Quark.Core.Abstractions;
+namespace Quark.Core.Abstractions.Identity;
 
 /// <summary>
 /// Represents the type component of a <see cref="GrainId"/>.

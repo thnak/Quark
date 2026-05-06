@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions;
+using Quark.Persistence.Abstractions;
 using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;

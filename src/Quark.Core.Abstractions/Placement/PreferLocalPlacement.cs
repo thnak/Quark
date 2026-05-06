@@ -1,4 +1,4 @@
-﻿namespace Quark.Core.Abstractions;
+﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
 /// Prefer-local placement: attempts to activate on the silo that made the request,

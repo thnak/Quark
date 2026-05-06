@@ -1,4 +1,6 @@
-namespace Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
+
+namespace Quark.Serialization.Abstractions.Abstractions;
 
 /// <summary>
 /// Typed field codec.  Each type that participates in Quark serialization has exactly one
