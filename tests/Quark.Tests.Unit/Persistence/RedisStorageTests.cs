@@ -52,7 +52,7 @@ public sealed class RedisStorageTests
         services.AddSingleton<IRedisStorageConnection>(connection);
         services.AddRedisGrainStorage();
 
-        using ServiceProvider provider = services.BuildServiceProvider();
+        await using ServiceProvider provider = services.BuildServiceProvider();
         IStorage<CounterState> storage = provider.GetRequiredService<IStorage<CounterState>>();
 
         GrainId grainId = new(new GrainType("CounterGrain"), "redis-2");
@@ -71,12 +71,10 @@ public sealed class RedisStorageTests
 
         public IReadOnlyCollection<string> Keys => _records.Keys.ToArray();
 
-        public Task<RedisStorageRecord?> ReadAsync(string key, CancellationToken cancellationToken = default)
+        public async Task<RedisStorageRecord?> ReadAsync(string key, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(_records.TryGetValue(key, out RedisStorageRecord record)
-                ? record
-                : null);
+            return _records.TryGetValue(key, out RedisStorageRecord record) ? record : null;
         }
 
         public Task WriteAsync(string key, RedisStorageRecord record, CancellationToken cancellationToken = default)
