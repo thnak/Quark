@@ -1,4 +1,5 @@
-﻿using Quark.Core.Abstractions;
+﻿using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Tests.Unit.Integration;
 

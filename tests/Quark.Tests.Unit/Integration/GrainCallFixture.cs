@@ -2,7 +2,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Quark.Client;
-using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 
 namespace Quark.Tests.Unit.Integration;

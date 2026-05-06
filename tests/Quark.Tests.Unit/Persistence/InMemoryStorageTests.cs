@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 using Quark.Persistence.InMemory;
 using Quark.Serialization;
-using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
 using Xunit;
 
 namespace Quark.Tests.Unit.Persistence;

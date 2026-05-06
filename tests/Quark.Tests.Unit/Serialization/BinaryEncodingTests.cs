@@ -1,5 +1,5 @@
 using System.Buffers;
-using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Xunit;
 
 namespace Quark.Tests.Unit.Serialization;

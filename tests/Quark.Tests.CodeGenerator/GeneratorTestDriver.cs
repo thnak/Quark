@@ -1,9 +1,9 @@
 ﻿using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Grains;
 using Quark.Runtime;
-using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Attributes;
 
 namespace Quark.Tests.CodeGenerator;
 

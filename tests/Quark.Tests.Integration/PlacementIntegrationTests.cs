@@ -1,7 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Identity;
+using Quark.Core.Abstractions.Placement;
 using Quark.Runtime;
-using Quark.Testing;
 using Quark.Testing.Harness;
 using Xunit;
 
@@ -59,7 +60,7 @@ public sealed class PlacementIntegrationTests
         ServiceCollection services = new();
         services.AddQuarkRuntime();
 
-        using ServiceProvider provider = services.BuildServiceProvider();
+        await using ServiceProvider provider = services.BuildServiceProvider();
         IPlacementDirector director = provider.GetRequiredService<IPlacementDirector>();
 
         SiloAddress local = SiloAddress.Loopback(cluster.Silos[0].SiloPort);

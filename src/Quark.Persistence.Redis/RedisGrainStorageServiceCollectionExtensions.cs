@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Quark.Persistence.Abstractions;
 
 namespace Quark.Persistence.Redis;
 

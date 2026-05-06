@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Hosting;
 
 namespace Quark.Testing.Harness;
 

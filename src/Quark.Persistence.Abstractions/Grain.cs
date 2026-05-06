@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Quark.Core.Abstractions.Grains;
 
 namespace Quark.Persistence.Abstractions;
 

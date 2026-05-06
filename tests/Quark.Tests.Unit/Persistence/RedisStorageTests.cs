@@ -1,10 +1,11 @@
 using System.Buffers.Binary;
 using Microsoft.Extensions.DependencyInjection;
-using Quark.Core.Abstractions;
+using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 using Quark.Persistence.Redis;
 using Quark.Serialization;
-using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Xunit;
 
 namespace Quark.Tests.Unit.Persistence;
