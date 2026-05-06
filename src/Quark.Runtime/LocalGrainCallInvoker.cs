@@ -19,6 +19,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly IServiceProvider _services;
     private readonly SiloAddress _siloAddress;
     private readonly ILogger<LocalGrainCallInvoker> _logger;
+    private readonly ILogger<GrainActivation> _activationLogger;
 
     /// <summary>Initialises the local grain invoker.</summary>
     public LocalGrainCallInvoker(
@@ -30,7 +31,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         IGrainFactory grainFactory,
         IServiceProvider services,
         IOptions<SiloRuntimeOptions> options,
-        ILogger<LocalGrainCallInvoker> logger)
+        ILogger<LocalGrainCallInvoker> logger,
+        ILogger<GrainActivation> activationLogger)
     {
         _activationTable = activationTable;
         _activator = activator;
@@ -41,6 +43,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _services = services;
         _siloAddress = options.Value.SiloAddress;
         _logger = logger;
+        _activationLogger = activationLogger;
     }
 
     /// <inheritdoc/>
@@ -50,7 +53,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         object?[]? arguments = null,
         CancellationToken cancellationToken = default)
     {
-        var activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
+        GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
 
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -58,8 +61,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             try
             {
-                var invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
-                var result = await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
+                IGrainMethodInvoker invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
+                object? result = await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
                 tcs.TrySetResult(result);
             }
             catch (Exception ex)
@@ -108,9 +111,9 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 "Ensure the grain is registered with AddGrain<TGrain>().");
         }
 
-        var grain = _activator.CreateInstance(grainId.Type);
+        Grain grain = _activator.CreateInstance(grainId.Type);
         var context = new GrainContext(grainId, _grainFactory, _services);
-        var activation = new GrainActivation(grain, context);
+        var activation = new GrainActivation(grain, context, _activationLogger);
 
         await context.ActivateAsync(grain, ct).ConfigureAwait(false);
 

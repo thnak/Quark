@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions;
-using Quark.Persistence.Abstractions;
 using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;
@@ -85,7 +84,8 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
                 _serviceProvider.GetRequiredService<IGrainFactory>(),
                 _serviceProvider,
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
-                NullLogger<LocalGrainCallInvoker>.Instance);
+                NullLogger<LocalGrainCallInvoker>.Instance,
+                NullLogger<GrainActivation>.Instance);
         }
 
         public async ValueTask DisposeAsync()

@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 
 namespace Quark.Runtime;
 
@@ -10,6 +11,8 @@ namespace Quark.Runtime;
 /// </summary>
 public sealed class GrainActivation : IAsyncDisposable
 {
+    private readonly ILogger<GrainActivation> _logger;
+
     private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
 
@@ -22,8 +25,9 @@ public sealed class GrainActivation : IAsyncDisposable
     /// <summary>The activation context (identity + lifecycle).</summary>
     public GrainContext Context { get; }
 
-    internal GrainActivation(Grain grain, GrainContext context)
+    internal GrainActivation(Grain grain, GrainContext context, ILogger<GrainActivation> logger)
     {
+        _logger = logger;
         Grain = grain;
         Context = context;
         _processingLoop = RunLoopAsync(_cts.Token);
@@ -46,10 +50,9 @@ public sealed class GrainActivation : IAsyncDisposable
             {
                 await work().ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                // Individual work-item exceptions are surfaced to callers via TCS.
-                // Log here in a future version.
+                _logger.LogError(e, "Error executing grain method on {GrainId}", Context.GrainId);
             }
         }
     }
@@ -58,9 +61,15 @@ public sealed class GrainActivation : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _queue.Writer.TryComplete();
-        try { await _processingLoop.ConfigureAwait(false); }
-        catch (OperationCanceledException) { }
-        _cts.Cancel();
+        try
+        {
+            await _processingLoop.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await _cts.CancelAsync();
         _cts.Dispose();
     }
 }

@@ -39,7 +39,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         MessageEnvelope? responseEnvelope = await _fixture.Dispatcher.DispatchAsync(envelope);
 
         Assert.NotNull(responseEnvelope);
-        Assert.Equal(MessageType.Response, responseEnvelope!.MessageType);
+        Assert.Equal(MessageType.Response, responseEnvelope.MessageType);
 
         GrainInvocationResponse response = _fixture.Serializer.DeserializeResponse(responseEnvelope.Payload.ToArray());
         Assert.True(response.Success);
@@ -166,10 +166,11 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             invokerRegistry.Register(typeof(DispatchCounterGrain), _serviceProvider.GetRequiredService<DispatchCounterGrainMethodInvoker>());
 
             _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
-            var activator = _serviceProvider.GetRequiredService<IGrainActivator>();
-            var directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
-            var siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
-            var logger = NullLogger<LocalGrainCallInvoker>.Instance;
+            IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
+            IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
+            IOptions<SiloRuntimeOptions> siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
+            NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
+            NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
             IGrainMethodInvokerRegistry methodInvokerReg = _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
             IGrainFactory grainFactory = _serviceProvider.GetRequiredService<IGrainFactory>();
 
@@ -182,7 +183,8 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
                 grainFactory,
                 _serviceProvider,
                 siloOptions,
-                logger);
+                logger,
+                logger2);
 
             Serializer = new GrainMessageSerializer();
             Dispatcher = new MessageDispatcher(callInvoker, Serializer);

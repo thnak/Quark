@@ -141,26 +141,27 @@ public sealed class GrainCallFixture : IAsyncDisposable
         _serviceProvider = services.BuildServiceProvider();
 
         // Apply deferred registrations (normally done by hosted services)
-        var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
+        GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
         typeRegistry.Register(new GrainType("CounterGrain"), typeof(CounterGrain));
 
-        var invokerRegistry = _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
+        GrainMethodInvokerRegistry invokerRegistry = _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
         invokerRegistry.Register(typeof(CounterGrain),
             _serviceProvider.GetRequiredService<CounterGrainMethodInvoker>());
 
-        var proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
-        var interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
+        GrainProxyFactoryRegistry proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
+        GrainInterfaceTypeRegistry interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
         interfaceRegistry.Register(typeof(ICounterGrain), new GrainType("CounterGrain"));
         proxyRegistry.Register<ICounterGrain, CounterGrainProxy>(
             (grainId, invoker) => new CounterGrainProxy(grainId, invoker));
 
         // Construct LocalGrainCallInvoker manually (avoid hosted service dependency)
         _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
-        var activator = _serviceProvider.GetRequiredService<IGrainActivator>();
-        var directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
-        var methodInvokerReg = _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
-        var siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
-        var logger = NullLogger<LocalGrainCallInvoker>.Instance;
+        IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
+        IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
+        IGrainMethodInvokerRegistry methodInvokerReg = _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
+        IOptions<SiloRuntimeOptions> siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
+        NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
+        NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
 
         // Build a LocalGrainFactory so it's available for grain inter-calls
         var dummyInvoker = new DeferredLocalGrainCallInvoker();
@@ -168,7 +169,8 @@ public sealed class GrainCallFixture : IAsyncDisposable
 
         var callInvoker = new LocalGrainCallInvoker(
             _activationTable, activator, typeRegistry, directory,
-            methodInvokerReg, localFactory, _serviceProvider, siloOptions, logger);
+            methodInvokerReg, localFactory, _serviceProvider, siloOptions, logger,
+            logger2);
 
         // Wire back the real invoker
         dummyInvoker.SetInvoker(callInvoker);
