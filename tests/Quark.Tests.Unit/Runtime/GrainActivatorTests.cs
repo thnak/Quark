@@ -18,7 +18,7 @@ public sealed class GrainActivatorTests
 
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        var registry = provider.GetRequiredService<GrainTypeRegistry>();
+        GrainTypeRegistry registry = provider.GetRequiredService<GrainTypeRegistry>();
         registry.Register(new GrainType(nameof(GeneratedOnlyGrain)), typeof(GeneratedOnlyGrain));
 
         IGrainActivator activator = provider.GetRequiredService<IGrainActivator>();
