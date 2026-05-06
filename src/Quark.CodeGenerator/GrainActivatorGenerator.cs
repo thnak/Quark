@@ -14,7 +14,7 @@ namespace Quark.CodeGenerator;
 [Generator(LanguageNames.CSharp)]
 public sealed class GrainActivatorGenerator : IIncrementalGenerator
 {
-    private const string GrainFqn = "Quark.Core.Abstractions.Grain";
+    private const string GrainFqn = "Quark.Core.Abstractions.Grains.Grain";
 
     private const string ActivatorUtilitiesConstructorFqn =
         "Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructorAttribute";
