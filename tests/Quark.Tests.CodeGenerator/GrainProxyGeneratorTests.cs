@@ -12,7 +12,7 @@ public sealed class GrainProxyGeneratorTests
     {
         const string source = """
                               using System.Threading.Tasks;
-                              using Quark.Core.Abstractions;
+                              using Quark.Core.Abstractions.Grains;
 
                               namespace Demo;
 

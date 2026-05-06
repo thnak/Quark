@@ -11,7 +11,7 @@ public sealed class GrainActivatorGeneratorTests
     public void Generates_ActivatorFactory_For_Grain_Class()
     {
         const string source = """
-                              using Quark.Core.Abstractions;
+                              using Quark.Core.Abstractions.Grains;
 
                               namespace Demo;
 

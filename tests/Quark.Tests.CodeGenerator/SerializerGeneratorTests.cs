@@ -11,7 +11,7 @@ public sealed class SerializerGeneratorTests
     public void Generates_Codec_And_Copier_For_Attributed_Type()
     {
         const string source = """
-                              using Quark.Serialization.Abstractions;
+                              using Quark.Serialization.Abstractions.Attributes;
 
                               namespace Demo;
 
@@ -43,7 +43,7 @@ public sealed class SerializerGeneratorTests
     public void Ignores_Types_Without_Id_Members()
     {
         const string source = """
-                              using Quark.Serialization.Abstractions;
+                              using Quark.Serialization.Abstractions.Attributes;
 
                               namespace Demo;
 
