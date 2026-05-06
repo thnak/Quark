@@ -1,4 +1,4 @@
-﻿using Quark.Core.Abstractions;
+﻿using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Xunit;
 

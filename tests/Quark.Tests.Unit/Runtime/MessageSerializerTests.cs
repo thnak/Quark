@@ -1,3 +1,4 @@
+using Quark.Core.Abstractions.Identity;
 using Quark.Transport.Abstractions;
 using Quark.Runtime;
 using Xunit;
@@ -36,7 +37,7 @@ public sealed class MessageSerializerTests
     public void GrainInvocation_Request_And_Response_RoundTrip()
     {
         GrainInvocationRequest request = new(
-            new Quark.Core.Abstractions.GrainId(new Quark.Core.Abstractions.GrainType("CounterGrain"), "abc"),
+            new GrainId(new GrainType("CounterGrain"), "abc"),
             7u,
             new object?[] { 42, "hello", true });
 

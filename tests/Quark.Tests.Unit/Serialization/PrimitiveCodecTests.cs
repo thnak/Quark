@@ -1,7 +1,8 @@
 using System.Buffers;
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Serialization;
-using Quark.Serialization.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Xunit;
 
 namespace Quark.Tests.Unit.Serialization;
