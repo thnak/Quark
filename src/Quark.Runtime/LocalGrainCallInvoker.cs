@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
@@ -12,6 +13,8 @@ namespace Quark.Runtime;
 /// </summary>
 public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 {
+    private static readonly ActivitySource QuarkActivity = new("Quark.Runtime", "1.0.0");
+
     private readonly ILogger<GrainActivation> _activationLogger;
     private readonly GrainActivationTable _activationTable;
     private readonly IGrainActivator _activator;
@@ -55,6 +58,11 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         object?[]? arguments = null,
         CancellationToken cancellationToken = default)
     {
+        using Activity? activity = QuarkActivity.StartActivity("grain.invoke");
+        activity?.SetTag("grain.type", grainId.Type.Value);
+        activity?.SetTag("grain.key", grainId.Key);
+        activity?.SetTag("grain.method_id", methodId);
+
         GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
 
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
