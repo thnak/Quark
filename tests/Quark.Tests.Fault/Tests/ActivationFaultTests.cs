@@ -17,7 +17,7 @@ public sealed class ActivationFaultTests : IAsyncDisposable
     /// each retry creates a fresh activation.
     /// </summary>
     [Fact]
-    public async Task Activation_WorkerCrashMidCall_OrchestratorReceivesException()
+    public async Task Activation_WorkerCrashOnFirstTwoAttempts_OrchestratorRecoversOnThird()
     {
         _fixture = new FaultFixture(s =>
         {
