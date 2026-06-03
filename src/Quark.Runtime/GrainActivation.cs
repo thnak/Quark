@@ -37,6 +37,7 @@ public sealed class GrainActivation : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        await _cts.CancelAsync();
         _queue.Writer.TryComplete();
         try
         {
@@ -46,7 +47,6 @@ public sealed class GrainActivation : IAsyncDisposable
         {
         }
 
-        await _cts.CancelAsync();
         _cts.Dispose();
     }
 
@@ -59,6 +59,7 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         if (_isReentrant)
         {
+            _cts.Token.ThrowIfCancellationRequested();
             await workItem().ConfigureAwait(false);
             return;
         }
