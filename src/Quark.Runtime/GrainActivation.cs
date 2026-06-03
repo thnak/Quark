@@ -26,6 +26,7 @@ public sealed class GrainActivation : IAsyncDisposable
         Context = context;
         _isReentrant = grain.GetType().IsDefined(typeof(ReentrantAttribute), inherit: true);
         _processingLoop = RunLoopAsync(_cts.Token);
+        context.SetScheduler(PostAsync);
     }
 
     /// <summary>The grain instance.</summary>

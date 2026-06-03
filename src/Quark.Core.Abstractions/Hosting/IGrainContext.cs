@@ -1,6 +1,7 @@
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Lifecycle;
+using Quark.Core.Abstractions.Timers;
 
 namespace Quark.Core.Abstractions.Hosting;
 
@@ -35,4 +36,13 @@ public interface IGrainContext
     ///     Requests that this activation be deactivated when it becomes idle.
     /// </summary>
     void Deactivate(DeactivationReason reason);
+
+    /// <summary>
+    ///     Creates and registers a grain-scoped timer.
+    ///     The timer is automatically disposed when the grain deactivates.
+    /// </summary>
+    IGrainTimer RegisterTimer<TState>(
+        Func<TState, CancellationToken, Task> callback,
+        TState state,
+        GrainTimerCreationOptions options);
 }

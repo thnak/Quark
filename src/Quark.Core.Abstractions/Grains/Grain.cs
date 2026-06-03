@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Core.Abstractions.Timers;
 
 namespace Quark.Core.Abstractions.Grains;
 
@@ -58,6 +59,17 @@ public abstract class Grain : IGrain
         // TODO (M3/M6): pass hint to per-grain idle timer.
         _ = timeSpan; // suppress unused warning until implemented.
     }
+
+    /// <summary>
+    ///     Registers a timer that fires the given <paramref name="callback" /> on this grain's scheduler.
+    ///     The timer is automatically cancelled when the grain deactivates.
+    ///     Drop-in equivalent of Orleans' <c>RegisterGrainTimer</c>.
+    /// </summary>
+    protected IGrainTimer RegisterGrainTimer<TState>(
+        Func<TState, CancellationToken, Task> callback,
+        TState state,
+        GrainTimerCreationOptions options)
+        => GrainContext.RegisterTimer(callback, state, options);
 
     protected string GetPrimaryKeyString() => GrainId.Key;
 

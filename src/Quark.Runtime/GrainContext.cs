@@ -2,6 +2,7 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Lifecycle;
+using Quark.Core.Abstractions.Timers;
 
 namespace Quark.Runtime;
 
@@ -11,6 +12,8 @@ namespace Quark.Runtime;
 public sealed class GrainContext : IGrainContext
 {
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
+    private Func<Func<Task>, ValueTask>? _scheduler;
+    private readonly List<IGrainTimer> _timers = [];
 
     /// <summary>Creates a context for the supplied grain identity.</summary>
     public GrainContext(GrainId grainId, IGrainFactory grainFactory, IServiceProvider serviceProvider)
@@ -54,6 +57,30 @@ public sealed class GrainContext : IGrainContext
         }
     }
 
+    /// <inheritdoc />
+    public IGrainTimer RegisterTimer<TState>(
+        Func<TState, CancellationToken, Task> callback,
+        TState state,
+        GrainTimerCreationOptions options)
+    {
+        if (_scheduler is null)
+            throw new InvalidOperationException(
+                "Grain is not activated yet. Call RegisterGrainTimer from OnActivateAsync or a grain method.");
+
+        var timer = new GrainTimer<TState>(callback, state, options, _scheduler);
+        _timers.Add(timer);
+        return timer;
+    }
+
+    /// <summary>
+    ///     Wires the grain's scheduler so timers can post callbacks through the turn-based queue.
+    ///     Called by <see cref="GrainActivation" /> immediately after construction.
+    /// </summary>
+    internal void SetScheduler(Func<Func<Task>, ValueTask> scheduler)
+    {
+        _scheduler = scheduler;
+    }
+
     /// <summary>
     ///     Runs the activation sequence: sets the context on the grain and calls lifecycle start.
     /// </summary>
@@ -71,15 +98,23 @@ public sealed class GrainContext : IGrainContext
     {
         _status = GrainActivationStatus.Deactivating;
         DeactivationReason = reason;
+        DisposeTimers();
         await grain.OnDeactivateAsync(reason, cancellationToken).ConfigureAwait(false);
         await Lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
         _status = GrainActivationStatus.Inactive;
+    }
+
+    private void DisposeTimers()
+    {
+        foreach (IGrainTimer timer in _timers) timer.Dispose();
+        _timers.Clear();
     }
 
     private async Task StopInternalAsync(CancellationToken cancellationToken)
     {
         try
         {
+            DisposeTimers();
             await Lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
