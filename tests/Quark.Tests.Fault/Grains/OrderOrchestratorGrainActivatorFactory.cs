@@ -3,7 +3,7 @@ using Quark.Runtime;
 
 namespace Quark.Tests.Fault.Grains;
 
-internal sealed class OrderOrchestratorGrainActivatorFactory : IGrainActivatorFactory
+public sealed class OrderOrchestratorGrainActivatorFactory : IGrainActivatorFactory
 {
     public Type GrainClass => typeof(OrderOrchestratorGrain);
     public Grain Create(IServiceProvider services) => new OrderOrchestratorGrain();
