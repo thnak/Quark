@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 
@@ -10,7 +11,7 @@ namespace Quark.Tests.Fault.Fakes;
 /// </summary>
 public sealed class FaultInjectingStorage<TState> : IStorage<TState> where TState : new()
 {
-    private readonly Dictionary<string, TState> _store = new();
+    private readonly ConcurrentDictionary<string, TState> _store = new();
     private readonly StorageFaultPlan _plan;
     private readonly IStorage<TState>? _inner;  // null = use in-memory dict
 
@@ -53,7 +54,7 @@ public sealed class FaultInjectingStorage<TState> : IStorage<TState> where TStat
             await _inner.ClearAsync(grainId, stateName, ct);
             return;
         }
-        _store.Remove(Key(grainId, stateName));
+        _store.TryRemove(Key(grainId, stateName), out _);
     }
 
     private static string Key(GrainId id, string? name)
