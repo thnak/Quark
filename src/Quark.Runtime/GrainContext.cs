@@ -13,6 +13,7 @@ public sealed class GrainContext : IGrainContext
 {
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
     private Func<Func<Task>, ValueTask>? _scheduler;
+    private readonly Lock _timersLock = new();
     private readonly List<IGrainTimer> _timers = [];
 
     /// <summary>Creates a context for the supplied grain identity.</summary>
@@ -67,8 +68,15 @@ public sealed class GrainContext : IGrainContext
             throw new InvalidOperationException(
                 "Grain is not activated yet. Call RegisterGrainTimer from OnActivateAsync or a grain method.");
 
+        if (_status is GrainActivationStatus.Deactivating or GrainActivationStatus.Inactive)
+            throw new InvalidOperationException(
+                "Cannot register a timer on a deactivating or inactive grain.");
+
         var timer = new GrainTimer<TState>(callback, state, options, _scheduler);
-        _timers.Add(timer);
+        lock (_timersLock)
+        {
+            _timers.Add(timer);
+        }
         return timer;
     }
 
@@ -106,8 +114,13 @@ public sealed class GrainContext : IGrainContext
 
     private void DisposeTimers()
     {
-        foreach (IGrainTimer timer in _timers) timer.Dispose();
-        _timers.Clear();
+        IGrainTimer[] timers;
+        lock (_timersLock)
+        {
+            timers = [.. _timers];
+            _timers.Clear();
+        }
+        foreach (IGrainTimer timer in timers) timer.Dispose();
     }
 
     private async Task StopInternalAsync(CancellationToken cancellationToken)

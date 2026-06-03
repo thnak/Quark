@@ -44,7 +44,7 @@ internal sealed class GrainTimer<TState> : IGrainTimer
         if (!_interleave && Interlocked.CompareExchange(ref _pending, 1, 0) != 0)
             return;
 
-        _ = _post(async () =>
+        var postTask = _post(async () =>
         {
             try
             {
@@ -55,5 +55,14 @@ internal sealed class GrainTimer<TState> : IGrainTimer
                 if (!_interleave) Interlocked.Exchange(ref _pending, 0);
             }
         });
+
+        if (!postTask.IsCompletedSuccessfully)
+        {
+            _ = postTask.AsTask().ContinueWith(
+                t => { if (!_interleave) Interlocked.Exchange(ref _pending, 0); },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 }
