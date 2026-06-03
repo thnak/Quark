@@ -53,6 +53,21 @@ public sealed class GrainActivationTable : IAsyncDisposable
     }
 
     /// <summary>
+    ///     Removes the activation entry for <paramref name="grainId" /> if it is currently
+    ///     faulted.  Called by the invoker after a failed activation so that the next call
+    ///     can attempt a fresh activation.
+    /// </summary>
+    public void RemoveIfFaulted(GrainId grainId)
+    {
+        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? lazy)
+            && lazy.IsValueCreated
+            && lazy.Value.IsFaulted)
+        {
+            _activations.TryRemove(new KeyValuePair<GrainId, Lazy<Task<GrainActivation>>>(grainId, lazy));
+        }
+    }
+
+    /// <summary>
     ///     Attempts to retrieve an already-running activation without creating one.
     /// </summary>
     public bool TryGetActivation(GrainId grainId, out GrainActivation? activation)

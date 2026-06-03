@@ -99,9 +99,19 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     // -----------------------------------------------------------------------
 
-    private Task<GrainActivation> GetOrActivateAsync(GrainId grainId, CancellationToken ct)
+    private async Task<GrainActivation> GetOrActivateAsync(GrainId grainId, CancellationToken ct)
     {
-        return _activationTable.GetOrCreateAsync(grainId, () => CreateActivationAsync(grainId, ct));
+        try
+        {
+            return await _activationTable.GetOrCreateAsync(grainId, () => CreateActivationAsync(grainId, ct))
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // Evict the faulted entry so the next call can attempt a fresh activation.
+            _activationTable.RemoveIfFaulted(grainId);
+            throw;
+        }
     }
 
     private async Task<GrainActivation> CreateActivationAsync(GrainId grainId, CancellationToken ct)
