@@ -50,8 +50,8 @@ public sealed class PrimaryKeyTests
         Guid id = Guid.NewGuid();
         var grain = await ActivateAsync(new GuidCompoundTestGrain(),
             new GrainId(new GrainType("G"), $"{id:N}+ext"));
-        grain.ReadKey(out string ext);
-        Assert.Equal(id, grain.ReadKey(out _));
+        Guid result = grain.ReadKey(out string ext);
+        Assert.Equal(id, result);
         Assert.Equal("ext", ext);
     }
 

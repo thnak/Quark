@@ -36,7 +36,7 @@ public readonly struct GrainId : IEquatable<GrainId>, IComparable<GrainId>
     /// <summary>Creates a grain id from an interface type and an integer key.</summary>
     public static GrainId Create(GrainType type, long key)
     {
-        return new GrainId(type, key.ToString());
+        return new GrainId(type, key.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     /// <inheritdoc />
