@@ -59,6 +59,36 @@ public abstract class Grain : IGrain
         _ = timeSpan; // suppress unused warning until implemented.
     }
 
+    protected string GetPrimaryKeyString() => GrainId.Key;
+
+    protected Guid GetPrimaryKey() => Guid.ParseExact(GrainId.Key, "N");
+
+    protected long GetPrimaryKeyLong() => long.Parse(GrainId.Key, System.Globalization.CultureInfo.InvariantCulture);
+
+    protected Guid GetPrimaryKey(out string keyExtension)
+    {
+        int plus = GrainId.Key.IndexOf('+', StringComparison.Ordinal);
+        if (plus < 0)
+        {
+            keyExtension = string.Empty;
+            return Guid.ParseExact(GrainId.Key, "N");
+        }
+        keyExtension = GrainId.Key[(plus + 1)..];
+        return Guid.ParseExact(GrainId.Key[..plus], "N");
+    }
+
+    protected long GetPrimaryKeyLong(out string keyExtension)
+    {
+        int plus = GrainId.Key.IndexOf('+', StringComparison.Ordinal);
+        if (plus < 0)
+        {
+            keyExtension = string.Empty;
+            return long.Parse(GrainId.Key, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        keyExtension = GrainId.Key[(plus + 1)..];
+        return long.Parse(GrainId.Key[..plus], System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     /// <summary>
     ///     Framework-only. Called by the runtime to bind the grain to its activation context.
     /// </summary>
