@@ -174,7 +174,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     /// Second ProcessAsync succeeds because the write counter is past N=1.
     /// </summary>
     [Fact]
-    public async Task Redis_ConnectionLostMidWrite_GrainReactivatesConsistently()
+    public async Task Redis_WriteFailOnFirstAttempt_SubsequentCallSucceeds()
     {
         var scenario = new FaultScenario();
         scenario.OrchestratorStorage.ThrowOnNthWrite<InvalidOperationException>(1);
