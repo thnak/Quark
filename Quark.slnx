@@ -20,5 +20,7 @@
         <Project Path="tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj"/>
         <Project Path="tests/Quark.Tests.CodeGenerator/Quark.Tests.CodeGenerator.csproj"/>
         <Project Path="tests/Quark.Tests.Integration/Quark.Tests.Integration.csproj"/>
+        <Project Path="tests/Quark.Tests.Fault/Quark.Tests.Fault.csproj"/>
+        <Project Path="tests/Quark.Tests.Fault.Integration/Quark.Tests.Fault.Integration.csproj"/>
     </Folder>
 </Solution>
