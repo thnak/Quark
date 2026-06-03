@@ -81,7 +81,15 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             }
         }).ConfigureAwait(false);
 
-        return await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
     }
 
     /// <inheritdoc />

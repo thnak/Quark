@@ -11,22 +11,18 @@ public sealed class ActivityPropagationTests : IAsyncDisposable
     [Fact]
     public async Task GrainCall_CreatesActivity_WithExpectedTags()
     {
-        var capturedActivities = new List<Activity>();
+        Activity? captured = null;
 
         using var listener = new ActivityListener
         {
             ShouldListenTo = src => src.Name == "Quark.Runtime",
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStarted = a => capturedActivities.Add(a)
+            ActivityStarted = a => Interlocked.CompareExchange(ref captured, a, null)
         };
         ActivitySource.AddActivityListener(listener);
 
         ICounterGrain grain = _fixture.Client.GetGrain<ICounterGrain>("propagation-test");
         await grain.IncrementAsync();
-
-        // Find the activity for our specific grain call
-        Activity? captured = capturedActivities.FirstOrDefault(a =>
-            a.Tags.Any(t => t.Key == "grain.key" && t.Value?.ToString() == "propagation-test"));
 
         Assert.NotNull(captured);
         Assert.Equal("grain.invoke", captured!.OperationName);
