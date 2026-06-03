@@ -14,6 +14,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger<GrainActivation> _logger;
     private readonly Task _processingLoop;
+    private readonly bool _isReentrant;
 
     private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
@@ -23,6 +24,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _logger = logger;
         Grain = grain;
         Context = context;
+        _isReentrant = grain.GetType().IsDefined(typeof(ReentrantAttribute), inherit: true);
         _processingLoop = RunLoopAsync(_cts.Token);
     }
 
@@ -50,10 +52,17 @@ public sealed class GrainActivation : IAsyncDisposable
 
     /// <summary>
     ///     Posts a unit of work to this grain's sequential scheduler.
-    ///     The work item will be executed after all previously posted items complete.
+    ///     For non-reentrant grains, the work item will be executed after all previously posted items complete.
+    ///     For reentrant grains, the work item executes immediately without queueing.
     /// </summary>
     public async ValueTask PostAsync(Func<Task> workItem)
     {
+        if (_isReentrant)
+        {
+            await workItem().ConfigureAwait(false);
+            return;
+        }
+
         await _queue.Writer.WriteAsync(workItem, _cts.Token).ConfigureAwait(false);
     }
 
