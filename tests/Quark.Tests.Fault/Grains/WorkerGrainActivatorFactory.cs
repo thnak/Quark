@@ -3,7 +3,7 @@ using Quark.Runtime;
 
 namespace Quark.Tests.Fault.Grains;
 
-public sealed class WorkerGrainActivatorFactory : IGrainActivatorFactory
+internal sealed class WorkerGrainActivatorFactory : IGrainActivatorFactory
 {
     public Type GrainClass => typeof(WorkerGrain);
     public Grain Create(IServiceProvider services) => new WorkerGrain();

@@ -26,7 +26,7 @@ public sealed class OrderOrchestratorGrain : Grain<OrchestratorState>, IOrderOrc
                 }
                 catch (Exception)
                 {
-                    // retry up to 3 times; on last attempt, fall through to failure
+                    // 3 total attempts per worker; silent catch lets the loop continue to next attempt
                 }
             }
 
