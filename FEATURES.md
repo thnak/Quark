@@ -10,10 +10,10 @@ Orleans architecture reference: [`README.md`](README.md)
 
 ## Phase 1 — Low-hanging fruit
 
-- [ ] **F-01** `GetPrimaryKeyString()` / `GetPrimaryKey()` / `GetPrimaryKeyLong()` helpers on `Grain` base — _Complexity: S_
-- [ ] **F-02** `[Reentrant]` attribute + concurrent dispatch in `GrainActivation` — _Complexity: S–M_
-- [ ] **F-03** Grain Timers (`RegisterGrainTimer`, `IGrainTimer`, `GrainTimerCreationOptions`) — _Complexity: M_
-- [ ] **F-11** `AddActivityPropagation()` / OpenTelemetry span propagation — _Complexity: S_
+- [x] **F-01** `GetPrimaryKeyString()` / `GetPrimaryKey()` / `GetPrimaryKeyLong()` helpers on `Grain` base — _Complexity: S_
+- [x] **F-02** `[Reentrant]` attribute + concurrent dispatch in `GrainActivation` — _Complexity: S–M_
+- [x] **F-03** Grain Timers (`RegisterGrainTimer`, `IGrainTimer`, `GrainTimerCreationOptions`) — _Complexity: M_
+- [x] **F-11** `AddActivityPropagation()` / OpenTelemetry span propagation — _Complexity: S_
 
 ## Phase 2 — Persistence extension
 
