@@ -4,6 +4,7 @@ Missing features identified by comparing against official Orleans samples.
 Each item links to the design spec for implementation details.
 
 Design spec: [`docs/superpowers/specs/2026-06-03-orleans-feature-parity-design.md`](docs/superpowers/specs/2026-06-03-orleans-feature-parity-design.md)
+Orleans architecture reference: [`README.md`](README.md)
 
 ---
 

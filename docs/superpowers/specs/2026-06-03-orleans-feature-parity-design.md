@@ -3,6 +3,7 @@
 **Date:** 2026-06-03
 **Status:** Approved
 **Scope:** Catalog every missing Orleans-compatible API surface in Quark and define what each feature requires to implement, so they can be tackled one by one.
+**Orleans reference:** [`README.md`](../../../README.md)
 
 ---
 
