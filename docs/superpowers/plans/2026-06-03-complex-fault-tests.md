@@ -307,7 +307,7 @@ Use the **root** namespace `Quark.Tests.Fault` (not `Quark.Tests.Fault.FaultScen
 class name colliding with its own containing namespace.
 
 ```csharp
-using Quark.Tests.Fault.FaultScenario;
+// StorageFaultPlan, CallFaultPlan, ActivationFaultPlan are in Quark.Tests.Fault (no sub-namespace using needed)
 
 namespace Quark.Tests.Fault;
 
@@ -719,7 +719,7 @@ git commit -m "feat(tests/fault): add method invokers, proxies, and activator fa
 ```csharp
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
-using Quark.Tests.Fault.FaultScenario;
+// StorageFaultPlan, CallFaultPlan, ActivationFaultPlan are in Quark.Tests.Fault (no sub-namespace using needed)
 
 namespace Quark.Tests.Fault.Fakes;
 
@@ -791,7 +791,7 @@ git commit -m "feat(tests/fault): add FaultInjectingStorage<TState>"
 ```csharp
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
-using Quark.Tests.Fault.FaultScenario;
+// StorageFaultPlan, CallFaultPlan, ActivationFaultPlan are in Quark.Tests.Fault (no sub-namespace using needed)
 
 namespace Quark.Tests.Fault.Fakes;
 
@@ -858,7 +858,7 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
-using Quark.Tests.Fault.FaultScenario;
+// StorageFaultPlan, CallFaultPlan, ActivationFaultPlan are in Quark.Tests.Fault (no sub-namespace using needed)
 
 namespace Quark.Tests.Fault.Fakes;
 
@@ -926,7 +926,6 @@ using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Tests.Fault.Fakes;
-using Quark.Tests.Fault.FaultScenario;
 using Quark.Tests.Fault.Grains;
 
 namespace Quark.Tests.Fault;
@@ -936,9 +935,9 @@ public sealed class FaultFixture : IAsyncDisposable
     private readonly ServiceProvider _sp;
     private readonly GrainActivationTable _activationTable;
 
-    public FaultFixture(Action<FaultScenario.FaultScenario>? configure = null)
+    public FaultFixture(Action<FaultScenario>? configure = null)
     {
-        Scenario = new FaultScenario.FaultScenario();
+        Scenario = new FaultScenario();
         configure?.Invoke(Scenario);
 
         var services = new ServiceCollection();
@@ -1031,7 +1030,7 @@ public sealed class FaultFixture : IAsyncDisposable
     }
 
     public IClusterClient Client { get; }
-    public FaultScenario.FaultScenario Scenario { get; }
+    public FaultScenario Scenario { get; }
 
     public async ValueTask DisposeAsync()
     {
@@ -1392,7 +1391,7 @@ using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Tests.Fault;
 using Quark.Tests.Fault.Fakes;
-using Quark.Tests.Fault.FaultScenario;
+// StorageFaultPlan, CallFaultPlan, ActivationFaultPlan are in Quark.Tests.Fault (no sub-namespace using needed)
 using Quark.Tests.Fault.Grains;
 using Testcontainers.Redis;
 using Xunit;
@@ -1410,13 +1409,13 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     private ServiceProvider _sp = null!;
     private GrainActivationTable _activationTable = null!;
     private IClusterClient _client = null!;
-    private FaultScenario.FaultScenario _scenario = null!;
+    private FaultScenario _scenario = null!;
 
     public async Task InitializeAsync()
     {
         _redis = new RedisBuilder().Build();
         await _redis.StartAsync();
-        BuildFixture(new FaultScenario.FaultScenario());
+        BuildFixture(new FaultScenario());
     }
 
     public async Task DisposeAsync()
@@ -1426,7 +1425,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
         await _redis.DisposeAsync();
     }
 
-    private void BuildFixture(FaultScenario.FaultScenario scenario)
+    private void BuildFixture(FaultScenario scenario)
     {
         _scenario = scenario;
         var services = new ServiceCollection();
@@ -1517,7 +1516,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Redis_ConnectionLostMidWrite_GrainReactivatesConsistently()
     {
-        BuildFixture(new FaultScenario.FaultScenario());
+        BuildFixture(new FaultScenario());
         _scenario.WorkerStorage.ThrowOnNthWrite<InvalidOperationException>(1);
 
         var orchestrator = _client.GetGrain<IOrderOrchestratorGrain>("order-redis-reconnect");
@@ -1537,7 +1536,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Redis_SlowWrite_TimeoutPropagatesCorrectly()
     {
-        BuildFixture(new FaultScenario.FaultScenario());
+        BuildFixture(new FaultScenario());
         _scenario.WorkerStorage.ThrowOnNthWrite<TimeoutException>(1);
 
         var orchestrator = _client.GetGrain<IOrderOrchestratorGrain>("order-redis-timeout");
@@ -1554,7 +1553,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FullPipeline_CascadingFaults_OrderEventuallyCompletes()
     {
-        BuildFixture(new FaultScenario.FaultScenario());
+        BuildFixture(new FaultScenario());
         _scenario.Calls.AlwaysThrowForKey(
             new GrainType("WorkerGrain"),
             "w-full-1",
@@ -1567,7 +1566,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
 
         // Reset activation table — state must survive in real Redis
         await _activationTable.DisposeAsync();
-        BuildFixture(new FaultScenario.FaultScenario()); // no faults this time
+        BuildFixture(new FaultScenario()); // no faults this time
 
         // Re-activate with no dropped workers — order completes
         OrchestratorStatus recovered = await _client.GetGrain<IOrderOrchestratorGrain>("order-full-pipeline-2")
