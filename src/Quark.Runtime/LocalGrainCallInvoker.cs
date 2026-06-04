@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Core.Abstractions.Reminders;
 
 namespace Quark.Runtime;
 
@@ -22,6 +23,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly IGrainFactory _grainFactory;
     private readonly ILogger<LocalGrainCallInvoker> _logger;
     private readonly IGrainMethodInvokerRegistry _methodInvokerRegistry;
+    private readonly ObserverRegistry? _observerRegistry;
     private readonly IServiceProvider _services;
     private readonly SiloAddress _siloAddress;
     private readonly IGrainTypeRegistry _typeRegistry;
@@ -37,7 +39,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         IServiceProvider services,
         IOptions<SiloRuntimeOptions> options,
         ILogger<LocalGrainCallInvoker> logger,
-        ILogger<GrainActivation> activationLogger)
+        ILogger<GrainActivation> activationLogger,
+        ObserverRegistry? observerRegistry = null)
     {
         _activationTable = activationTable;
         _activator = activator;
@@ -49,6 +52,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _siloAddress = options.Value.SiloAddress;
         _logger = logger;
         _activationLogger = activationLogger;
+        _observerRegistry = observerRegistry;
     }
 
     /// <inheritdoc />
@@ -63,6 +67,20 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         activity?.SetTag("grain.key", grainId.Key);
         activity?.SetTag("grain.method_id", methodId);
 
+        // Short-circuit for in-process observer references — no grain activation table needed.
+        if (_observerRegistry is not null && _observerRegistry.TryGet(grainId, out ObserverRegistry.ObserverEntry entry))
+        {
+            try
+            {
+                return await entry.Invoker.Invoke(entry.Target, methodId, arguments).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                throw;
+            }
+        }
+
         GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
 
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -71,8 +89,20 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             try
             {
-                IGrainMethodInvoker invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
-                object? result = await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
+                object? result;
+                if (methodId == ReminderMethodIds.ReceiveReminder &&
+                    activation.Grain is IRemindable remindable)
+                {
+                    await remindable.ReceiveReminder(
+                        (string)arguments![0]!,
+                        (TickStatus)arguments[1]!).ConfigureAwait(false);
+                    result = null;
+                }
+                else
+                {
+                    IGrainMethodInvoker invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
+                    result = await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
+                }
                 tcs.TrySetResult(result);
             }
             catch (Exception ex)
@@ -139,7 +169,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 "Ensure the grain is registered with AddGrain<TGrain>().");
         }
 
-        Grain grain = _activator.CreateInstance(grainId.Type);
+        Grain grain = _activator.CreateInstance(grainId);
         var context = new GrainContext(grainId, _grainFactory, _services);
         var activation = new GrainActivation(grain, context, _activationLogger);
 

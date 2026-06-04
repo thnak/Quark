@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Core.Abstractions.Reminders;
 using Quark.Core.Abstractions.Timers;
 
 namespace Quark.Core.Abstractions.Grains;
@@ -27,6 +28,9 @@ public abstract class Grain : IGrain
 
     /// <summary>Gets the DI service provider for this activation.</summary>
     protected IServiceProvider ServiceProvider => GrainContext.ServiceProvider;
+
+    private const string NoReminderServiceMessage =
+        "No IReminderService is registered. Call AddInMemoryReminders() or AddRedisReminders() when building the silo.";
 
     /// <summary>Called when the grain is first activated. Override to perform async initialization.</summary>
     public virtual Task OnActivateAsync(CancellationToken cancellationToken)
@@ -70,6 +74,44 @@ public abstract class Grain : IGrain
         TState state,
         GrainTimerCreationOptions options)
         => GrainContext.RegisterTimer(callback, state, options);
+
+    /// <summary>
+    ///     Registers or updates a durable reminder for this grain.
+    ///     Requires an <see cref="IReminderService" /> registered in DI (e.g. <c>AddInMemoryReminders()</c>).
+    ///     Drop-in equivalent of Orleans' <c>this.RegisterOrUpdateReminder()</c>.
+    /// </summary>
+    protected Task<IGrainReminder> RegisterOrUpdateReminderAsync(
+        string reminderName, TimeSpan dueTime, TimeSpan period)
+        => (GrainContext.ReminderService
+            ?? throw new InvalidOperationException(NoReminderServiceMessage))
+            .RegisterOrUpdateReminderAsync(GrainId, reminderName, dueTime, period);
+
+    /// <summary>
+    ///     Cancels a previously registered reminder.
+    ///     Drop-in equivalent of Orleans' <c>this.UnregisterReminder()</c>.
+    /// </summary>
+    protected Task UnregisterReminderAsync(IGrainReminder reminder)
+        => (GrainContext.ReminderService
+            ?? throw new InvalidOperationException(NoReminderServiceMessage))
+            .UnregisterReminderAsync(GrainId, reminder.ReminderName);
+
+    /// <summary>
+    ///     Returns all reminders registered by this grain.
+    ///     Drop-in equivalent of Orleans' <c>this.GetReminders()</c>.
+    /// </summary>
+    protected Task<IReadOnlyList<IGrainReminder>> GetRemindersAsync()
+        => (GrainContext.ReminderService
+            ?? throw new InvalidOperationException(NoReminderServiceMessage))
+            .GetRemindersAsync(GrainId);
+
+    /// <summary>
+    ///     Returns a proxy for this grain typed as <typeparamref name="TGrainInterface" />.
+    ///     Useful when the grain needs to pass a reference to itself to another grain or observer.
+    ///     Drop-in equivalent of Orleans' <c>this.AsReference&lt;T&gt;()</c>.
+    /// </summary>
+    protected TGrainInterface AsReference<TGrainInterface>()
+        where TGrainInterface : IGrain
+        => GrainFactory.GetGrain<TGrainInterface>(GrainId);
 
     protected string GetPrimaryKeyString() => GrainId.Key;
 
