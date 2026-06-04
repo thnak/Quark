@@ -7,6 +7,7 @@
         <Project Path="src/Quark.Core/Quark.Core.csproj"/>
         <Project Path="src/Quark.Persistence.Abstractions/Quark.Persistence.Abstractions.csproj"/>
         <Project Path="src/Quark.Reminders.Abstractions/Quark.Reminders.Abstractions.csproj"/>
+        <Project Path="src/Quark.Reminders.InMemory/Quark.Reminders.InMemory.csproj"/>
         <Project Path="src/Quark.Persistence.InMemory/Quark.Persistence.InMemory.csproj"/>
         <Project Path="src/Quark.Persistence.Redis/Quark.Persistence.Redis.csproj"/>
         <Project Path="src/Quark.Runtime/Quark.Runtime.csproj"/>
