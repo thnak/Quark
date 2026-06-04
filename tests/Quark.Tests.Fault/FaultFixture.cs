@@ -98,11 +98,11 @@ public sealed class FaultFixture : IAsyncDisposable
             typeRegistry,
             _sp.GetRequiredService<IGrainDirectory>(),
             _sp.GetRequiredService<IGrainMethodInvokerRegistry>(),
-            localFactory,
             _sp,
             _sp.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
             NullLogger<LocalGrainCallInvoker>.Instance,
-            NullLogger<GrainActivation>.Instance);
+            NullLogger<GrainActivation>.Instance,
+            grainFactory: localFactory);
 
         // Fault-injecting call invoker wraps the real one
         IGrainCallInvoker effectiveInvoker = new FaultInjectingGrainCallInvoker(realInvoker, ScenarioHolder.Calls);

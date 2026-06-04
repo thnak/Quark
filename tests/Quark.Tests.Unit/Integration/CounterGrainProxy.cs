@@ -28,4 +28,9 @@ public sealed class CounterGrainProxy : ICounterGrain
     {
         return _invoker.InvokeVoidAsync(_grainId, CounterGrainMethodInvoker.ResetMethodId);
     }
+
+    public Task SelfDestructAsync()
+    {
+        return _invoker.InvokeVoidAsync(_grainId, CounterGrainMethodInvoker.SelfDestructMethodId);
+    }
 }

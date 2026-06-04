@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
@@ -20,7 +21,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly GrainActivationTable _activationTable;
     private readonly IGrainActivator _activator;
     private readonly IGrainDirectory _directory;
-    private readonly IGrainFactory _grainFactory;
+    // Resolved lazily to break the IGrainCallInvoker ↔ IGrainFactory circular dependency.
+    private readonly Lazy<IGrainFactory> _grainFactory;
     private readonly ILogger<LocalGrainCallInvoker> _logger;
     private readonly IGrainMethodInvokerRegistry _methodInvokerRegistry;
     private readonly ObserverRegistry? _observerRegistry;
@@ -29,26 +31,34 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly IGrainTypeRegistry _typeRegistry;
 
     /// <summary>Initialises the local grain invoker.</summary>
+    /// <param name="grainFactory">
+    ///     Optional explicit grain factory.  When <see langword="null" /> (the normal DI path) the
+    ///     factory is resolved lazily from <paramref name="services" /> on first grain activation,
+    ///     which avoids a circular <c>IGrainCallInvoker ↔ IGrainFactory</c> dependency at
+    ///     construction time.  Test fixtures that wire the graph manually may supply a value.
+    /// </param>
     public LocalGrainCallInvoker(
         GrainActivationTable activationTable,
         IGrainActivator activator,
         IGrainTypeRegistry typeRegistry,
         IGrainDirectory directory,
         IGrainMethodInvokerRegistry methodInvokerRegistry,
-        IGrainFactory grainFactory,
         IServiceProvider services,
         IOptions<SiloRuntimeOptions> options,
         ILogger<LocalGrainCallInvoker> logger,
         ILogger<GrainActivation> activationLogger,
-        ObserverRegistry? observerRegistry = null)
+        ObserverRegistry? observerRegistry = null,
+        IGrainFactory? grainFactory = null)
     {
         _activationTable = activationTable;
         _activator = activator;
         _typeRegistry = typeRegistry;
         _directory = directory;
         _methodInvokerRegistry = methodInvokerRegistry;
-        _grainFactory = grainFactory;
         _services = services;
+        _grainFactory = grainFactory is not null
+            ? new Lazy<IGrainFactory>(() => grainFactory)
+            : new Lazy<IGrainFactory>(() => services.GetRequiredService<IGrainFactory>());
         _siloAddress = options.Value.SiloAddress;
         _logger = logger;
         _activationLogger = activationLogger;
@@ -170,10 +180,17 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         }
 
         Grain grain = _activator.CreateInstance(grainId);
-        var context = new GrainContext(grainId, _grainFactory, _services);
+        var context = new GrainContext(grainId, _grainFactory.Value, _services);
         var activation = new GrainActivation(grain, context, _activationLogger);
 
         await context.ActivateAsync(grain, ct).ConfigureAwait(false);
+
+        // After application-requested deactivation (DeactivateOnIdle) completes, remove from table.
+        activation.SetOnDeactivated(() =>
+        {
+            _activationTable.Remove(grainId);
+            return Task.CompletedTask;
+        });
 
         _directory.TryRegister(grainId, _siloAddress, out _);
 

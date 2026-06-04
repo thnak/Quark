@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Hosting;
 
 namespace Quark.Runtime;
 
@@ -15,6 +16,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly ILogger<GrainActivation> _logger;
     private readonly Task _processingLoop;
     private readonly bool _isReentrant;
+    private Func<Task>? _onDeactivated;
 
     private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
@@ -27,6 +29,17 @@ public sealed class GrainActivation : IAsyncDisposable
         _isReentrant = grain.GetType().IsDefined(typeof(ReentrantAttribute), inherit: true);
         _processingLoop = RunLoopAsync(_cts.Token);
         context.SetScheduler(PostAsync);
+        context.SetDeactivationCallback(ScheduleDeactivation);
+    }
+
+    /// <summary>
+    ///     Registers a callback invoked after the grain's deactivation sequence completes and
+    ///     the processing loop exits.  Used by <see cref="LocalGrainCallInvoker" /> to remove
+    ///     the activation from the <see cref="GrainActivationTable" />.
+    /// </summary>
+    internal void SetOnDeactivated(Func<Task> onDeactivated)
+    {
+        _onDeactivated = onDeactivated;
     }
 
     /// <summary>The grain instance.</summary>
@@ -38,6 +51,33 @@ public sealed class GrainActivation : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        if (Context.ActivationStatus is GrainActivationStatus.Active or GrainActivationStatus.Activating)
+        {
+            // Run OnDeactivateAsync on the grain's scheduler before tearing down the loop.
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            try
+            {
+                await PostAsync(async () =>
+                {
+                    try
+                    {
+                        await Context.DeactivateAsync(Grain, DeactivationReason.ShuttingDown)
+                            .ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        _queue.Writer.TryComplete();
+                        done.TrySetResult();
+                    }
+                }).ConfigureAwait(false);
+                await done.Task.ConfigureAwait(false);
+            }
+            catch
+            {
+                done.TrySetResult();
+            }
+        }
+
         await _cts.CancelAsync();
         _queue.Writer.TryComplete();
         try
@@ -49,6 +89,30 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         _cts.Dispose();
+    }
+
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    ///     Called by <see cref="GrainContext.Deactivate" /> (via the deactivation callback).
+    ///     Posts the full deactivation sequence as the next work item on the grain's scheduler
+    ///     so it runs AFTER the current grain turn completes.  A continuation fires after the
+    ///     processing loop exits to invoke <see cref="_onDeactivated" /> (table cleanup).
+    /// </summary>
+    private void ScheduleDeactivation(DeactivationReason reason)
+    {
+        _ = PostAsync(() => RunDeactivationAsync(reason));
+
+        _ = _processingLoop.ContinueWith(
+            _ => _onDeactivated?.Invoke() ?? Task.CompletedTask,
+            TaskScheduler.Default).Unwrap();
+    }
+
+    private async Task RunDeactivationAsync(DeactivationReason reason)
+    {
+        await Context.DeactivateAsync(Grain, reason).ConfigureAwait(false);
+        // Signal the processing loop to stop accepting new work after this item.
+        _queue.Writer.TryComplete();
     }
 
     /// <summary>

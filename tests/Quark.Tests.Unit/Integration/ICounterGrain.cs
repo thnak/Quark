@@ -7,4 +7,5 @@ public interface ICounterGrain : IGrainWithStringKey
     Task<long> IncrementAsync();
     Task<long> GetValueAsync();
     Task ResetAsync();
+    Task SelfDestructAsync();
 }

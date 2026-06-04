@@ -263,12 +263,12 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
                 typeRegistry,
                 _serviceProvider.GetRequiredService<IGrainDirectory>(),
                 _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>(),
-                localFactory,
                 _serviceProvider,
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
                 NullLogger<LocalGrainCallInvoker>.Instance,
                 NullLogger<GrainActivation>.Instance,
-                observerRegistry);
+                observerRegistry,
+                grainFactory: localFactory);
 
             deferredInvoker.SetInvoker(realInvoker);
 

@@ -64,6 +64,7 @@ public sealed class GrainContextTests
         await Task.Delay(50);
 
         Assert.Equal(GrainActivationStatus.Inactive, ctx.ActivationStatus);
+        Assert.True(grain.DeactivateCalled);
     }
 
     [Fact]

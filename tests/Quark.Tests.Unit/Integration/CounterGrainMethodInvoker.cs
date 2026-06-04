@@ -8,6 +8,7 @@ public sealed class CounterGrainMethodInvoker : IGrainMethodInvoker
     public const uint IncrementMethodId = 0;
     public const uint GetValueMethodId = 1;
     public const uint ResetMethodId = 2;
+    public const uint SelfDestructMethodId = 3;
 
     public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
     {
@@ -17,6 +18,7 @@ public sealed class CounterGrainMethodInvoker : IGrainMethodInvoker
             IncrementMethodId => await counter.IncrementAsync(),
             GetValueMethodId => await counter.GetValueAsync(),
             ResetMethodId => await counter.ResetAsync().ContinueWith(_ => (object?)null),
+            SelfDestructMethodId => await counter.SelfDestructAsync().ContinueWith(_ => (object?)null),
             _ => throw new NotSupportedException($"Unknown method id {methodId}")
         };
     }

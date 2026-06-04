@@ -87,8 +87,16 @@ public sealed class GrainActivationTable : IAsyncDisposable
     }
 
     /// <summary>
+    ///     Removes the activation entry for <paramref name="grainId" /> without disposing it.
+    ///     Called by <see cref="GrainActivation" /> after its own deactivation sequence completes,
+    ///     so only the table entry needs to be cleared.
+    /// </summary>
+    public void Remove(GrainId grainId) => _activations.TryRemove(grainId, out _);
+
+    /// <summary>
     ///     Deactivates and removes the grain activation for <paramref name="grainId" />.
-    ///     No-op if the grain is not currently active.
+    ///     Runs <c>OnDeactivateAsync</c> on the grain's scheduler before tearing down the loop.
+    ///     No-op if the grain is not currently tracked.
     /// </summary>
     public async Task TryDeactivateAsync(GrainId grainId)
     {

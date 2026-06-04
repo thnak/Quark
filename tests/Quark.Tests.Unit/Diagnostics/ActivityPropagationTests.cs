@@ -17,7 +17,11 @@ public sealed class ActivityPropagationTests : IAsyncDisposable
         {
             ShouldListenTo = src => src.Name == "Quark.Runtime",
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStarted = a => Interlocked.CompareExchange(ref captured, a, null)
+            ActivityStopped = a =>
+            {
+                if (a.GetTagItem("grain.key")?.ToString() == "propagation-test")
+                    Interlocked.CompareExchange(ref captured, a, null);
+            }
         };
         ActivitySource.AddActivityListener(listener);
 

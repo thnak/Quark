@@ -66,7 +66,6 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<IGrainTypeRegistry>(),
             sp.GetRequiredService<IGrainDirectory>(),
             sp.GetRequiredService<IGrainMethodInvokerRegistry>(),
-            sp.GetRequiredService<IGrainFactory>(),
             sp,
             sp.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
             sp.GetRequiredService<ILogger<LocalGrainCallInvoker>>(),

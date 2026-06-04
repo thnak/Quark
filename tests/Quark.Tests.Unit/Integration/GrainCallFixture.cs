@@ -50,6 +50,12 @@ public sealed class GrainCallFixture : IAsyncDisposable
         services.AddSingleton<GrainProxyFactoryRegistry>();
         services.AddSingleton<GrainInterfaceTypeRegistry>();
 
+        // Register IGrainFactory as a deferred singleton so LocalGrainCallInvoker can resolve it
+        // lazily without a circular dependency at construction time.
+        LocalGrainFactory? grainFactoryRef = null;
+        services.AddSingleton<IGrainFactory>(_ =>
+            grainFactoryRef ?? throw new InvalidOperationException("LocalGrainFactory not yet wired."));
+
         _serviceProvider = services.BuildServiceProvider();
 
         // Apply deferred registrations (normally done by hosted services)
@@ -67,7 +73,8 @@ public sealed class GrainCallFixture : IAsyncDisposable
         proxyRegistry.Register<ICounterGrain, CounterGrainProxy>((grainId, invoker) =>
             new CounterGrainProxy(grainId, invoker));
 
-        // Construct LocalGrainCallInvoker manually (avoid hosted service dependency)
+        // Construct LocalGrainCallInvoker manually (avoid hosted service dependency).
+        // IGrainFactory is resolved lazily from _serviceProvider on first grain activation.
         _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
         IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
         IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
@@ -77,24 +84,17 @@ public sealed class GrainCallFixture : IAsyncDisposable
         NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
         NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
 
-        // Build a LocalGrainFactory so it's available for grain inter-calls
-        var dummyInvoker = new DeferredLocalGrainCallInvoker();
-        var localFactory = new LocalGrainFactory(proxyRegistry, interfaceRegistry, dummyInvoker);
-
         var callInvoker = new LocalGrainCallInvoker(
             _activationTable, activator, typeRegistry, directory,
-            methodInvokerReg, localFactory, _serviceProvider, siloOptions, logger,
-            logger2);
+            methodInvokerReg, _serviceProvider, siloOptions, logger, logger2);
 
-        // Wire back the real invoker
-        dummyInvoker.SetInvoker(callInvoker);
-
-        // Build the client
-        var factory = new LocalGrainFactory(proxyRegistry, interfaceRegistry, callInvoker);
-        Client = new LocalClusterClient(factory);
+        // Wire the deferred factory reference — resolves when first grain is activated.
+        grainFactoryRef = new LocalGrainFactory(proxyRegistry, interfaceRegistry, callInvoker);
+        Client = new LocalClusterClient(grainFactoryRef);
     }
 
     public IClusterClient Client { get; }
+    public GrainActivationTable ActivationTable => _activationTable;
 
     public async ValueTask DisposeAsync()
     {
@@ -102,31 +102,4 @@ public sealed class GrainCallFixture : IAsyncDisposable
         await _serviceProvider.DisposeAsync();
     }
 
-    // Wrapper that resolves the invoker lazily to break the circular construction
-    private sealed class DeferredLocalGrainCallInvoker : IGrainCallInvoker
-    {
-        private IGrainCallInvoker? _inner;
-
-        public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null,
-            CancellationToken ct = default)
-        {
-            return _inner!.InvokeAsync(id, method, args, ct);
-        }
-
-        public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null,
-            CancellationToken ct = default)
-        {
-            return _inner!.InvokeAsync<TResult>(id, method, args, ct);
-        }
-
-        public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-        {
-            return _inner!.InvokeVoidAsync(id, method, args, ct);
-        }
-
-        public void SetInvoker(IGrainCallInvoker invoker)
-        {
-            _inner = invoker;
-        }
-    }
 }

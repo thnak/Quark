@@ -6,6 +6,8 @@ public sealed class CounterGrain : Grain, ICounterGrain
 {
     private long _value;
 
+    public bool DeactivateCalled { get; private set; }
+
     public Task<long> IncrementAsync()
     {
         _value++;
@@ -20,6 +22,18 @@ public sealed class CounterGrain : Grain, ICounterGrain
     public Task ResetAsync()
     {
         _value = 0;
+        return Task.CompletedTask;
+    }
+
+    public Task SelfDestructAsync()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
+
+    public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
+    {
+        DeactivateCalled = true;
         return Task.CompletedTask;
     }
 }

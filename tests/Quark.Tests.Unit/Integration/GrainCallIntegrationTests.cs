@@ -1,3 +1,5 @@
+using Quark.Core.Abstractions.Identity;
+using Quark.Runtime;
 using Xunit;
 
 namespace Quark.Tests.Unit.Integration;
@@ -124,6 +126,68 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
     public async Task GetValue_BeforeAnyCall_ReturnsZero()
     {
         ICounterGrain grain = GetCounter("fresh-grain");
+        Assert.Equal(0L, await grain.GetValueAsync());
+    }
+
+    // -----------------------------------------------------------------------
+    // DeactivateOnIdle tests
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task DeactivateOnIdle_CallsOnDeactivateAsync()
+    {
+        ICounterGrain grain = GetCounter("deactivate-call-test");
+
+        // Touch the grain so it activates.
+        await grain.IncrementAsync();
+
+        // Capture the grain instance before it's removed from the table.
+        var grainId = new GrainId(new GrainType("CounterGrain"), "deactivate-call-test");
+        _fixture.ActivationTable.TryGetActivation(grainId, out GrainActivation? activation);
+        var counterGrain = (CounterGrain)activation!.Grain;
+
+        // SelfDestructAsync calls DeactivateOnIdle() internally.
+        await grain.SelfDestructAsync();
+
+        // Allow the deactivation work item and table-removal continuation to run.
+        await Task.Delay(100);
+
+        Assert.True(counterGrain.DeactivateCalled,
+            "OnDeactivateAsync should have been called after DeactivateOnIdle()");
+    }
+
+    [Fact]
+    public async Task DeactivateOnIdle_RemovesActivationFromTable()
+    {
+        ICounterGrain grain = GetCounter("deactivate-table-test");
+
+        await grain.IncrementAsync();
+
+        var grainId = new GrainId(new GrainType("CounterGrain"), "deactivate-table-test");
+        Assert.True(_fixture.ActivationTable.TryGetActivation(grainId, out _),
+            "Activation should exist before deactivation");
+
+        await grain.SelfDestructAsync();
+
+        await Task.Delay(100);
+
+        Assert.False(_fixture.ActivationTable.TryGetActivation(grainId, out _),
+            "Activation should be removed from the table after DeactivateOnIdle()");
+    }
+
+    [Fact]
+    public async Task DeactivateOnIdle_FreshActivation_OnNextCall()
+    {
+        ICounterGrain grain = GetCounter("deactivate-fresh-test");
+
+        await grain.IncrementAsync();
+        await grain.IncrementAsync();
+        Assert.Equal(2L, await grain.GetValueAsync());
+
+        await grain.SelfDestructAsync();
+        await Task.Delay(100);
+
+        // A new call should create a fresh activation with value 0.
         Assert.Equal(0L, await grain.GetValueAsync());
     }
 }

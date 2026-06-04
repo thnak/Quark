@@ -187,15 +187,12 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
             IGrainMethodInvokerRegistry methodInvokerReg =
                 _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
-            IGrainFactory grainFactory = _serviceProvider.GetRequiredService<IGrainFactory>();
-
             LocalGrainCallInvoker callInvoker = new(
                 _activationTable,
                 activator,
                 typeRegistry,
                 directory,
                 methodInvokerReg,
-                grainFactory,
                 _serviceProvider,
                 siloOptions,
                 logger,

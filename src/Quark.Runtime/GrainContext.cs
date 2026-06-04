@@ -14,6 +14,8 @@ public sealed class GrainContext : IGrainContext
 {
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
     private Func<Func<Task>, ValueTask>? _scheduler;
+    private Action<DeactivationReason>? _deactivationCallback;
+    private Grain? _grain;
     private readonly Lock _timersLock = new();
     private readonly List<IGrainTimer> _timers = [];
 
@@ -55,7 +57,10 @@ public sealed class GrainContext : IGrainContext
         {
             DeactivationReason = reason;
             _status = GrainActivationStatus.Deactivating;
-            _ = StopInternalAsync(default);
+            if (_deactivationCallback is { } cb)
+                cb(reason);
+            else
+                _ = StopInternalAsync(default);
         }
     }
 
@@ -95,10 +100,21 @@ public sealed class GrainContext : IGrainContext
     }
 
     /// <summary>
+    ///     Registers the callback that <see cref="Deactivate" /> invokes to schedule the
+    ///     deactivation work-item on the grain's turn-based queue.
+    ///     Called by <see cref="GrainActivation" /> immediately after construction.
+    /// </summary>
+    internal void SetDeactivationCallback(Action<DeactivationReason> callback)
+    {
+        _deactivationCallback = callback;
+    }
+
+    /// <summary>
     ///     Runs the activation sequence: sets the context on the grain and calls lifecycle start.
     /// </summary>
     public async Task ActivateAsync(Grain grain, CancellationToken cancellationToken = default)
     {
+        _grain = grain;
         grain.SetContext(this);
         await Lifecycle.StartAsync(cancellationToken).ConfigureAwait(false);
         await grain.OnActivateAsync(cancellationToken).ConfigureAwait(false);
@@ -133,6 +149,8 @@ public sealed class GrainContext : IGrainContext
         try
         {
             DisposeTimers();
+            if (_grain is { } grain && DeactivationReason is { } reason)
+                await grain.OnDeactivateAsync(reason, cancellationToken).ConfigureAwait(false);
             await Lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
         }
         finally

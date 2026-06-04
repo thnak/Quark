@@ -98,7 +98,6 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
                 typeRegistry,
                 _serviceProvider.GetRequiredService<IGrainDirectory>(),
                 _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>(),
-                _serviceProvider.GetRequiredService<IGrainFactory>(),
                 _serviceProvider,
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
                 NullLogger<LocalGrainCallInvoker>.Instance,
