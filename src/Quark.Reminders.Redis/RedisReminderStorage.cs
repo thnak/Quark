@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Identity;
 using Quark.Reminders.Abstractions;
@@ -110,11 +109,4 @@ public sealed class RedisReminderStorage : IReminderStorage
         public long PeriodTicks { get; set; }
         public long NextFireAtUtcTicks { get; set; }
     }
-}
-
-/// <summary>Source-generated JSON serializer context for <see cref="RedisReminderStorage.ReminderEntryDto" />.</summary>
-[JsonSerializable(typeof(RedisReminderStorage.ReminderEntryDto))]
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-internal sealed partial class ReminderEntryDtoJsonContext : JsonSerializerContext
-{
 }

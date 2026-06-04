@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Tests.Fault.FaultScenario;
 
 namespace Quark.Tests.Fault.Fakes;
 

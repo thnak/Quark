@@ -17,10 +17,10 @@ public sealed class FaultFixture : IAsyncDisposable
     private readonly ServiceProvider _sp;
     private readonly GrainActivationTable _activationTable;
 
-    public FaultFixture(Action<FaultScenario>? configure = null)
+    public FaultFixture(Action<FaultScenarioHolder>? configure = null)
     {
-        Scenario = new FaultScenario();
-        configure?.Invoke(Scenario);
+        ScenarioHolder = new FaultScenarioHolder();
+        configure?.Invoke(ScenarioHolder);
 
         var services = new ServiceCollection();
         services.AddLogging();
@@ -34,8 +34,8 @@ public sealed class FaultFixture : IAsyncDisposable
         });
 
         // Fault-injecting storage — registered per concrete state type
-        var workerStorage = new FaultInjectingStorage<WorkerState>(Scenario.WorkerStorage);
-        var orchestratorStorage = new FaultInjectingStorage<OrchestratorState>(Scenario.OrchestratorStorage);
+        var workerStorage = new FaultInjectingStorage<WorkerState>(ScenarioHolder.WorkerStorage);
+        var orchestratorStorage = new FaultInjectingStorage<OrchestratorState>(ScenarioHolder.OrchestratorStorage);
         services.AddSingleton<IStorage<WorkerState>>(workerStorage);
         services.AddSingleton<IStorage<OrchestratorState>>(orchestratorStorage);
 
@@ -58,7 +58,7 @@ public sealed class FaultFixture : IAsyncDisposable
             new FaultInjectingGrainActivator(
                 sp.GetRequiredService<DefaultGrainActivator>(),
                 sp.GetRequiredService<IGrainTypeRegistry>(),
-                Scenario.Activations));
+                ScenarioHolder.Activations));
 
         // Method invokers
         services.AddSingleton<WorkerGrainMethodInvoker>();
@@ -105,14 +105,14 @@ public sealed class FaultFixture : IAsyncDisposable
             NullLogger<GrainActivation>.Instance);
 
         // Fault-injecting call invoker wraps the real one
-        IGrainCallInvoker effectiveInvoker = new FaultInjectingGrainCallInvoker(realInvoker, Scenario.Calls);
+        IGrainCallInvoker effectiveInvoker = new FaultInjectingGrainCallInvoker(realInvoker, ScenarioHolder.Calls);
         deferredInvoker.SetInvoker(effectiveInvoker);
 
         Client = new LocalClusterClient(new LocalGrainFactory(proxyRegistry, interfaceRegistry, effectiveInvoker));
     }
 
     public IClusterClient Client { get; }
-    public FaultScenario Scenario { get; }
+    public FaultScenarioHolder ScenarioHolder { get; }
 
     public async ValueTask DisposeAsync()
     {

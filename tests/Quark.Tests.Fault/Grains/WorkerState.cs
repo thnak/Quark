@@ -2,8 +2,6 @@ using Quark.Serialization.Abstractions.Attributes;
 
 namespace Quark.Tests.Fault.Grains;
 
-public enum WorkerStatus { Idle, Processing, Completed, Failed }
-
 [GenerateSerializer]
 [Alias("WorkerState")]
 public sealed record WorkerState

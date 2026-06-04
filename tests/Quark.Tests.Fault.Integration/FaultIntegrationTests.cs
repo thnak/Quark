@@ -35,7 +35,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     {
         _redis = new RedisBuilder().Build();
         await _redis.StartAsync();
-        BuildFixture(new FaultScenario());
+        BuildFixture(new FaultScenarioHolder());
     }
 
     public async Task DisposeAsync()
@@ -51,7 +51,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     // BuildFixture — same DI wiring as FaultFixture but with real Redis
     // -----------------------------------------------------------------------
 
-    private void BuildFixture(FaultScenario scenario)
+    private void BuildFixture(FaultScenarioHolder scenarioHolder)
     {
         // Dispose any previously built service provider first
         _activationTable?.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -83,12 +83,12 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
         services.AddSingleton<IStorage<WorkerState>>(sp =>
         {
             var inner = new RedisStorage<WorkerState>(sp.GetRequiredService<IGrainStorage>());
-            return new FaultInjectingStorage<WorkerState>(scenario.WorkerStorage, inner);
+            return new FaultInjectingStorage<WorkerState>(scenarioHolder.WorkerStorage, inner);
         });
         services.AddSingleton<IStorage<OrchestratorState>>(sp =>
         {
             var inner = new RedisStorage<OrchestratorState>(sp.GetRequiredService<IGrainStorage>());
-            return new FaultInjectingStorage<OrchestratorState>(scenario.OrchestratorStorage, inner);
+            return new FaultInjectingStorage<OrchestratorState>(scenarioHolder.OrchestratorStorage, inner);
         });
 
         // Core runtime
@@ -110,7 +110,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
             new FaultInjectingGrainActivator(
                 sp.GetRequiredService<DefaultGrainActivator>(),
                 sp.GetRequiredService<IGrainTypeRegistry>(),
-                scenario.Activations));
+                scenarioHolder.Activations));
 
         // Method invokers
         services.AddSingleton<WorkerGrainMethodInvoker>();
@@ -157,7 +157,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
             NullLogger<GrainActivation>.Instance);
 
         // Fault-injecting call invoker wraps the real one
-        IGrainCallInvoker effectiveInvoker = new FaultInjectingGrainCallInvoker(realInvoker, scenario.Calls);
+        IGrainCallInvoker effectiveInvoker = new FaultInjectingGrainCallInvoker(realInvoker, scenarioHolder.Calls);
         deferredInvoker.SetInvoker(effectiveInvoker);
 
         Client = new LocalClusterClient(new LocalGrainFactory(proxyRegistry, interfaceRegistry, effectiveInvoker));
@@ -176,7 +176,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Redis_WriteFailOnFirstAttempt_SubsequentCallSucceeds()
     {
-        var scenario = new FaultScenario();
+        var scenario = new FaultScenarioHolder();
         scenario.OrchestratorStorage.ThrowOnNthWrite<InvalidOperationException>(1);
         BuildFixture(scenario);
 
@@ -197,7 +197,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Redis_SlowWrite_TimeoutPropagatesCorrectly()
     {
-        var scenario = new FaultScenario();
+        var scenario = new FaultScenarioHolder();
         scenario.OrchestratorStorage.ThrowOnNthWrite<TimeoutException>(1);
         BuildFixture(scenario);
 
@@ -215,7 +215,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FullPipeline_CascadingFaults_OrderEventuallyCompletes()
     {
-        var scenario = new FaultScenario();
+        var scenario = new FaultScenarioHolder();
         scenario.Calls.AlwaysThrowForKey(
             new GrainType("WorkerGrain"),
             "w-full-1",
@@ -227,7 +227,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
         Assert.Equal(OrchestratorStatus.Failed, failedResult);
 
         // Reset to no faults and process remaining workers under a different order key
-        BuildFixture(new FaultScenario());
+        BuildFixture(new FaultScenarioHolder());
 
         var orchestrator2 = Client.GetGrain<IOrderOrchestratorGrain>("redis-order-cascade-2");
         OrchestratorStatus completedResult = await orchestrator2.ProcessAsync(["w-full-2", "w-full-3"]);

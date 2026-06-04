@@ -2,8 +2,6 @@ using Quark.Serialization.Abstractions.Attributes;
 
 namespace Quark.Tests.Fault.Grains;
 
-public enum OrchestratorStatus { Pending, Processing, Completed, Failed }
-
 [GenerateSerializer]
 [Alias("OrchestratorState")]
 public sealed record OrchestratorState

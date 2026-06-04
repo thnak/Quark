@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
+using Quark.Tests.Fault.FaultScenario;
 
 namespace Quark.Tests.Fault.Fakes;
 
