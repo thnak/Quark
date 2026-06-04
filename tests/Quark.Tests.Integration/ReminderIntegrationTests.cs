@@ -42,9 +42,9 @@ public sealed class ReminderIntegrationTests
     [Fact]
     public async Task Reminder_FiresOnIRemindableGrain()
     {
-        await using var cluster = await TestCluster.CreateAsync(BuildOptions());
+        await using TestCluster cluster = await TestCluster.CreateAsync(BuildOptions());
 
-        var grain = cluster.Client.GetGrain<IReminderTestGrain>("fire-test");
+        IReminderTestGrain grain = cluster.Client.GetGrain<IReminderTestGrain>("fire-test");
         await grain.RegisterReminderAsync("daily", TimeSpan.FromMilliseconds(100), TimeSpan.FromHours(24));
 
         await Task.Delay(500);
@@ -56,10 +56,10 @@ public sealed class ReminderIntegrationTests
     [Fact]
     public async Task UnregisterReminder_StopsFutureFirings()
     {
-        await using var cluster = await TestCluster.CreateAsync(
+        await using TestCluster cluster = await TestCluster.CreateAsync(
             BuildOptions(pollInterval: TimeSpan.FromMilliseconds(30)));
 
-        var grain = cluster.Client.GetGrain<IReminderTestGrain>("unregister-test");
+        IReminderTestGrain grain = cluster.Client.GetGrain<IReminderTestGrain>("unregister-test");
         await grain.RegisterReminderAsync("tick", TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(50));
         await Task.Delay(300);
         int countBeforeUnregister = await grain.GetReceiveCountAsync();
@@ -82,22 +82,22 @@ public sealed class ReminderIntegrationTests
             services.AddSingleton<IReminderStorage>(storage);
         };
 
-        await using (var cluster1 = await TestCluster.CreateAsync(
+        await using (TestCluster cluster1 = await TestCluster.CreateAsync(
             BuildOptions(sharedStorage, pollInterval: TimeSpan.FromMilliseconds(50))))
         {
-            var grain = cluster1.Client.GetGrain<IReminderTestGrain>("restart-test");
+            IReminderTestGrain grain = cluster1.Client.GetGrain<IReminderTestGrain>("restart-test");
             // dueTime = 2s so cluster1 shuts down before the first tick, leaving NextFireAt in the future.
             await grain.RegisterReminderAsync("persist", TimeSpan.FromSeconds(2), TimeSpan.FromHours(24));
         }
         // cluster1 disposed — grain activations gone, storage still has entry with NextFireAt ~now+2s.
 
-        await using var cluster2 = await TestCluster.CreateAsync(
+        await using TestCluster cluster2 = await TestCluster.CreateAsync(
             BuildOptions(sharedStorage, pollInterval: TimeSpan.FromMilliseconds(50)));
 
         // Wait for the 2s due time to expire and the reminder to fire.
         await Task.Delay(2500);
 
-        var grain2 = cluster2.Client.GetGrain<IReminderTestGrain>("restart-test");
+        IReminderTestGrain grain2 = cluster2.Client.GetGrain<IReminderTestGrain>("restart-test");
         int count = await grain2.GetReceiveCountAsync();
         Assert.True(count >= 1, $"Expected reminder to fire after restart, got {count}");
     }
@@ -105,9 +105,9 @@ public sealed class ReminderIntegrationTests
     [Fact]
     public async Task GetReminders_ReturnsRegisteredReminders()
     {
-        await using var cluster = await TestCluster.CreateAsync(BuildOptions());
+        await using TestCluster cluster = await TestCluster.CreateAsync(BuildOptions());
 
-        var grain = cluster.Client.GetGrain<IReminderTestGrain>("list-test");
+        IReminderTestGrain grain = cluster.Client.GetGrain<IReminderTestGrain>("list-test");
         await grain.RegisterReminderAsync("r1", TimeSpan.FromHours(1), TimeSpan.FromHours(24));
         await grain.RegisterReminderAsync("r2", TimeSpan.FromHours(2), TimeSpan.FromHours(12));
 
@@ -120,7 +120,7 @@ public sealed class ReminderIntegrationTests
 
     // ---- Test grain interface ----
 
-    public interface IReminderTestGrain : IGrainWithStringKey
+    private interface IReminderTestGrain : IGrainWithStringKey
     {
         Task RegisterReminderAsync(string name, TimeSpan dueTime, TimeSpan period);
         Task UnregisterReminderAsync(string name);
@@ -137,15 +137,14 @@ public sealed class ReminderIntegrationTests
 
         public async Task RegisterReminderAsync(string name, TimeSpan dueTime, TimeSpan period)
         {
-            var handle = await RegisterOrUpdateReminderAsync(name, dueTime, period);
+            IGrainReminder handle = await RegisterOrUpdateReminderAsync(name, dueTime, period);
             _handles[name] = handle;
         }
 
         public Task UnregisterReminderAsync(string name)
         {
-            if (_handles.TryGetValue(name, out IGrainReminder? handle))
+            if (_handles.Remove(name, out IGrainReminder? handle))
             {
-                _handles.Remove(name);
                 return UnregisterReminderAsync(handle);
             }
             return Task.CompletedTask;
