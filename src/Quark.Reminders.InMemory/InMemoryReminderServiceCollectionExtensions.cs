@@ -24,7 +24,7 @@ public static class InMemoryReminderServiceCollectionExtensions
         services.TryAddSingleton<IReminderStorage, InMemoryReminderStorage>();
         services.TryAddSingleton<DefaultReminderService>();
         services.TryAddSingleton<IReminderService>(sp => sp.GetRequiredService<DefaultReminderService>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService>(
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, DefaultReminderService>(
             sp => sp.GetRequiredService<DefaultReminderService>()));
 
         return services;
