@@ -43,6 +43,8 @@ public sealed class SiloHostedService : IHostedService
         ApplyGrainRegistrations();
         // Apply deferred method-invoker registrations (AddGrainMethodInvoker<TGrain,TInvoker> calls).
         ApplyMethodInvokerRegistrations();
+        // Apply deferred observer method-invoker registrations (AddObserverMethodInvoker<> calls).
+        ApplyObserverMethodInvokerRegistrations();
 
         var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
         if (messagePump is not null)
@@ -106,6 +108,25 @@ public sealed class SiloHostedService : IHostedService
                      .Cast<RuntimeServiceCollectionExtensions.IGrainMethodInvokerRegistration>())
         {
             reg.Apply(invokerRegistry, _services);
+        }
+    }
+
+    private void ApplyObserverMethodInvokerRegistrations()
+    {
+        var observerInvokerRegistry =
+            _services.GetService(typeof(ObserverMethodInvokerRegistry)) as ObserverMethodInvokerRegistry;
+        if (observerInvokerRegistry is null)
+        {
+            return;
+        }
+
+        IEnumerable<object> registrations = (IEnumerable<object>?)_services.GetService(
+            typeof(IEnumerable<RuntimeServiceCollectionExtensions.IObserverMethodInvokerRegistration>)) ?? [];
+
+        foreach (RuntimeServiceCollectionExtensions.IObserverMethodInvokerRegistration reg in registrations
+                     .Cast<RuntimeServiceCollectionExtensions.IObserverMethodInvokerRegistration>())
+        {
+            reg.Apply(observerInvokerRegistry, _services);
         }
     }
 }

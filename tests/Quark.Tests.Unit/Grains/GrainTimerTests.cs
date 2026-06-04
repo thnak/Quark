@@ -59,10 +59,13 @@ public sealed class GrainTimerTests
         var (grain, ctx, activation) = await SetupAsync();
         grain.StartTimer(dueTime: TimeSpan.FromMilliseconds(20), period: TimeSpan.FromMilliseconds(20));
         await Task.Delay(100);
-        int countBeforeDeactivate = grain.FireCount;
+        // Capture count AFTER deactivation so any in-flight callback that beat the dispose
+        // has already settled. _disposed is set synchronously before the first await in
+        // DeactivateAsync, so no further increments can happen once it returns.
         await ctx.DeactivateAsync(grain, DeactivationReason.ApplicationRequested);
+        int countAfterDeactivate = grain.FireCount;
         await Task.Delay(150);
-        Assert.Equal(countBeforeDeactivate, grain.FireCount);
+        Assert.Equal(countAfterDeactivate, grain.FireCount);
         await activation.DisposeAsync();
     }
 

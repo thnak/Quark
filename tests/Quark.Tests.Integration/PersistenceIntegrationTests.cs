@@ -65,7 +65,7 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
 
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
-            services.AddTransient<PersistentCounterGrain>();
+            services.AddSingleton<IGrainActivatorFactory>(new PersistentCounterGrainActivatorFactory());
             services.AddSingleton<PersistentCounterGrainMethodInvoker>();
 
             _serviceProvider = services.BuildServiceProvider();
@@ -192,5 +192,11 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         {
             throw new NotImplementedException();
         }
+    }
+
+    private sealed class PersistentCounterGrainActivatorFactory : IGrainActivatorFactory
+    {
+        public Type GrainClass => typeof(PersistentCounterGrain);
+        public Grain Create(GrainId grainId, IServiceProvider services) => new PersistentCounterGrain();
     }
 }

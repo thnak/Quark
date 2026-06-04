@@ -30,10 +30,10 @@ public sealed class SerializerGeneratorTests
         Assert.Contains("internal sealed class PersonCodec", generated);
         Assert.Contains("internal sealed class PersonCopier", generated);
         Assert.Contains("if (value is null)", generated);
-        Assert.Contains("if (field.WireType == global::Quark.Serialization.Abstractions.WireType.Extended", generated);
+        Assert.Contains("if (field.WireType == global::Quark.Serialization.Abstractions.Buffers.WireType.Extended", generated);
         Assert.Contains("case 0: result.Name =", generated);
         Assert.Contains("case 1: result.Age =", generated);
-        Assert.Contains("private readonly global::Quark.Serialization.Abstractions.ICopierProvider _copiers;",
+        Assert.Contains("private readonly global::Quark.Serialization.Abstractions.Abstractions.ICopierProvider _copiers;",
             generated);
         Assert.Contains("_copiers.GetRequiredCopier<", generated);
         Assert.Contains("DeepCopy(input.Name, context)", generated);

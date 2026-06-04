@@ -2,6 +2,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Quark.Core.Abstractions.Grains;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Attributes;
 
@@ -48,6 +49,7 @@ internal static class GeneratorTestDriver
             .Select(static path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .Append(MetadataReference.CreateFromFile(typeof(IGrain).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(IGrainActivator).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(IGrainStorage).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(GenerateSerializerAttribute).Assembly.Location))
             .GroupBy(static reference => reference.Display, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())

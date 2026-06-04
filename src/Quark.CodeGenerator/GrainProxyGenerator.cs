@@ -15,8 +15,11 @@ namespace Quark.CodeGenerator;
 [Generator(LanguageNames.CSharp)]
 public sealed class GrainProxyGenerator : IIncrementalGenerator
 {
-    private const string IGrainFqn = "Quark.Core.Abstractions.IGrain";
-    private const string IGrainCallInvokerFqn = "Quark.Core.Abstractions.IGrainCallInvoker";
+    private const string IGrainFqn = "Quark.Core.Abstractions.Grains.IGrain";
+    private const string IGrainObserverFqn = "Quark.Core.Abstractions.Grains.IGrainObserver";
+    private const string IGrainCallInvokerFqn = "Quark.Core.Abstractions.Hosting.IGrainCallInvoker";
+    private const string IGrainProxyActivatorFqn = "Quark.Core.Abstractions.Hosting.IGrainProxyActivator";
+    private const string IGrainObserverProxyActivatorFqn = "Quark.Core.Abstractions.Hosting.IGrainObserverProxyActivator";
 
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -50,20 +53,26 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             return null;
         }
 
-        // Check that IGrain is in the interface hierarchy.
+        // Check that IGrain or IGrainObserver is in the interface hierarchy.
         bool isGrain = false;
+        bool isObserver = false;
         foreach (INamedTypeSymbol parent in iface.AllInterfaces)
         {
-            if (parent.ToDisplayString() == IGrainFqn)
-            {
-                isGrain = true;
-                break;
-            }
+            string fqn = parent.ToDisplayString();
+            if (fqn == IGrainFqn) isGrain = true;
+            else if (fqn == IGrainObserverFqn) isObserver = true;
         }
 
-        if (!isGrain)
+        // Only generate for concrete grain or observer subtypes, never for types that extend both
+        // (ambiguous proxy activator) or for pure marker types with no methods.
+        if (!isGrain && !isObserver)
         {
             return null;
+        }
+
+        if (isGrain && isObserver)
+        {
+            return null; // ambiguous — skip silently
         }
 
         string ns = iface.ContainingNamespace.IsGlobalNamespace
@@ -138,10 +147,10 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         return new InterfaceModel(
             ns,
-            iface.Name,
             iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             proxySuffix,
-            methods);
+            methods,
+            isObserver);
     }
 
     // -----------------------------------------------------------------------
@@ -180,18 +189,29 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
-        sb.AppendLine($"internal sealed class {m.ProxyClassName} : {m.FqInterfaceName}");
+        string activatorInterface = m.IsObserver
+            ? $"global::Quark.Core.Abstractions.Hosting.IGrainObserverProxyActivator<{m.ProxyClassName}>"
+            : $"global::Quark.Core.Abstractions.Hosting.IGrainProxyActivator<{m.ProxyClassName}>";
+
+        sb.AppendLine($"internal sealed class {m.ProxyClassName}");
+        sb.AppendLine($"    : {m.FqInterfaceName}");
+        sb.AppendLine($"    , {activatorInterface}");
         sb.AppendLine("{");
-        sb.AppendLine("    private readonly global::Quark.Core.Abstractions.GrainId _grainId;");
-        sb.AppendLine("    private readonly global::Quark.Core.Abstractions.IGrainCallInvoker _invoker;");
+        sb.AppendLine("    private readonly global::Quark.Core.Abstractions.Identity.GrainId _grainId;");
+        sb.AppendLine("    private readonly global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker _invoker;");
         sb.AppendLine();
         sb.AppendLine($"    public {m.ProxyClassName}(");
-        sb.AppendLine("        global::Quark.Core.Abstractions.GrainId grainId,");
-        sb.AppendLine("        global::Quark.Core.Abstractions.IGrainCallInvoker invoker)");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker invoker)");
         sb.AppendLine("    {");
         sb.AppendLine("        _grainId = grainId;");
         sb.AppendLine("        _invoker = invoker;");
         sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine($"    public static {m.ProxyClassName} Create(");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker invoker)");
+        sb.AppendLine($"        => new {m.ProxyClassName}(grainId, invoker);");
         sb.AppendLine();
 
         foreach (MethodModel method in m.Methods)
@@ -253,16 +273,16 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
     private sealed class InterfaceModel(
         string @namespace,
-        string interfaceName,
         string fqInterfaceName,
         string proxyClassName,
-        IReadOnlyList<MethodModel> methods)
+        IReadOnlyList<MethodModel> methods,
+        bool isObserver)
     {
         public string Namespace { get; } = @namespace;
-        public string InterfaceName { get; } = interfaceName;
         public string FqInterfaceName { get; } = fqInterfaceName;
         public string ProxyClassName { get; } = proxyClassName;
         public IReadOnlyList<MethodModel> Methods { get; } = methods;
+        public bool IsObserver { get; } = isObserver;
     }
 
     private sealed class MethodModel(

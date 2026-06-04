@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -53,8 +55,23 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<IGrainMethodInvokerRegistry>(sp =>
             sp.GetRequiredService<GrainMethodInvokerRegistry>());
 
+        // Observer infrastructure (populated via AddObserverMethodInvoker<>()).
+        services.TryAddSingleton<ObserverRegistry>();
+        services.TryAddSingleton<ObserverMethodInvokerRegistry>();
+
         // Local in-process call invoker.
-        services.TryAddSingleton<LocalGrainCallInvoker>();
+        services.TryAddSingleton<LocalGrainCallInvoker>(sp => new LocalGrainCallInvoker(
+            sp.GetRequiredService<GrainActivationTable>(),
+            sp.GetRequiredService<IGrainActivator>(),
+            sp.GetRequiredService<IGrainTypeRegistry>(),
+            sp.GetRequiredService<IGrainDirectory>(),
+            sp.GetRequiredService<IGrainMethodInvokerRegistry>(),
+            sp.GetRequiredService<IGrainFactory>(),
+            sp,
+            sp.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
+            sp.GetRequiredService<ILogger<LocalGrainCallInvoker>>(),
+            sp.GetRequiredService<ILogger<GrainActivation>>(),
+            sp.GetService<ObserverRegistry>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services for transport-routed grain calls.
@@ -125,6 +142,25 @@ public static class RuntimeServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    ///     Registers a <see cref="IObserverMethodInvoker" /> for <typeparamref name="TObserver" />.
+    ///     Required so that <c>IGrainFactory.CreateObjectReference&lt;T&gt;()</c> can dispatch
+    ///     calls to in-process observer objects.
+    /// </summary>
+    public static IServiceCollection AddObserverMethodInvoker<
+        TObserver,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        TInvoker>(
+        this IServiceCollection services)
+        where TObserver : IGrainObserver
+        where TInvoker : class, IObserverMethodInvoker
+    {
+        services.AddSingleton<IObserverMethodInvokerRegistration>(
+            new ObserverMethodInvokerRegistration(typeof(TObserver), typeof(TInvoker)));
+        services.TryAddTransient<TInvoker>();
+        return services;
+    }
+
     // ----- internal helpers ------------------------------------------------
 
     internal interface IGrainRegistration
@@ -153,6 +189,21 @@ public static class RuntimeServiceCollectionExtensions
         {
             var invoker = (IGrainMethodInvoker)services.GetRequiredService(invokerType);
             registry.Register(grainType, invoker);
+        }
+    }
+
+    internal interface IObserverMethodInvokerRegistration
+    {
+        void Apply(ObserverMethodInvokerRegistry registry, IServiceProvider services);
+    }
+
+    private sealed class ObserverMethodInvokerRegistration(Type observerType, Type invokerType)
+        : IObserverMethodInvokerRegistration
+    {
+        public void Apply(ObserverMethodInvokerRegistry registry, IServiceProvider services)
+        {
+            var invoker = (IObserverMethodInvoker)services.GetRequiredService(invokerType);
+            registry.Register(observerType, invoker);
         }
     }
 }

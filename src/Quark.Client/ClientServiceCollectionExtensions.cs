@@ -1,9 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Runtime;
 
 namespace Quark.Client;
 
@@ -21,7 +21,14 @@ public static class ClientServiceCollectionExtensions
     {
         services.TryAddSingleton<GrainProxyFactoryRegistry>();
         services.TryAddSingleton<GrainInterfaceTypeRegistry>();
-        services.TryAddSingleton<LocalGrainFactory>();
+        services.TryAddSingleton<ObserverProxyFactoryRegistry>();
+        services.TryAddSingleton<LocalGrainFactory>(sp => new LocalGrainFactory(
+            sp.GetRequiredService<GrainProxyFactoryRegistry>(),
+            sp.GetRequiredService<GrainInterfaceTypeRegistry>(),
+            sp.GetRequiredService<IGrainCallInvoker>(),
+            sp.GetService<ObserverProxyFactoryRegistry>(),
+            sp.GetService<ObserverRegistry>(),
+            sp.GetService<ObserverMethodInvokerRegistry>()));
         services.TryAddSingleton<IGrainFactory>(sp => sp.GetRequiredService<LocalGrainFactory>());
         services.TryAddSingleton<LocalClusterClient>();
         services.TryAddSingleton<IClusterClient>(sp => sp.GetRequiredService<LocalClusterClient>());
@@ -42,17 +49,29 @@ public static class ClientServiceCollectionExtensions
     ///     Optional override for the grain-type name (defaults to the implementation class name
     ///     without the leading "I", e.g. <c>CounterGrain</c>).
     /// </param>
-    public static IServiceCollection AddGrainProxy<
-        TInterface,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TProxy>(
+    public static IServiceCollection AddGrainProxy<TInterface, TProxy>(
         this IServiceCollection services,
         string? grainTypeName = null)
         where TInterface : IGrain
-        where TProxy : class, TInterface
+        where TProxy : class, TInterface, IGrainProxyActivator<TProxy>
     {
         services.AddSingleton<IProxyRegistration>(
             new ProxyRegistration<TInterface, TProxy>(grainTypeName));
+        return services;
+    }
+
+    /// <summary>
+    ///     Registers an observer proxy factory so that
+    ///     <see cref="IGrainFactory.CreateObjectReference{TGrainObserver}" /> can wrap
+    ///     a local <typeparamref name="TInterface" /> object in a proxy.
+    /// </summary>
+    public static IServiceCollection AddObserverProxy<TInterface, TProxy>(
+        this IServiceCollection services)
+        where TInterface : IGrainObserver
+        where TProxy : class, TInterface, IGrainObserverProxyActivator<TProxy>
+    {
+        services.AddSingleton<IObserverProxyRegistration>(
+            new ObserverProxyRegistration<TInterface, TProxy>());
         return services;
     }
 
@@ -63,11 +82,15 @@ public static class ClientServiceCollectionExtensions
         void Apply(GrainProxyFactoryRegistry proxyRegistry, GrainInterfaceTypeRegistry interfaceRegistry);
     }
 
-    private sealed class ProxyRegistration<TInterface,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TProxy>(string? grainTypeName)
+    internal interface IObserverProxyRegistration
+    {
+        void Apply(ObserverProxyFactoryRegistry observerProxyRegistry);
+    }
+
+    private sealed class ProxyRegistration<TInterface, TProxy>(string? grainTypeName)
         : IProxyRegistration
         where TInterface : IGrain
-        where TProxy : class, TInterface
+        where TProxy : class, TInterface, IGrainProxyActivator<TProxy>
     {
         public void Apply(GrainProxyFactoryRegistry proxyRegistry, GrainInterfaceTypeRegistry interfaceRegistry)
         {
@@ -81,14 +104,19 @@ public static class ClientServiceCollectionExtensions
 
             interfaceRegistry.Register(typeof(TInterface), grainType);
 
-            // Factory: create TProxy(grainId, invoker) via constructor.
-            proxyRegistry.Register<TInterface, TProxy>((grainId, invoker) => CreateProxy(grainId, invoker));
+            proxyRegistry.Register<TInterface, TProxy>(static (grainId, invoker) => TProxy.Create(grainId, invoker));
         }
+    }
 
-        private static TProxy CreateProxy(GrainId grainId, IGrainCallInvoker invoker)
+    private sealed class ObserverProxyRegistration<TInterface, TProxy>
+        : IObserverProxyRegistration
+        where TInterface : IGrainObserver
+        where TProxy : class, TInterface, IGrainObserverProxyActivator<TProxy>
+    {
+        public void Apply(ObserverProxyFactoryRegistry observerProxyRegistry)
         {
-            // TProxy is expected to have a constructor (GrainId, IGrainCallInvoker).
-            return (TProxy)Activator.CreateInstance(typeof(TProxy), grainId, invoker)!;
+            observerProxyRegistry.Register<TInterface, TProxy>(
+                static (grainId, invoker) => TProxy.Create(grainId, invoker));
         }
     }
 }

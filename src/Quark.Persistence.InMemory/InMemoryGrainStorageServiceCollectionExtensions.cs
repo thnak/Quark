@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Persistence.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions; // ICopierProvider
 
 namespace Quark.Persistence.InMemory;
 
@@ -24,6 +25,21 @@ public static class InMemoryGrainStorageServiceCollectionExtensions
 
         services.TryAddSingleton<IGrainStorage, InMemoryGrainStorage>();
         services.TryAddSingleton(typeof(IStorage<>), typeof(InMemoryStorage<>));
+        return services;
+    }
+
+    /// <summary>
+    ///     Registers a named in-memory grain storage provider resolvable via
+    ///     <c>GetRequiredKeyedService&lt;IGrainStorage&gt;(name)</c>.
+    ///     Use with <c>[PersistentState("slot", "<paramref name="name" />")]</c>.
+    /// </summary>
+    public static IServiceCollection AddInMemoryGrainStorage(
+        this IServiceCollection services,
+        string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        services.AddKeyedSingleton<IGrainStorage>(name,
+            (sp, _) => new InMemoryGrainStorage(sp.GetRequiredService<ICopierProvider>()));
         return services;
     }
 

@@ -57,33 +57,27 @@ public sealed class ReentrantTests
         var grain = new ReentrantGrain();
         await using var activation = MakeActivation(grain);
 
-        var completionSource1 = new TaskCompletionSource();
-        var completionSource2 = new TaskCompletionSource();
+        // Structural concurrency proof: task1 blocks on a gate; task2 signals that it
+        // ran while task1 was blocked. This is only possible with reentrant (concurrent)
+        // dispatch — no wall-clock timing involved, so thread-pool load can't flake this.
+        using var gate = new SemaphoreSlim(0, 1);
+        var task2Reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        // Post first work item
         var task1 = activation.PostAsync(async () =>
         {
-            await Task.Delay(50);
-            completionSource1.SetResult();
+            await gate.WaitAsync(TimeSpan.FromSeconds(5));
         });
 
-        // Post second work item
-        var task2 = activation.PostAsync(async () =>
+        var task2 = activation.PostAsync(() =>
         {
-            await Task.Delay(50);
-            completionSource2.SetResult();
+            task2Reached.SetResult();
+            return Task.CompletedTask;
         });
 
-        // Wait for both to complete
-        await Task.WhenAll(task1.AsTask(), task2.AsTask(), completionSource1.Task, completionSource2.Task);
-        sw.Stop();
-
-        // Concurrent execution should complete in ~50ms, not ~100ms
-        // Allow some timing variance (up to 120ms instead of strict <80ms)
-        Assert.True(sw.ElapsedMilliseconds < 120,
-            $"Expected ~50ms concurrent, got {sw.ElapsedMilliseconds}ms");
+        // task2 can only signal here if it ran concurrently while task1 was blocked
+        await task2Reached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        gate.Release();
+        await Task.WhenAll(task1.AsTask(), task2.AsTask()).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private sealed class NonReentrantGrain : Grain { }

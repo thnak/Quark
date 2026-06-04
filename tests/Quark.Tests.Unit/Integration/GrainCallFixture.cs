@@ -40,8 +40,8 @@ public sealed class GrainCallFixture : IAsyncDisposable
         services.AddSingleton<IGrainMethodInvokerRegistry>(sp =>
             sp.GetRequiredService<GrainMethodInvokerRegistry>());
 
-        // Register grain
-        services.AddTransient<CounterGrain>();
+        // Register grain activator factory (no-reflection, AOT-safe)
+        services.AddSingleton<IGrainActivatorFactory>(new CounterGrainActivatorFactory());
 
         // Register method invoker
         services.AddSingleton<CounterGrainMethodInvoker>();

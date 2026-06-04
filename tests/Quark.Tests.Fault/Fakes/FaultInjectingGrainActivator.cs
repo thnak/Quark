@@ -25,11 +25,11 @@ public sealed class FaultInjectingGrainActivator : IGrainActivator
         _plan = plan;
     }
 
-    public Grain CreateInstance(GrainType grainType)
+    public Grain CreateInstance(GrainId grainId)
     {
-        if (_registry.TryGetGrainClass(grainType, out Type? grainClass) && grainClass is not null)
+        if (_registry.TryGetGrainClass(grainId.Type, out Type? grainClass) && grainClass is not null)
             _plan.Check(grainClass);
 
-        return _inner.CreateInstance(grainType);
+        return _inner.CreateInstance(grainId);
     }
 }

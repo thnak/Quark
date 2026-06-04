@@ -1,6 +1,7 @@
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Runtime;
 
 namespace Quark.Client;
 
@@ -12,17 +13,26 @@ public sealed class LocalGrainFactory : IGrainFactory
 {
     private readonly GrainInterfaceTypeRegistry _interfaceRegistry;
     private readonly IGrainCallInvoker _invoker;
+    private readonly ObserverMethodInvokerRegistry? _observerMethodInvokerRegistry;
+    private readonly ObserverProxyFactoryRegistry? _observerProxyRegistry;
+    private readonly ObserverRegistry? _observerRegistry;
     private readonly GrainProxyFactoryRegistry _proxyRegistry;
 
     /// <summary>Initialises the factory.</summary>
     public LocalGrainFactory(
         GrainProxyFactoryRegistry proxyRegistry,
         GrainInterfaceTypeRegistry interfaceRegistry,
-        IGrainCallInvoker invoker)
+        IGrainCallInvoker invoker,
+        ObserverProxyFactoryRegistry? observerProxyRegistry = null,
+        ObserverRegistry? observerRegistry = null,
+        ObserverMethodInvokerRegistry? observerMethodInvokerRegistry = null)
     {
         _proxyRegistry = proxyRegistry;
         _interfaceRegistry = interfaceRegistry;
         _invoker = invoker;
+        _observerProxyRegistry = observerProxyRegistry;
+        _observerRegistry = observerRegistry;
+        _observerMethodInvokerRegistry = observerMethodInvokerRegistry;
     }
 
     /// <inheritdoc />
@@ -86,6 +96,36 @@ public sealed class LocalGrainFactory : IGrainFactory
     {
         GrainId grainId = GrainIdForInterface(grainInterfaceType, key.ToString());
         return _proxyRegistry.CreateProxy(grainInterfaceType, grainId, _invoker);
+    }
+
+    /// <inheritdoc />
+    public TGrainInterface GetGrain<TGrainInterface>(GrainId grainId)
+        where TGrainInterface : IGrain
+        => _proxyRegistry.CreateProxy<TGrainInterface>(grainId, _invoker);
+
+    /// <inheritdoc />
+    public TGrainObserver CreateObjectReference<TGrainObserver>(TGrainObserver implementation)
+        where TGrainObserver : class, IGrainObserver
+    {
+        if (_observerProxyRegistry is null || _observerRegistry is null || _observerMethodInvokerRegistry is null)
+        {
+            throw new InvalidOperationException(
+                "Observer support is not configured. " +
+                "Call AddObserverProxy<TInterface, TProxy>() and AddObserverMethodInvoker<TObserver, TInvoker>() during startup.");
+        }
+
+        IObserverMethodInvoker invoker = _observerMethodInvokerRegistry.GetInvoker(typeof(TGrainObserver));
+        var grainType = new GrainType($"observer:{typeof(TGrainObserver).Name}");
+        GrainId grainId = GrainId.Create(grainType, Guid.NewGuid().ToString("N"));
+        _observerRegistry.Register(grainId, implementation, invoker);
+        return _observerProxyRegistry.CreateProxy<TGrainObserver>(grainId, _invoker);
+    }
+
+    /// <inheritdoc />
+    public void DeleteObjectReference<TGrainObserver>(TGrainObserver reference)
+        where TGrainObserver : class, IGrainObserver
+    {
+        _observerRegistry?.UnregisterByTarget(reference);
     }
 
     // -----------------------------------------------------------------------

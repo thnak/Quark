@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Testing.Harness;
 
@@ -72,6 +73,21 @@ public sealed class TestClient(IServiceProvider services) : IGrainFactory, IAsyn
     {
         return GetRequiredService<IGrainFactory>().GetGrain(grainInterfaceType, key);
     }
+
+    /// <inheritdoc />
+    public TGrainInterface GetGrain<TGrainInterface>(GrainId grainId)
+        where TGrainInterface : IGrain
+        => GetRequiredService<IGrainFactory>().GetGrain<TGrainInterface>(grainId);
+
+    /// <inheritdoc />
+    public TGrainObserver CreateObjectReference<TGrainObserver>(TGrainObserver implementation)
+        where TGrainObserver : class, IGrainObserver
+        => GetRequiredService<IGrainFactory>().CreateObjectReference(implementation);
+
+    /// <inheritdoc />
+    public void DeleteObjectReference<TGrainObserver>(TGrainObserver reference)
+        where TGrainObserver : class, IGrainObserver
+        => GetRequiredService<IGrainFactory>().DeleteObjectReference(reference);
 
     /// <summary>Connects the test client.</summary>
     public Task ConnectAsync()

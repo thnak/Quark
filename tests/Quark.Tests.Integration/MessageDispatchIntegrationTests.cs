@@ -165,7 +165,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
-            services.AddTransient<DispatchCounterGrain>();
+            services.AddSingleton<IGrainActivatorFactory>(new DispatchCounterGrainActivatorFactory());
             services.AddSingleton<DispatchCounterGrainMethodInvoker>();
 
             _serviceProvider = services.BuildServiceProvider();
@@ -213,6 +213,12 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             await _activationTable.DisposeAsync();
             await _serviceProvider.DisposeAsync();
         }
+    }
+
+    private sealed class DispatchCounterGrainActivatorFactory : IGrainActivatorFactory
+    {
+        public Type GrainClass => typeof(DispatchCounterGrain);
+        public Grain Create(GrainId grainId, IServiceProvider services) => new DispatchCounterGrain();
     }
 
     private sealed class NullGrainFactory : IGrainFactory

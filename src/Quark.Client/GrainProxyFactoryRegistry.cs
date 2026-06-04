@@ -10,7 +10,7 @@ namespace Quark.Client;
 /// </summary>
 public sealed class GrainProxyFactoryRegistry
 {
-    private readonly Dictionary<Type, object> _factories = new();
+    private readonly Dictionary<Type, Func<GrainId, IGrainCallInvoker, IGrain>> _factories = new();
 
     /// <summary>
     ///     Registers a factory that creates <typeparamref name="TProxy" /> for
@@ -20,7 +20,8 @@ public sealed class GrainProxyFactoryRegistry
         where TInterface : IGrain
         where TProxy : class, TInterface
     {
-        _factories[typeof(TInterface)] = factory;
+        // Wrap as IGrain-returning delegate — avoids DynamicInvoke in the runtime-typed overload.
+        _factories[typeof(TInterface)] = (grainId, invoker) => factory(grainId, invoker);
     }
 
     /// <summary>
@@ -29,10 +30,9 @@ public sealed class GrainProxyFactoryRegistry
     public TInterface CreateProxy<TInterface>(GrainId grainId, IGrainCallInvoker invoker)
         where TInterface : IGrain
     {
-        if (_factories.TryGetValue(typeof(TInterface), out object? raw))
+        if (_factories.TryGetValue(typeof(TInterface), out Func<GrainId, IGrainCallInvoker, IGrain>? factory))
         {
-            var factory = (Func<GrainId, IGrainCallInvoker, TInterface>)raw;
-            return factory(grainId, invoker);
+            return (TInterface)factory(grainId, invoker);
         }
 
         throw new InvalidOperationException(
@@ -45,11 +45,9 @@ public sealed class GrainProxyFactoryRegistry
     /// </summary>
     public IGrain CreateProxy(Type interfaceType, GrainId grainId, IGrainCallInvoker invoker)
     {
-        if (_factories.TryGetValue(interfaceType, out object? raw))
+        if (_factories.TryGetValue(interfaceType, out Func<GrainId, IGrainCallInvoker, IGrain>? factory))
         {
-            // raw is Func<GrainId, IGrainCallInvoker, TInterface> — invoke dynamically.
-            var del = (Delegate)raw;
-            return (IGrain)del.DynamicInvoke(grainId, invoker)!;
+            return factory(grainId, invoker);
         }
 
         throw new InvalidOperationException(

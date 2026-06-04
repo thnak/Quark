@@ -22,7 +22,8 @@ public sealed class GrainActivatorTests
         registry.Register(new GrainType(nameof(GeneratedOnlyGrain)), typeof(GeneratedOnlyGrain));
 
         IGrainActivator activator = provider.GetRequiredService<IGrainActivator>();
-        Grain instance = activator.CreateInstance(new GrainType(nameof(GeneratedOnlyGrain)));
+        var grainId = new GrainId(new GrainType(nameof(GeneratedOnlyGrain)), "test");
+        Grain instance = activator.CreateInstance(grainId);
 
         GeneratedOnlyGrain grain = Assert.IsType<GeneratedOnlyGrain>(instance);
         Assert.Same(provider.GetRequiredService<TestDependency>(), grain.Dependency);
@@ -44,7 +45,7 @@ public sealed class GrainActivatorTests
     {
         public Type GrainClass => typeof(GeneratedOnlyGrain);
 
-        public Grain Create(IServiceProvider services)
+        public Grain Create(GrainId grainId, IServiceProvider services)
         {
             return new GeneratedOnlyGrain(services.GetRequiredService<TestDependency>());
         }

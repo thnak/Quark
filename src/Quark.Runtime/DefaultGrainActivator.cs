@@ -1,20 +1,19 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Quark.Core.Abstractions.Grains;
+﻿using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 
 /// <summary>
-///     Default <see cref="IGrainActivator" /> that prefers registered generated factories and
-///     falls back to DI-based activation when none is available.
-///     Grain types must be registered with <c>AddGrain&lt;T&gt;()</c> for this to work.
+///     Default <see cref="IGrainActivator" /> that uses code-generated <see cref="IGrainActivatorFactory" />
+///     instances to create grain instances without reflection.
+///     Every grain type must be registered with <c>AddGrain&lt;T&gt;()</c> at startup.
 /// </summary>
 public sealed class DefaultGrainActivator : IGrainActivator
 {
     private readonly Dictionary<Type, IGrainActivatorFactory> _factories;
-    private readonly IGrainTypeRegistry _registry;
     private readonly IServiceProvider _services;
+    private readonly IGrainTypeRegistry _registry;
 
     /// <summary>Initialises the activator.</summary>
     public DefaultGrainActivator(
@@ -33,8 +32,10 @@ public sealed class DefaultGrainActivator : IGrainActivator
     }
 
     /// <inheritdoc />
-    public Grain CreateInstance(GrainType grainType)
+    public Grain CreateInstance(GrainId grainId)
     {
+        GrainType grainType = grainId.Type;
+
         if (!_registry.TryGetGrainClass(grainType, out Type? grainClass) || grainClass is null)
         {
             throw new InvalidOperationException(
@@ -44,24 +45,11 @@ public sealed class DefaultGrainActivator : IGrainActivator
 
         if (_factories.TryGetValue(grainClass, out IGrainActivatorFactory? factory))
         {
-            Grain activated = factory.Create(_services);
-            if (!grainClass.IsInstanceOfType(activated))
-            {
-                throw new InvalidOperationException(
-                    $"Activator factory for '{grainClass.FullName}' returned '{activated.GetType().FullName}'.");
-            }
-
-            return activated;
+            return factory.Create(grainId, _services);
         }
 
-        // Fallback path: resolve from DI so constructor dependencies are injected.
-        object instance = _services.GetRequiredService(grainClass);
-        if (instance is not Grain grain)
-        {
-            throw new InvalidOperationException(
-                $"Type '{grainClass.FullName}' does not inherit from {nameof(Grain)}.");
-        }
-
-        return grain;
+        throw new InvalidOperationException(
+            $"No activator factory registered for grain class '{grainClass.FullName}'. " +
+            "Call services.AddGrainActivatorFactory<TFactory>() or use the Quark source generator.");
     }
 }

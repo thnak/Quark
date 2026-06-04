@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Quark.Persistence.Abstractions;
+using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Persistence.Redis;
 
@@ -42,5 +44,32 @@ public static class RedisGrainStorageServiceCollectionExtensions
             options.ConnectionString = connectionString;
             configure?.Invoke(options);
         });
+    }
+
+    /// <summary>
+    ///     Registers a named Redis grain storage provider resolvable via
+    ///     <c>GetRequiredKeyedService&lt;IGrainStorage&gt;(name)</c>.
+    ///     Use with <c>[PersistentState("slot", "<paramref name="name" />")]</c>.
+    /// </summary>
+    public static IServiceCollection AddKeyedRedisGrainStorage(
+        this IServiceCollection services,
+        string name,
+        Action<RedisStorageOptions>? configure = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        // Each named provider gets its own connection and options so that separate
+        // providers can point to different Redis endpoints / use different key prefixes.
+        var options = new RedisStorageOptions();
+        configure?.Invoke(options);
+        IOptions<RedisStorageOptions> frozenOptions = Options.Create(options);
+
+        services.AddKeyedSingleton<IRedisStorageConnection>(name,
+            (_, _) => new RedisStorageConnection(frozenOptions));
+        services.AddKeyedSingleton<IGrainStorage>(name,
+            (sp, _) => new RedisGrainStorage(
+                sp.GetRequiredKeyedService<IRedisStorageConnection>(name),
+                sp.GetRequiredService<ISerializer>(),
+                frozenOptions));
+        return services;
     }
 }
