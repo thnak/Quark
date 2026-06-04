@@ -13,7 +13,6 @@ public sealed class LocalGrainFactory : IGrainFactory
 {
     private readonly GrainInterfaceTypeRegistry _interfaceRegistry;
     private readonly IGrainCallInvoker _invoker;
-    private readonly ObserverMethodInvokerRegistry? _observerMethodInvokerRegistry;
     private readonly ObserverProxyFactoryRegistry? _observerProxyRegistry;
     private readonly ObserverRegistry? _observerRegistry;
     private readonly GrainProxyFactoryRegistry _proxyRegistry;
@@ -24,15 +23,13 @@ public sealed class LocalGrainFactory : IGrainFactory
         GrainInterfaceTypeRegistry interfaceRegistry,
         IGrainCallInvoker invoker,
         ObserverProxyFactoryRegistry? observerProxyRegistry = null,
-        ObserverRegistry? observerRegistry = null,
-        ObserverMethodInvokerRegistry? observerMethodInvokerRegistry = null)
+        ObserverRegistry? observerRegistry = null)
     {
         _proxyRegistry = proxyRegistry;
         _interfaceRegistry = interfaceRegistry;
         _invoker = invoker;
         _observerProxyRegistry = observerProxyRegistry;
         _observerRegistry = observerRegistry;
-        _observerMethodInvokerRegistry = observerMethodInvokerRegistry;
     }
 
     /// <inheritdoc />

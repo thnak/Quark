@@ -1,19 +1,27 @@
-﻿using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Reminders;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
 
 /// <summary>
 ///     Default dispatcher for request/one-way message envelopes.
+///     Routes each incoming message to the correct grain via the
+///     <see cref="TransportGrainDispatcherRegistry" />.
 /// </summary>
 public sealed class MessageDispatcher : IMessageDispatcher
 {
+    private readonly TransportGrainDispatcherRegistry _dispatcherRegistry;
     private readonly IGrainCallInvoker _invoker;
     private readonly GrainMessageSerializer _serializer;
 
     /// <summary>Initializes the dispatcher.</summary>
-    public MessageDispatcher(IGrainCallInvoker invoker, GrainMessageSerializer serializer)
+    public MessageDispatcher(
+        TransportGrainDispatcherRegistry dispatcherRegistry,
+        IGrainCallInvoker invoker,
+        GrainMessageSerializer serializer)
     {
+        _dispatcherRegistry = dispatcherRegistry;
         _invoker = invoker;
         _serializer = serializer;
     }
@@ -45,16 +53,31 @@ public sealed class MessageDispatcher : IMessageDispatcher
 
         try
         {
-            if (!expectResponse)
+            object? result;
+
+            // Well-known reminder delivery uses a typed invokable directly — no registered
+            // transport dispatcher needed per grain type.
+            if (request.MethodId == ReminderMethodIds.ReceiveReminder)
             {
-                await _invoker.InvokeVoidAsync(request.GrainId, request.MethodId, request.Arguments, cancellationToken)
+                var invokable = new ReceiveReminderInvokable(
+                    (string)request.Arguments![0]!,
+                    (TickStatus)request.Arguments[1]!);
+                await _invoker.InvokeVoidAsync(request.GrainId, invokable, cancellationToken)
                     .ConfigureAwait(false);
-                return null;
+                result = null;
+            }
+            else
+            {
+                ITransportGrainDispatcher dispatcher =
+                    _dispatcherRegistry.GetDispatcher(request.GrainId.Type);
+                result = await dispatcher
+                    .DispatchAsync(request.GrainId, request.MethodId, request.Arguments, _invoker,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
-            object? result = await _invoker
-                .InvokeAsync(request.GrainId, request.MethodId, request.Arguments, cancellationToken)
-                .ConfigureAwait(false);
+            if (!expectResponse)
+                return null;
 
             GrainInvocationResponse response = new(true, result, null);
             return new MessageEnvelope

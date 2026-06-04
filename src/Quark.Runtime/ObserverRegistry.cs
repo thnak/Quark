@@ -1,12 +1,11 @@
 using System.Collections.Concurrent;
-using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 
 /// <summary>
 ///     Maps synthetic <see cref="GrainId" /> values assigned to local observer objects
-///     to the target CLR object and its method invoker.
+///     to the target CLR object.
 ///     Used by <see cref="LocalGrainCallInvoker" /> to short-circuit calls to in-process observers
 ///     without going through <see cref="GrainActivationTable" />.
 /// </summary>
@@ -14,13 +13,9 @@ public sealed class ObserverRegistry
 {
     private readonly ConcurrentDictionary<GrainId, ObserverEntry> _entries = new();
 
-    /// <summary>Registers a local observer object under a synthetic grain identity (typed-dispatch path).</summary>
+    /// <summary>Registers a local observer object under a synthetic grain identity.</summary>
     public void Register(GrainId grainId, object target)
-        => _entries[grainId] = new ObserverEntry(target, null);
-
-    /// <summary>Registers a local observer object under a synthetic grain identity (legacy object-array path).</summary>
-    public void Register(GrainId grainId, object target, IObserverMethodInvoker invoker)
-        => _entries[grainId] = new ObserverEntry(target, invoker);
+        => _entries[grainId] = new ObserverEntry(target);
 
     /// <summary>Attempts to find the observer entry for the given grain identity.</summary>
     public bool TryGet(GrainId grainId, out ObserverEntry entry)
@@ -46,6 +41,6 @@ public sealed class ObserverRegistry
         }
     }
 
-    /// <summary>Holds a local observer target and its optional legacy method invoker.</summary>
-    public sealed record ObserverEntry(object Target, IObserverMethodInvoker? Invoker);
+    /// <summary>Holds a local observer target CLR object.</summary>
+    public sealed record ObserverEntry(object Target);
 }

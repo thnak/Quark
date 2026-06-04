@@ -256,7 +256,6 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
                 _serviceProvider.GetRequiredService<IGrainActivator>(),
                 typeRegistry,
                 _serviceProvider.GetRequiredService<IGrainDirectory>(),
-                _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>(),
                 _serviceProvider,
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
                 NullLogger<LocalGrainCallInvoker>.Instance,
@@ -284,9 +283,6 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         {
             private IGrainCallInvoker? _inner;
             public void SetInvoker(IGrainCallInvoker invoker) => _inner = invoker;
-            public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default) => _inner!.InvokeAsync(id, method, args, ct);
-            public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default) => _inner!.InvokeAsync<TResult>(id, method, args, ct);
-            public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default) => _inner!.InvokeVoidAsync(id, method, args, ct);
             public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainInvokable<TResult> => _inner!.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
             public Task InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainVoidInvokable => _inner!.InvokeVoidAsync<TInvokable>(id, invokable, ct);
             public Task InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IObserverVoidInvokable => _inner!.InvokeObserverAsync<TInvokable>(id, invokable, ct);

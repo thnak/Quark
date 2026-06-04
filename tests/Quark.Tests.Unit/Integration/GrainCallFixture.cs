@@ -36,9 +36,6 @@ public sealed class GrainCallFixture : IAsyncDisposable
         services.AddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
         services.AddSingleton<IGrainActivator, DefaultGrainActivator>();
         services.AddSingleton<GrainActivationTable>();
-        services.AddSingleton<GrainMethodInvokerRegistry>();
-        services.AddSingleton<IGrainMethodInvokerRegistry>(sp =>
-            sp.GetRequiredService<GrainMethodInvokerRegistry>());
 
         // Register grain activator factory (no-reflection, AOT-safe)
         services.AddSingleton<IGrainActivatorFactory>(new CounterGrainActivatorFactory());
@@ -71,15 +68,13 @@ public sealed class GrainCallFixture : IAsyncDisposable
         _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
         IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
         IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
-        IGrainMethodInvokerRegistry methodInvokerReg =
-            _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
         IOptions<SiloRuntimeOptions> siloOptions = _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
         NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
         NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
 
         var callInvoker = new LocalGrainCallInvoker(
             _activationTable, activator, typeRegistry, directory,
-            methodInvokerReg, _serviceProvider, siloOptions, logger, logger2);
+            _serviceProvider, siloOptions, logger, logger2);
 
         // Wire the deferred factory reference — resolves when first grain is activated.
         grainFactoryRef = new LocalGrainFactory(proxyRegistry, interfaceRegistry, callInvoker);

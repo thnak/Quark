@@ -39,10 +39,10 @@ public sealed class ReminderServiceTests
 
         Assert.True(invoker.VoidCalls.Count >= 1,
             $"Expected >=1 ReceiveReminder call, got {invoker.VoidCalls.Count}");
-        var (calledGrainId, methodId, args) = invoker.VoidCalls[0];
-        Assert.Equal(grainId, calledGrainId);
-        Assert.Equal(ReminderMethodIds.ReceiveReminder, methodId);
-        Assert.Equal("tick", (string)args![0]!);
+        var call = invoker.VoidCalls[0];
+        Assert.Equal(grainId, call.GrainId);
+        Assert.Equal(ReminderMethodIds.ReceiveReminder, call.MethodId);
+        Assert.Equal("tick", call.ReminderName);
     }
 
     [Fact]
@@ -134,30 +134,12 @@ public sealed class ReminderServiceTests
 
     private sealed class FakeGrainCallInvoker : IGrainCallInvoker
     {
-        private readonly List<(GrainId, uint, object?[]?)> _voidCalls = [];
+        private readonly List<(GrainId GrainId, uint MethodId, string? ReminderName)> _voidCalls = [];
         private readonly object _lock = new();
 
-        public IReadOnlyList<(GrainId, uint, object?[]?)> VoidCalls
+        public IReadOnlyList<(GrainId GrainId, uint MethodId, string? ReminderName)> VoidCalls
         {
             get { lock (_lock) { return _voidCalls.ToList(); } }
-        }
-
-        public Task<object?> InvokeAsync(GrainId grainId, uint methodId, object?[]? arguments = null,
-            CancellationToken ct = default)
-        {
-            lock (_lock) { _voidCalls.Add((grainId, methodId, arguments)); }
-            return Task.FromResult<object?>(null);
-        }
-
-        public Task<TResult> InvokeAsync<TResult>(GrainId grainId, uint methodId, object?[]? arguments = null,
-            CancellationToken ct = default) =>
-            throw new NotImplementedException();
-
-        public Task InvokeVoidAsync(GrainId grainId, uint methodId, object?[]? arguments = null,
-            CancellationToken ct = default)
-        {
-            lock (_lock) { _voidCalls.Add((grainId, methodId, arguments)); }
-            return Task.CompletedTask;
         }
 
         public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
@@ -166,7 +148,11 @@ public sealed class ReminderServiceTests
 
         public Task InvokeVoidAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
             where TInvokable : struct, IGrainVoidInvokable
-            => throw new NotImplementedException();
+        {
+            string? reminderName = ((object)invokable) is ReceiveReminderInvokable r ? r.ReminderName : null;
+            lock (_lock) { _voidCalls.Add((grainId, invokable.MethodId, reminderName)); }
+            return Task.CompletedTask;
+        }
 
         public Task InvokeObserverAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
             where TInvokable : struct, IObserverVoidInvokable

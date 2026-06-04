@@ -9,6 +9,8 @@ using Quark.Serialization;
 using Quark.Transport.Abstractions;
 using Xunit;
 
+#pragma warning disable CS1998 // async method without await
+
 namespace Quark.Tests.Integration;
 
 public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
@@ -26,12 +28,16 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         return _fixture.DisposeAsync().AsTask();
     }
 
+    private const uint IncrementMethodId = 0u;
+    private const uint GetValueMethodId = 1u;
+    private const uint ResetMethodId = 2u;
+
     [Fact]
     public async Task Request_Message_Is_Dispatched_To_Grain_And_Returns_Response()
     {
         GrainInvocationRequest request = new(
             new GrainId(new GrainType("DispatchCounterGrain"), "counter-1"),
-            DispatchCounterGrainMethodInvoker.IncrementMethodId,
+            IncrementMethodId,
             null);
 
         MessageEnvelope envelope = new()
@@ -62,7 +68,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             MessageType = MessageType.Request,
             Payload = _fixture.Serializer.SerializeRequest(new GrainInvocationRequest(
                 grainId,
-                DispatchCounterGrainMethodInvoker.IncrementMethodId,
+                IncrementMethodId,
                 null))
         };
 
@@ -74,7 +80,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             MessageType = MessageType.OneWayRequest,
             Payload = _fixture.Serializer.SerializeRequest(new GrainInvocationRequest(
                 grainId,
-                DispatchCounterGrainMethodInvoker.ResetMethodId,
+                ResetMethodId,
                 null))
         };
 
@@ -87,7 +93,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             MessageType = MessageType.Request,
             Payload = _fixture.Serializer.SerializeRequest(new GrainInvocationRequest(
                 grainId,
-                DispatchCounterGrainMethodInvoker.GetValueMethodId,
+                GetValueMethodId,
                 null))
         };
 
@@ -127,22 +133,48 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         }
     }
 
-    public sealed class DispatchCounterGrainMethodInvoker : IGrainMethodInvoker
+    // Hand-written invokables (mirror what GrainProxyGenerator would emit)
+    private readonly struct DispatchCounterGrainProxy_IncrementAsyncInvokable : IGrainInvokable<long>
     {
-        public const uint IncrementMethodId = 0;
-        public const uint GetValueMethodId = 1;
-        public const uint ResetMethodId = 2;
+        public uint MethodId => 0u;
+        public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).IncrementAsync());
+    }
 
-        public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
+    private readonly struct DispatchCounterGrainProxy_GetValueAsyncInvokable : IGrainInvokable<long>
+    {
+        public uint MethodId => 1u;
+        public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).GetValueAsync());
+    }
+
+    private readonly struct DispatchCounterGrainProxy_ResetAsyncInvokable : IGrainVoidInvokable
+    {
+        public uint MethodId => 2u;
+        public ValueTask Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).ResetAsync());
+    }
+
+    // Hand-written transport dispatcher (mirror what GrainProxyGenerator would emit)
+    private sealed class DispatchCounterGrainProxy_TransportDispatcher : ITransportGrainDispatcher
+    {
+        public static readonly DispatchCounterGrainProxy_TransportDispatcher Instance = new();
+
+        public async Task<object?> DispatchAsync(
+            GrainId grainId, uint methodId, object?[]? args,
+            IGrainCallInvoker invoker, CancellationToken ct = default)
         {
-            var typed = (DispatchCounterGrain)grain;
-            return methodId switch
+            switch (methodId)
             {
-                IncrementMethodId => await typed.IncrementAsync(),
-                GetValueMethodId => await typed.GetValueAsync(),
-                ResetMethodId => await typed.ResetAsync().ContinueWith(_ => (object?)null),
-                _ => throw new NotSupportedException($"Unknown method id {methodId}")
-            };
+                case 0u:
+                    return await invoker.InvokeAsync<DispatchCounterGrainProxy_IncrementAsyncInvokable, long>(
+                        grainId, new(), ct);
+                case 1u:
+                    return await invoker.InvokeAsync<DispatchCounterGrainProxy_GetValueAsyncInvokable, long>(
+                        grainId, new(), ct);
+                case 2u:
+                    await invoker.InvokeVoidAsync<DispatchCounterGrainProxy_ResetAsyncInvokable>(
+                        grainId, new(), ct);
+                    return null;
+            }
+            throw new NotSupportedException($"Unknown method id {methodId}");
         }
     }
 
@@ -166,40 +198,35 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
             services.AddSingleton<IGrainActivatorFactory>(new DispatchCounterGrainActivatorFactory());
-            services.AddSingleton<DispatchCounterGrainMethodInvoker>();
 
             _serviceProvider = services.BuildServiceProvider();
 
             GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
             typeRegistry.Register(new GrainType("DispatchCounterGrain"), typeof(DispatchCounterGrain));
 
-            GrainMethodInvokerRegistry invokerRegistry =
-                _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
-            invokerRegistry.Register(typeof(DispatchCounterGrain),
-                _serviceProvider.GetRequiredService<DispatchCounterGrainMethodInvoker>());
-
             _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
             IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
             IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
             IOptions<SiloRuntimeOptions> siloOptions =
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
-            NullLogger<LocalGrainCallInvoker> logger = NullLogger<LocalGrainCallInvoker>.Instance;
-            NullLogger<GrainActivation> logger2 = NullLogger<GrainActivation>.Instance;
-            IGrainMethodInvokerRegistry methodInvokerReg =
-                _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>();
+
             LocalGrainCallInvoker callInvoker = new(
                 _activationTable,
                 activator,
                 typeRegistry,
                 directory,
-                methodInvokerReg,
                 _serviceProvider,
                 siloOptions,
-                logger,
-                logger2);
+                NullLogger<LocalGrainCallInvoker>.Instance,
+                NullLogger<GrainActivation>.Instance);
+
+            var dispatcherRegistry = new TransportGrainDispatcherRegistry();
+            dispatcherRegistry.Register(
+                new GrainType("DispatchCounterGrain"),
+                DispatchCounterGrainProxy_TransportDispatcher.Instance);
 
             Serializer = new GrainMessageSerializer();
-            Dispatcher = new MessageDispatcher(callInvoker, Serializer);
+            Dispatcher = new MessageDispatcher(dispatcherRegistry, callInvoker, Serializer);
         }
 
         public IMessageDispatcher Dispatcher { get; }

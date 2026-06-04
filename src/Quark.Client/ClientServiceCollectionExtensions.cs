@@ -27,8 +27,7 @@ public static class ClientServiceCollectionExtensions
             sp.GetRequiredService<GrainInterfaceTypeRegistry>(),
             sp.GetRequiredService<IGrainCallInvoker>(),
             sp.GetService<ObserverProxyFactoryRegistry>(),
-            sp.GetService<ObserverRegistry>(),
-            sp.GetService<ObserverMethodInvokerRegistry>()));
+            sp.GetService<ObserverRegistry>()));
         services.TryAddSingleton<IGrainFactory>(sp => sp.GetRequiredService<LocalGrainFactory>());
         services.TryAddSingleton<LocalClusterClient>();
         services.TryAddSingleton<IClusterClient>(sp => sp.GetRequiredService<LocalClusterClient>());

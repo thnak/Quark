@@ -138,12 +138,10 @@ public sealed class DefaultReminderService : IReminderService, IHostedService, I
             ReminderEntry updated = entry with { NextFireAt = entry.NextFireAt + entry.Period };
             await _storage.UpsertAsync(updated, ct).ConfigureAwait(false);
 
-            var status = new TickStatus(entry.StartAt, entry.Period, entry.NextFireAt);
-            await _invoker.InvokeVoidAsync(
-                entry.GrainId,
-                ReminderMethodIds.ReceiveReminder,
-                [entry.ReminderName, status],
-                ct).ConfigureAwait(false);
+            var invokable = new ReceiveReminderInvokable(
+                entry.ReminderName,
+                new TickStatus(entry.StartAt, entry.Period, entry.NextFireAt));
+            await _invoker.InvokeVoidAsync(entry.GrainId, invokable, ct).ConfigureAwait(false);
         }
     }
 }

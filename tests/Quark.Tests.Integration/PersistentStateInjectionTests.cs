@@ -113,7 +113,6 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
                 _serviceProvider.GetRequiredService<IGrainActivator>(),
                 typeRegistry,
                 _serviceProvider.GetRequiredService<IGrainDirectory>(),
-                _serviceProvider.GetRequiredService<IGrainMethodInvokerRegistry>(),
                 _serviceProvider,
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
                 NullLogger<LocalGrainCallInvoker>.Instance,

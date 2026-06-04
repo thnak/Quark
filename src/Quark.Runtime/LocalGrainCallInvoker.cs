@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
-using Quark.Core.Abstractions.Reminders;
 
 namespace Quark.Runtime;
 
@@ -24,7 +23,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     // Resolved lazily to break the IGrainCallInvoker ↔ IGrainFactory circular dependency.
     private readonly Lazy<IGrainFactory> _grainFactory;
     private readonly ILogger<LocalGrainCallInvoker> _logger;
-    private readonly IGrainMethodInvokerRegistry _methodInvokerRegistry;
     private readonly ObserverRegistry? _observerRegistry;
     private readonly IServiceProvider _services;
     private readonly SiloAddress _siloAddress;
@@ -42,7 +40,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         IGrainActivator activator,
         IGrainTypeRegistry typeRegistry,
         IGrainDirectory directory,
-        IGrainMethodInvokerRegistry methodInvokerRegistry,
         IServiceProvider services,
         IOptions<SiloRuntimeOptions> options,
         ILogger<LocalGrainCallInvoker> logger,
@@ -54,7 +51,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _activator = activator;
         _typeRegistry = typeRegistry;
         _directory = directory;
-        _methodInvokerRegistry = methodInvokerRegistry;
         _services = services;
         _grainFactory = grainFactory is not null
             ? new Lazy<IGrainFactory>(() => grainFactory)
@@ -63,98 +59,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _logger = logger;
         _activationLogger = activationLogger;
         _observerRegistry = observerRegistry;
-    }
-
-    /// <inheritdoc />
-    public async Task<object?> InvokeAsync(
-        GrainId grainId,
-        uint methodId,
-        object?[]? arguments = null,
-        CancellationToken cancellationToken = default)
-    {
-        using Activity? activity = QuarkActivity.StartActivity("grain.invoke");
-        activity?.SetTag("grain.type", grainId.Type.Value);
-        activity?.SetTag("grain.key", grainId.Key);
-        activity?.SetTag("grain.method_id", methodId);
-
-        // Short-circuit for in-process observer references — no grain activation table needed.
-        if (_observerRegistry is not null && _observerRegistry.TryGet(grainId, out ObserverRegistry.ObserverEntry entry))
-        {
-            if (entry.Invoker is null)
-                throw new InvalidOperationException(
-                    $"Observer '{grainId}' was registered without a legacy IObserverMethodInvoker. " +
-                    "Use InvokeObserverAsync<TInvokable> for typed dispatch.");
-            try
-            {
-                return await entry.Invoker.Invoke(entry.Target, methodId, arguments).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-                throw;
-            }
-        }
-
-        GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
-
-        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        await activation.PostAsync(async () =>
-        {
-            try
-            {
-                object? result;
-                if (methodId == ReminderMethodIds.ReceiveReminder &&
-                    activation.Grain is IRemindable remindable)
-                {
-                    await remindable.ReceiveReminder(
-                        (string)arguments![0]!,
-                        (TickStatus)arguments[1]!).ConfigureAwait(false);
-                    result = null;
-                }
-                else
-                {
-                    IGrainMethodInvoker invoker = _methodInvokerRegistry.GetInvoker(activation.Grain.GetType());
-                    result = await invoker.Invoke(activation.Grain, methodId, arguments).ConfigureAwait(false);
-                }
-                tcs.TrySetResult(result);
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-        }).ConfigureAwait(false);
-
-        try
-        {
-            return await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            throw;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<TResult> InvokeAsync<TResult>(
-        GrainId grainId,
-        uint methodId,
-        object?[]? arguments = null,
-        CancellationToken cancellationToken = default)
-    {
-        object? result = await InvokeAsync(grainId, methodId, arguments, cancellationToken).ConfigureAwait(false);
-        return result is TResult typed ? typed : (TResult)result!;
-    }
-
-    /// <inheritdoc />
-    public async Task InvokeVoidAsync(
-        GrainId grainId,
-        uint methodId,
-        object?[]? arguments = null,
-        CancellationToken cancellationToken = default)
-    {
-        _ = await InvokeAsync(grainId, methodId, arguments, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

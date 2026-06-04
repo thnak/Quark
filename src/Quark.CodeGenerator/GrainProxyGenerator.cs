@@ -226,6 +226,11 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("}");
+        sb.AppendLine();
+
+        // Emit one transport dispatcher per interface (used by MessageDispatcher for TCP path).
+        EmitTransportDispatcher(sb, m);
+
         return sb.ToString();
     }
 
@@ -380,6 +385,60 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
+    }
+
+    private static void EmitTransportDispatcher(StringBuilder sb, InterfaceModel m)
+    {
+        string dispatcherName = $"{m.ProxyClassName}_TransportDispatcher";
+
+        sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
+        sb.AppendLine($"internal sealed class {dispatcherName}");
+        sb.AppendLine("    : global::Quark.Core.Abstractions.Hosting.ITransportGrainDispatcher");
+        sb.AppendLine("{");
+        sb.AppendLine($"    public static readonly {dispatcherName} Instance = new();");
+        sb.AppendLine();
+        sb.AppendLine("    public async global::System.Threading.Tasks.Task<object?> DispatchAsync(");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
+        sb.AppendLine("        uint methodId,");
+        sb.AppendLine("        object?[]? args,");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker invoker,");
+        sb.AppendLine("        global::System.Threading.CancellationToken ct = default)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        switch (methodId)");
+        sb.AppendLine("        {");
+
+        foreach (MethodModel method in m.Methods)
+        {
+            string structName = $"{m.ProxyClassName}_{method.Name}Invokable";
+            string ctorArgs = method.Parameters.Count == 0
+                ? string.Empty
+                : string.Join(", ", method.Parameters.Select((p, i) => $"({p.FqTypeName})args![{i}]!"));
+            string structCreate = method.Parameters.Count == 0
+                ? $"new {structName}()"
+                : $"new {structName}({ctorArgs})";
+
+            sb.AppendLine($"            case {method.MethodId}u:");
+            if (m.IsObserver)
+            {
+                sb.AppendLine($"                await invoker.InvokeObserverAsync<{structName}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
+                sb.AppendLine("                return null;");
+            }
+            else if (method.IsTask || method.IsValueTask)
+            {
+                sb.AppendLine($"                await invoker.InvokeVoidAsync<{structName}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
+                sb.AppendLine("                return null;");
+            }
+            else
+            {
+                sb.AppendLine($"                return await invoker.InvokeAsync<{structName}, {method.TaskResultType}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
+            }
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine("        throw new global::System.InvalidOperationException(");
+        sb.AppendLine($"            $\"Unknown method ID {{methodId}} for grain type {{grainId.Type.Value}}.\");");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
     }
 
     // -----------------------------------------------------------------------

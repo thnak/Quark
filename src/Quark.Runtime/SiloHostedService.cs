@@ -6,8 +6,8 @@ namespace Quark.Runtime;
 
 /// <summary>
 ///     <see cref="IHostedService" /> that drives the Quark silo lifecycle.
-///     On <see cref="StartAsync" /> it also applies all deferred grain-type and
-///     method-invoker registrations so the runtime is fully wired before serving calls.
+///     On <see cref="StartAsync" /> it applies all deferred grain-type and transport-dispatcher
+///     registrations so the runtime is fully wired before serving calls.
 /// </summary>
 public sealed class SiloHostedService : IHostedService
 {
@@ -41,10 +41,8 @@ public sealed class SiloHostedService : IHostedService
 
         // Apply deferred grain-type registrations (AddGrain<T> calls).
         ApplyGrainRegistrations();
-        // Apply deferred method-invoker registrations (AddGrainMethodInvoker<TGrain,TInvoker> calls).
-        ApplyMethodInvokerRegistrations();
-        // Apply deferred observer method-invoker registrations (AddObserverMethodInvoker<> calls).
-        ApplyObserverMethodInvokerRegistrations();
+        // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
+        ApplyTransportDispatcherRegistrations();
 
         var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
         if (messagePump is not null)
@@ -93,40 +91,22 @@ public sealed class SiloHostedService : IHostedService
         }
     }
 
-    private void ApplyMethodInvokerRegistrations()
+    private void ApplyTransportDispatcherRegistrations()
     {
-        var invokerRegistry = _services.GetService(typeof(GrainMethodInvokerRegistry)) as GrainMethodInvokerRegistry;
-        if (invokerRegistry is null)
+        var dispatcherRegistry =
+            _services.GetService(typeof(TransportGrainDispatcherRegistry)) as TransportGrainDispatcherRegistry;
+        if (dispatcherRegistry is null)
         {
             return;
         }
 
         IEnumerable<object> registrations = (IEnumerable<object>?)_services.GetService(
-            typeof(IEnumerable<RuntimeServiceCollectionExtensions.IGrainMethodInvokerRegistration>)) ?? [];
+            typeof(IEnumerable<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>)) ?? [];
 
-        foreach (RuntimeServiceCollectionExtensions.IGrainMethodInvokerRegistration? reg in registrations
-                     .Cast<RuntimeServiceCollectionExtensions.IGrainMethodInvokerRegistration>())
+        foreach (RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration reg in registrations
+                     .Cast<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>())
         {
-            reg.Apply(invokerRegistry, _services);
-        }
-    }
-
-    private void ApplyObserverMethodInvokerRegistrations()
-    {
-        var observerInvokerRegistry =
-            _services.GetService(typeof(ObserverMethodInvokerRegistry)) as ObserverMethodInvokerRegistry;
-        if (observerInvokerRegistry is null)
-        {
-            return;
-        }
-
-        IEnumerable<object> registrations = (IEnumerable<object>?)_services.GetService(
-            typeof(IEnumerable<RuntimeServiceCollectionExtensions.IObserverMethodInvokerRegistration>)) ?? [];
-
-        foreach (RuntimeServiceCollectionExtensions.IObserverMethodInvokerRegistration reg in registrations
-                     .Cast<RuntimeServiceCollectionExtensions.IObserverMethodInvokerRegistration>())
-        {
-            reg.Apply(observerInvokerRegistry, _services);
+            reg.Apply(dispatcherRegistry);
         }
     }
 }

@@ -45,9 +45,6 @@ public sealed class FaultFixture : IAsyncDisposable
         services.AddSingleton<InMemoryGrainDirectory>();
         services.AddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
         services.AddSingleton<GrainActivationTable>();
-        services.AddSingleton<GrainMethodInvokerRegistry>();
-        services.AddSingleton<IGrainMethodInvokerRegistry>(sp => sp.GetRequiredService<GrainMethodInvokerRegistry>());
-
         // Grain activator factories
         services.AddSingleton<IGrainActivatorFactory>(new WorkerGrainActivatorFactory());
         services.AddSingleton<IGrainActivatorFactory>(new OrderOrchestratorGrainActivatorFactory());
@@ -89,7 +86,6 @@ public sealed class FaultFixture : IAsyncDisposable
             _sp.GetRequiredService<IGrainActivator>(),
             typeRegistry,
             _sp.GetRequiredService<IGrainDirectory>(),
-            _sp.GetRequiredService<IGrainMethodInvokerRegistry>(),
             _sp,
             _sp.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
             NullLogger<LocalGrainCallInvoker>.Instance,
@@ -117,15 +113,6 @@ public sealed class FaultFixture : IAsyncDisposable
         private IGrainCallInvoker? _inner;
 
         public void SetInvoker(IGrainCallInvoker invoker) => _inner = invoker;
-
-        public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-            => _inner!.InvokeAsync(id, method, args, ct);
-
-        public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-            => _inner!.InvokeAsync<TResult>(id, method, args, ct);
-
-        public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-            => _inner!.InvokeVoidAsync(id, method, args, ct);
 
         public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default)
             where TInvokable : struct, IGrainInvokable<TResult>

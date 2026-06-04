@@ -19,24 +19,6 @@ public sealed class FaultInjectingGrainCallInvoker : IGrainCallInvoker
         _plan = plan;
     }
 
-    public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-    {
-        _plan.Check(id, method);
-        return _inner.InvokeAsync(id, method, args, ct);
-    }
-
-    public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-    {
-        _plan.Check(id, method);
-        return _inner.InvokeAsync<TResult>(id, method, args, ct);
-    }
-
-    public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
-    {
-        _plan.Check(id, method);
-        return _inner.InvokeVoidAsync(id, method, args, ct);
-    }
-
     public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default)
         where TInvokable : struct, IGrainInvokable<TResult>
     {
