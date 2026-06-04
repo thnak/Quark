@@ -27,7 +27,6 @@ public sealed class ReminderIntegrationTests
                 services.AddInMemoryReminders(o =>
                     o.PollInterval = pollInterval ?? TimeSpan.FromMilliseconds(50));
                 services.AddGrain<ReminderTestGrain>();
-                services.AddGrainMethodInvoker<ReminderTestGrain, ReminderTestGrainMethodInvoker>();
                 services.AddGrainActivatorFactory<ReminderTestGrainActivatorFactory>();
                 extraSilo?.Invoke(services);
             };
@@ -162,6 +161,44 @@ public sealed class ReminderIntegrationTests
         }
     }
 
+    // ---- Hand-written invokables ----
+
+    private readonly struct ReminderTestGrainProxy_RegisterReminderAsyncInvokable : IGrainVoidInvokable
+    {
+        private readonly string _name;
+        private readonly TimeSpan _dueTime;
+        private readonly TimeSpan _period;
+        public ReminderTestGrainProxy_RegisterReminderAsyncInvokable(string name, TimeSpan dueTime, TimeSpan period)
+        {
+            _name = name;
+            _dueTime = dueTime;
+            _period = period;
+        }
+        public uint MethodId => 0u;
+        public ValueTask Invoke(Grain grain) => new(((IReminderTestGrain)grain).RegisterReminderAsync(_name, _dueTime, _period));
+    }
+
+    private readonly struct ReminderTestGrainProxy_UnregisterReminderAsyncInvokable : IGrainVoidInvokable
+    {
+        private readonly string _name;
+        public ReminderTestGrainProxy_UnregisterReminderAsyncInvokable(string name) => _name = name;
+        public uint MethodId => 1u;
+        public ValueTask Invoke(Grain grain) => new(((IReminderTestGrain)grain).UnregisterReminderAsync(_name));
+    }
+
+    private readonly struct ReminderTestGrainProxy_GetReceiveCountAsyncInvokable : IGrainInvokable<int>
+    {
+        public uint MethodId => 2u;
+        public ValueTask<int> Invoke(Grain grain) => new(((IReminderTestGrain)grain).GetReceiveCountAsync());
+    }
+
+    private readonly struct ReminderTestGrainProxy_GetReminderListAsyncInvokable : IGrainInvokable<IReadOnlyList<IGrainReminder>>
+    {
+        public uint MethodId => 3u;
+        public ValueTask<IReadOnlyList<IGrainReminder>> Invoke(Grain grain)
+            => new(((IReminderTestGrain)grain).GetReminderListAsync());
+    }
+
     // ---- Hand-written proxy (client side) ----
 
     private sealed class ReminderTestGrainProxy(
@@ -174,39 +211,18 @@ public sealed class ReminderIntegrationTests
             => new(grainId, invoker);
 
         public Task RegisterReminderAsync(string name, TimeSpan dueTime, TimeSpan period)
-            => invoker.InvokeVoidAsync(grainId, 0u, [name, dueTime, period]);
+            => invoker.InvokeVoidAsync(grainId, new ReminderTestGrainProxy_RegisterReminderAsyncInvokable(name, dueTime, period));
 
         public Task UnregisterReminderAsync(string name)
-            => invoker.InvokeVoidAsync(grainId, 1u, [name]);
+            => invoker.InvokeVoidAsync(grainId, new ReminderTestGrainProxy_UnregisterReminderAsyncInvokable(name));
 
         public Task<int> GetReceiveCountAsync()
-            => invoker.InvokeAsync<int>(grainId, 2u, null);
+            => invoker.InvokeAsync<ReminderTestGrainProxy_GetReceiveCountAsyncInvokable, int>(
+                grainId, new ReminderTestGrainProxy_GetReceiveCountAsyncInvokable());
 
         public Task<IReadOnlyList<IGrainReminder>> GetReminderListAsync()
-            => invoker.InvokeAsync<IReadOnlyList<IGrainReminder>>(grainId, 3u, null);
-    }
-
-    // ---- Hand-written method invoker (server side) ----
-    // Note: ReceiveReminder (methodId 0xFFFF_FF00u) is dispatched natively
-    // by LocalGrainCallInvoker — no case needed here.
-
-    private sealed class ReminderTestGrainMethodInvoker : IGrainMethodInvoker
-    {
-        public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
-        {
-            var typed = (ReminderTestGrain)grain;
-            return methodId switch
-            {
-                0u => await Invoke(typed.RegisterReminderAsync(
-                    (string)arguments![0]!, (TimeSpan)arguments[1]!, (TimeSpan)arguments[2]!)),
-                1u => await Invoke(typed.UnregisterReminderAsync((string)arguments![0]!)),
-                2u => await typed.GetReceiveCountAsync(),
-                3u => await typed.GetReminderListAsync(),
-                _ => throw new NotSupportedException($"Unknown method id {methodId}")
-            };
-        }
-
-        private static async ValueTask<object?> Invoke(Task t) { await t; return null; }
+            => invoker.InvokeAsync<ReminderTestGrainProxy_GetReminderListAsyncInvokable, IReadOnlyList<IGrainReminder>>(
+                grainId, new ReminderTestGrainProxy_GetReminderListAsyncInvokable());
     }
 
     // ---- Hand-written activator factory ----

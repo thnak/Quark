@@ -34,10 +34,11 @@ public sealed class GrainProxyGeneratorTests
             generated);
         Assert.Contains("public static CounterGrainProxy Create(", generated);
         Assert.Contains("=> new CounterGrainProxy(grainId, invoker);", generated);
-        Assert.Contains("_invoker.InvokeAsync<", generated);
-        Assert.Contains("_grainId, 0u, null", generated);
+        Assert.Contains("internal readonly struct CounterGrainProxy_IncrementAsyncInvokable", generated);
+        Assert.Contains("internal readonly struct CounterGrainProxy_ResetAsyncInvokable", generated);
+        Assert.Contains("_invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(_grainId, new CounterGrainProxy_IncrementAsyncInvokable())", generated);
         Assert.Contains(
-            "return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, 1u, null));",
+            "return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, new CounterGrainProxy_ResetAsyncInvokable()));",
             generated);
     }
 
@@ -67,7 +68,9 @@ public sealed class GrainProxyGeneratorTests
             generated);
         Assert.Contains("public static MyObserverProxy Create(", generated);
         Assert.Contains("=> new MyObserverProxy(grainId, invoker);", generated);
-        Assert.Contains("InvokeVoidAsync(_grainId, 0u,", generated);
+        Assert.Contains("internal readonly struct MyObserverProxy_OnEventAsyncInvokable", generated);
+        Assert.Contains(": global::Quark.Core.Abstractions.Hosting.IObserverVoidInvokable", generated);
+        Assert.Contains("InvokeObserverAsync(_grainId, new MyObserverProxy_OnEventAsyncInvokable(", generated);
     }
 
     [Fact]

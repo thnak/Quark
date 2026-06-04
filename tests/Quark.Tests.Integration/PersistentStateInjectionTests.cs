@@ -35,14 +35,14 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
         var grainId = new GrainId(new GrainType("TwoSlotGrain"), "slot-test");
 
         // Increment counter A twice
-        await _fixture.Invoker.InvokeAsync(grainId, TwoSlotGrainMethodInvoker.IncrementAMethodId);
-        await _fixture.Invoker.InvokeAsync(grainId, TwoSlotGrainMethodInvoker.IncrementAMethodId);
+        await _fixture.Invoker.InvokeVoidAsync(grainId, new TwoSlotGrain_IncrementAInvokable());
+        await _fixture.Invoker.InvokeVoidAsync(grainId, new TwoSlotGrain_IncrementAInvokable());
 
         // Increment counter B once
-        await _fixture.Invoker.InvokeAsync(grainId, TwoSlotGrainMethodInvoker.IncrementBMethodId);
+        await _fixture.Invoker.InvokeVoidAsync(grainId, new TwoSlotGrain_IncrementBInvokable());
 
-        int a = await _fixture.Invoker.InvokeAsync<int>(grainId, TwoSlotGrainMethodInvoker.GetAMethodId);
-        int b = await _fixture.Invoker.InvokeAsync<int>(grainId, TwoSlotGrainMethodInvoker.GetBMethodId);
+        int a = await _fixture.Invoker.InvokeAsync<TwoSlotGrain_GetAInvokable, int>(grainId, new TwoSlotGrain_GetAInvokable());
+        int b = await _fixture.Invoker.InvokeAsync<TwoSlotGrain_GetBInvokable, int>(grainId, new TwoSlotGrain_GetBInvokable());
 
         Assert.Equal(2, a);
         Assert.Equal(1, b);
@@ -53,14 +53,14 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
     {
         var grainId = new GrainId(new GrainType("TwoSlotGrain"), "persist-test");
 
-        await _fixture.Invoker.InvokeAsync(grainId, TwoSlotGrainMethodInvoker.IncrementAMethodId);
+        await _fixture.Invoker.InvokeVoidAsync(grainId, new TwoSlotGrain_IncrementAInvokable());
 
         // Simulate deactivation + reactivation
         await _fixture.ActivationTable.DisposeAsync();
         _fixture.ResetActivationTable();
 
         // On new activation the grain reads state explicitly in OnActivateAsync
-        int a = await _fixture.Invoker.InvokeAsync<int>(grainId, TwoSlotGrainMethodInvoker.GetAMethodId);
+        int a = await _fixture.Invoker.InvokeAsync<TwoSlotGrain_GetAInvokable, int>(grainId, new TwoSlotGrain_GetAInvokable());
         Assert.Equal(1, a);
     }
 
@@ -88,7 +88,6 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
             services.AddSingleton<IGrainActivatorFactory>(new TwoSlotGrainActivatorFactory());
-            services.AddSingleton<TwoSlotGrainMethodInvoker>();
 
             _serviceProvider = services.BuildServiceProvider();
             ResetActivationTable();
@@ -107,11 +106,6 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
         {
             GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
             typeRegistry.Register(new GrainType("TwoSlotGrain"), typeof(TwoSlotGrain));
-
-            GrainMethodInvokerRegistry invokerRegistry =
-                _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
-            invokerRegistry.Register(typeof(TwoSlotGrain),
-                _serviceProvider.GetRequiredService<TwoSlotGrainMethodInvoker>());
 
             ActivationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
             Invoker = new LocalGrainCallInvoker(
@@ -192,25 +186,28 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
         }
     }
 
-    private sealed class TwoSlotGrainMethodInvoker : IGrainMethodInvoker
+    private readonly struct TwoSlotGrain_IncrementAInvokable : IGrainVoidInvokable
     {
-        public const uint IncrementAMethodId = 0;
-        public const uint IncrementBMethodId = 1;
-        public const uint GetAMethodId = 2;
-        public const uint GetBMethodId = 3;
+        public uint MethodId => 0u;
+        public ValueTask Invoke(Grain grain) => new(((TwoSlotGrain)grain).IncrementAAsync());
+    }
 
-        public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
-        {
-            var typed = (TwoSlotGrain)grain;
-            return methodId switch
-            {
-                IncrementAMethodId => await typed.IncrementAAsync().ContinueWith(_ => (object?)null),
-                IncrementBMethodId => await typed.IncrementBAsync().ContinueWith(_ => (object?)null),
-                GetAMethodId => await typed.GetAAsync(),
-                GetBMethodId => await typed.GetBAsync(),
-                _ => throw new NotSupportedException($"Unknown method id {methodId}")
-            };
-        }
+    private readonly struct TwoSlotGrain_IncrementBInvokable : IGrainVoidInvokable
+    {
+        public uint MethodId => 1u;
+        public ValueTask Invoke(Grain grain) => new(((TwoSlotGrain)grain).IncrementBAsync());
+    }
+
+    private readonly struct TwoSlotGrain_GetAInvokable : IGrainInvokable<int>
+    {
+        public uint MethodId => 2u;
+        public ValueTask<int> Invoke(Grain grain) => new(((TwoSlotGrain)grain).GetAAsync());
+    }
+
+    private readonly struct TwoSlotGrain_GetBInvokable : IGrainInvokable<int>
+    {
+        public uint MethodId => 3u;
+        public ValueTask<int> Invoke(Grain grain) => new(((TwoSlotGrain)grain).GetBAsync());
     }
 
     private sealed class NullGrainFactory : IGrainFactory

@@ -80,6 +80,10 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         // Short-circuit for in-process observer references — no grain activation table needed.
         if (_observerRegistry is not null && _observerRegistry.TryGet(grainId, out ObserverRegistry.ObserverEntry entry))
         {
+            if (entry.Invoker is null)
+                throw new InvalidOperationException(
+                    $"Observer '{grainId}' was registered without a legacy IObserverMethodInvoker. " +
+                    "Use InvokeObserverAsync<TInvokable> for typed dispatch.");
             try
             {
                 return await entry.Invoker.Invoke(entry.Target, methodId, arguments).ConfigureAwait(false);
@@ -151,6 +155,113 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         CancellationToken cancellationToken = default)
     {
         _ = await InvokeAsync(grainId, methodId, arguments, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<TResult> InvokeAsync<TInvokable, TResult>(
+        GrainId grainId,
+        TInvokable invokable,
+        CancellationToken cancellationToken = default)
+        where TInvokable : struct, IGrainInvokable<TResult>
+    {
+        using Activity? activity = QuarkActivity.StartActivity("grain.invoke");
+        activity?.SetTag("grain.type", grainId.Type.Value);
+        activity?.SetTag("grain.key", grainId.Key);
+        activity?.SetTag("grain.method_id", invokable.MethodId);
+
+        GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
+
+        var tcs = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await activation.PostAsync(async () =>
+        {
+            try
+            {
+                TResult result = await invokable.Invoke(activation.Grain).ConfigureAwait(false);
+                tcs.TrySetResult(result);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+            }
+        }).ConfigureAwait(false);
+
+        try
+        {
+            return await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task InvokeVoidAsync<TInvokable>(
+        GrainId grainId,
+        TInvokable invokable,
+        CancellationToken cancellationToken = default)
+        where TInvokable : struct, IGrainVoidInvokable
+    {
+        using Activity? activity = QuarkActivity.StartActivity("grain.invoke");
+        activity?.SetTag("grain.type", grainId.Type.Value);
+        activity?.SetTag("grain.key", grainId.Key);
+        activity?.SetTag("grain.method_id", invokable.MethodId);
+
+        GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
+
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await activation.PostAsync(async () =>
+        {
+            try
+            {
+                await invokable.Invoke(activation.Grain).ConfigureAwait(false);
+                tcs.TrySetResult(null);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+            }
+        }).ConfigureAwait(false);
+
+        try
+        {
+            await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task InvokeObserverAsync<TInvokable>(
+        GrainId grainId,
+        TInvokable invokable,
+        CancellationToken cancellationToken = default)
+        where TInvokable : struct, IObserverVoidInvokable
+    {
+        using Activity? activity = QuarkActivity.StartActivity("observer.invoke");
+        activity?.SetTag("grain.key", grainId.Key);
+        activity?.SetTag("grain.method_id", invokable.MethodId);
+
+        if (_observerRegistry is null || !_observerRegistry.TryGet(grainId, out ObserverRegistry.ObserverEntry entry))
+            throw new InvalidOperationException(
+                $"Observer '{grainId}' not found in registry. " +
+                "Ensure CreateObjectReference was called before invoking observer methods.");
+
+        try
+        {
+            await invokable.Invoke(entry.Target).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
     }
 
     // -----------------------------------------------------------------------

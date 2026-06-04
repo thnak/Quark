@@ -159,5 +159,17 @@ public sealed class ReminderServiceTests
             lock (_lock) { _voidCalls.Add((grainId, methodId, arguments)); }
             return Task.CompletedTask;
         }
+
+        public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
+            where TInvokable : struct, IGrainInvokable<TResult>
+            => throw new NotImplementedException();
+
+        public Task InvokeVoidAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
+            where TInvokable : struct, IGrainVoidInvokable
+            => throw new NotImplementedException();
+
+        public Task InvokeObserverAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
+            where TInvokable : struct, IObserverVoidInvokable
+            => throw new NotImplementedException();
     }
 }

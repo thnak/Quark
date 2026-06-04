@@ -107,17 +107,16 @@ public sealed class LocalGrainFactory : IGrainFactory
     public TGrainObserver CreateObjectReference<TGrainObserver>(TGrainObserver implementation)
         where TGrainObserver : class, IGrainObserver
     {
-        if (_observerProxyRegistry is null || _observerRegistry is null || _observerMethodInvokerRegistry is null)
+        if (_observerProxyRegistry is null || _observerRegistry is null)
         {
             throw new InvalidOperationException(
                 "Observer support is not configured. " +
-                "Call AddObserverProxy<TInterface, TProxy>() and AddObserverMethodInvoker<TObserver, TInvoker>() during startup.");
+                "Call AddObserverProxy<TInterface, TProxy>() during startup.");
         }
 
-        IObserverMethodInvoker invoker = _observerMethodInvokerRegistry.GetInvoker(typeof(TGrainObserver));
         var grainType = new GrainType($"observer:{typeof(TGrainObserver).Name}");
         GrainId grainId = GrainId.Create(grainType, Guid.NewGuid().ToString("N"));
-        _observerRegistry.Register(grainId, implementation, invoker);
+        _observerRegistry.Register(grainId, implementation);
         return _observerProxyRegistry.CreateProxy<TGrainObserver>(grainId, _invoker);
     }
 

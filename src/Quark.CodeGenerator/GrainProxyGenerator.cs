@@ -188,6 +188,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
 
+        // Emit one invokable struct per method before the proxy class.
+        foreach (MethodModel method in m.Methods)
+        {
+            EmitInvokableStruct(sb, m, method);
+        }
+
         sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
         string activatorInterface = m.IsObserver
             ? $"global::Quark.Core.Abstractions.Hosting.IGrainObserverProxyActivator<{m.ProxyClassName}>"
@@ -216,45 +222,154 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         foreach (MethodModel method in m.Methods)
         {
-            EmitMethod(sb, method);
+            EmitMethod(sb, m, method);
         }
 
         sb.AppendLine("}");
         return sb.ToString();
     }
 
-    private static void EmitMethod(StringBuilder sb, MethodModel method)
+    private static void EmitInvokableStruct(StringBuilder sb, InterfaceModel m, MethodModel method)
     {
-        // Build parameter list string
+        bool isVoid = method.IsTask || method.IsValueTask;
+        string structName = $"{m.ProxyClassName}_{method.Name}Invokable";
+
+        string invokableInterface;
+        if (m.IsObserver)
+        {
+            invokableInterface = "global::Quark.Core.Abstractions.Hosting.IObserverVoidInvokable";
+        }
+        else if (isVoid)
+        {
+            invokableInterface = "global::Quark.Core.Abstractions.Hosting.IGrainVoidInvokable";
+        }
+        else
+        {
+            invokableInterface = $"global::Quark.Core.Abstractions.Hosting.IGrainInvokable<{method.TaskResultType}>";
+        }
+
+        sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
+        sb.AppendLine($"internal readonly struct {structName}");
+        sb.AppendLine($"    : {invokableInterface}");
+        sb.AppendLine("{");
+
+        // One backing field per parameter.
+        foreach (ParameterModel p in method.Parameters)
+        {
+            sb.AppendLine($"    private readonly {p.FqTypeName} _{p.Name};");
+        }
+
+        // Constructor (only when there are parameters).
+        if (method.Parameters.Count > 0)
+        {
+            string ctorParams = string.Join(", ", method.Parameters.Select(p => $"{p.FqTypeName} {p.Name}"));
+            sb.AppendLine();
+            sb.AppendLine($"    public {structName}({ctorParams})");
+            sb.AppendLine("    {");
+            foreach (ParameterModel p in method.Parameters)
+            {
+                sb.AppendLine($"        _{p.Name} = {p.Name};");
+            }
+            sb.AppendLine("    }");
+        }
+
+        // MethodId property for tracing and fault injection.
+        sb.AppendLine();
+        sb.AppendLine($"    public uint MethodId => {method.MethodId}u;");
+
+        string argList = string.Join(", ", method.Parameters.Select(p => $"_{p.Name}"));
+
+        sb.AppendLine();
+        if (m.IsObserver)
+        {
+            // Observer: cast target to the observer interface (not Grain).
+            // All observer methods are treated as void (fire-and-forget).
+            string callExpr = $"(({m.FqInterfaceName})target).{method.Name}({argList})";
+            string invokeBody = method.IsTask
+                ? $"        => new global::System.Threading.Tasks.ValueTask({callExpr});"
+                : $"        => {callExpr};";
+            sb.AppendLine("    public global::System.Threading.Tasks.ValueTask Invoke(object target)");
+            sb.AppendLine(invokeBody);
+        }
+        else if (isVoid)
+        {
+            // Grain void: cast to the grain interface.
+            string callExpr = $"(({m.FqInterfaceName})grain).{method.Name}({argList})";
+            // Task → wrap in ValueTask; ValueTask → return directly (ValueTask ctor takes Task, not ValueTask)
+            string invokeBody = method.IsTask
+                ? $"        => new global::System.Threading.Tasks.ValueTask({callExpr});"
+                : $"        => {callExpr};";
+            sb.AppendLine("    public global::System.Threading.Tasks.ValueTask Invoke(");
+            sb.AppendLine("        global::Quark.Core.Abstractions.Grains.Grain grain)");
+            sb.AppendLine(invokeBody);
+        }
+        else
+        {
+            // Grain returning value: cast to the grain interface.
+            string callExpr = $"(({m.FqInterfaceName})grain).{method.Name}({argList})";
+            // Task<T> → wrap in ValueTask<T>; ValueTask<T> → return directly
+            string invokeBody = method.IsTaskOfT
+                ? $"        => new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>({callExpr});"
+                : $"        => {callExpr};";
+            sb.AppendLine($"    public global::System.Threading.Tasks.ValueTask<{method.TaskResultType}> Invoke(");
+            sb.AppendLine("        global::Quark.Core.Abstractions.Grains.Grain grain)");
+            sb.AppendLine(invokeBody);
+        }
+
+        sb.AppendLine("}");
+        sb.AppendLine();
+    }
+
+    private static void EmitMethod(StringBuilder sb, InterfaceModel m, MethodModel method)
+    {
         string paramList = string.Join(", ", method.Parameters.Select(p => $"{p.FqTypeName} {p.Name}"));
-        // Build args array
-        string argsArray = method.Parameters.Count == 0
-            ? "null"
-            : $"new object?[] {{ {string.Join(", ", method.Parameters.Select(p => p.Name))} }}";
+        string structName = $"{m.ProxyClassName}_{method.Name}Invokable";
+        string ctorArgs = string.Join(", ", method.Parameters.Select(p => p.Name));
+        string structCreate = method.Parameters.Count == 0
+            ? $"new {structName}()"
+            : $"new {structName}({ctorArgs})";
 
         sb.Append($"    public {method.ReturnType} {method.Name}(");
         sb.Append(paramList);
         sb.AppendLine(")");
         sb.AppendLine("    {");
 
-        if (method.IsTask)
+        if (m.IsObserver)
         {
-            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {method.MethodId}u, {argsArray});");
+            // Observer methods are always treated as void (fire-and-forget via InvokeObserverAsync).
+            if (method.IsTask)
+            {
+                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate});");
+            }
+            else if (method.IsValueTask)
+            {
+                sb.AppendLine(
+                    $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeObserverAsync(_grainId, {structCreate}));");
+            }
+            else
+            {
+                sb.AppendLine(
+                    "        throw new global::System.NotSupportedException(\"Observer methods must return Task or ValueTask.\");");
+            }
+        }
+        else if (method.IsTask)
+        {
+            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate});");
         }
         else if (method.IsTaskOfT)
         {
             sb.AppendLine(
-                $"        return _invoker.InvokeAsync<{method.TaskResultType}>(_grainId, {method.MethodId}u, {argsArray});");
+                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate});");
         }
         else if (method.IsValueTask)
         {
             sb.AppendLine(
-                $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, {method.MethodId}u, {argsArray}));");
+                $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, {structCreate}));");
         }
         else if (method.IsValueTaskOfT)
         {
             sb.AppendLine(
-                $"        return new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>(_invoker.InvokeAsync<{method.TaskResultType}>(_grainId, {method.MethodId}u, {argsArray}));");
+                $"        return new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>(_invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate}));");
         }
         else
         {

@@ -14,11 +14,13 @@ public sealed class ObserverRegistry
 {
     private readonly ConcurrentDictionary<GrainId, ObserverEntry> _entries = new();
 
-    /// <summary>Registers a local observer object under a synthetic grain identity.</summary>
+    /// <summary>Registers a local observer object under a synthetic grain identity (typed-dispatch path).</summary>
+    public void Register(GrainId grainId, object target)
+        => _entries[grainId] = new ObserverEntry(target, null);
+
+    /// <summary>Registers a local observer object under a synthetic grain identity (legacy object-array path).</summary>
     public void Register(GrainId grainId, object target, IObserverMethodInvoker invoker)
-    {
-        _entries[grainId] = new ObserverEntry(target, invoker);
-    }
+        => _entries[grainId] = new ObserverEntry(target, invoker);
 
     /// <summary>Attempts to find the observer entry for the given grain identity.</summary>
     public bool TryGet(GrainId grainId, out ObserverEntry entry)
@@ -44,6 +46,6 @@ public sealed class ObserverRegistry
         }
     }
 
-    /// <summary>Holds a local observer target and its method invoker.</summary>
-    public sealed record ObserverEntry(object Target, IObserverMethodInvoker Invoker);
+    /// <summary>Holds a local observer target and its optional legacy method invoker.</summary>
+    public sealed record ObserverEntry(object Target, IObserverMethodInvoker? Invoker);
 }

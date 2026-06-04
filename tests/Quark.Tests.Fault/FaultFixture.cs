@@ -60,10 +60,6 @@ public sealed class FaultFixture : IAsyncDisposable
                 sp.GetRequiredService<IGrainTypeRegistry>(),
                 ScenarioHolder.Activations));
 
-        // Method invokers
-        services.AddSingleton<WorkerGrainMethodInvoker>();
-        services.AddSingleton<OrderOrchestratorGrainMethodInvoker>();
-
         // Client-side registries
         services.AddSingleton<GrainProxyFactoryRegistry>();
         services.AddSingleton<GrainInterfaceTypeRegistry>();
@@ -74,10 +70,6 @@ public sealed class FaultFixture : IAsyncDisposable
         var typeRegistry = _sp.GetRequiredService<GrainTypeRegistry>();
         typeRegistry.Register(new GrainType("WorkerGrain"), typeof(WorkerGrain));
         typeRegistry.Register(new GrainType("OrderOrchestratorGrain"), typeof(OrderOrchestratorGrain));
-
-        var invokerRegistry = _sp.GetRequiredService<GrainMethodInvokerRegistry>();
-        invokerRegistry.Register(typeof(WorkerGrain), _sp.GetRequiredService<WorkerGrainMethodInvoker>());
-        invokerRegistry.Register(typeof(OrderOrchestratorGrain), _sp.GetRequiredService<OrderOrchestratorGrainMethodInvoker>());
 
         var proxyRegistry = _sp.GetRequiredService<GrainProxyFactoryRegistry>();
         var interfaceRegistry = _sp.GetRequiredService<GrainInterfaceTypeRegistry>();
@@ -134,5 +126,17 @@ public sealed class FaultFixture : IAsyncDisposable
 
         public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default)
             => _inner!.InvokeVoidAsync(id, method, args, ct);
+
+        public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default)
+            where TInvokable : struct, IGrainInvokable<TResult>
+            => _inner!.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
+
+        public Task InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default)
+            where TInvokable : struct, IGrainVoidInvokable
+            => _inner!.InvokeVoidAsync<TInvokable>(id, invokable, ct);
+
+        public Task InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default)
+            where TInvokable : struct, IObserverVoidInvokable
+            => _inner!.InvokeObserverAsync<TInvokable>(id, invokable, ct);
     }
 }

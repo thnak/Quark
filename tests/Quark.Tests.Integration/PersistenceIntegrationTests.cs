@@ -33,15 +33,15 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
     {
         GrainId grainId = new(new GrainType("PersistentCounterGrain"), "counter-1");
 
-        int value = await _fixture.CallInvoker.InvokeAsync<int>(grainId,
-            PersistentCounterGrainMethodInvoker.IncrementMethodId);
+        int value = await _fixture.CallInvoker.InvokeAsync<PersistentCounterGrain_IncrementInvokable, int>(
+            grainId, new PersistentCounterGrain_IncrementInvokable());
         Assert.Equal(1, value);
 
         await _fixture.ActivationTable.DisposeAsync();
         _fixture.ResetActivationTable();
 
-        int persisted =
-            await _fixture.CallInvoker.InvokeAsync<int>(grainId, PersistentCounterGrainMethodInvoker.GetValueMethodId);
+        int persisted = await _fixture.CallInvoker.InvokeAsync<PersistentCounterGrain_GetValueInvokable, int>(
+            grainId, new PersistentCounterGrain_GetValueInvokable());
         Assert.Equal(1, persisted);
     }
 
@@ -66,7 +66,6 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
             services.AddSingleton<IGrainActivatorFactory>(new PersistentCounterGrainActivatorFactory());
-            services.AddSingleton<PersistentCounterGrainMethodInvoker>();
 
             _serviceProvider = services.BuildServiceProvider();
             ResetActivationTable();
@@ -85,11 +84,6 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         {
             GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
             typeRegistry.Register(new GrainType("PersistentCounterGrain"), typeof(PersistentCounterGrain));
-
-            GrainMethodInvokerRegistry invokerRegistry =
-                _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
-            invokerRegistry.Register(typeof(PersistentCounterGrain),
-                _serviceProvider.GetRequiredService<PersistentCounterGrainMethodInvoker>());
 
             ActivationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
             CallInvoker = new LocalGrainCallInvoker(
@@ -133,21 +127,16 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         }
     }
 
-    private sealed class PersistentCounterGrainMethodInvoker : IGrainMethodInvoker
+    private readonly struct PersistentCounterGrain_IncrementInvokable : IGrainInvokable<int>
     {
-        public const uint IncrementMethodId = 0;
-        public const uint GetValueMethodId = 1;
+        public uint MethodId => 0u;
+        public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).IncrementAsync());
+    }
 
-        public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
-        {
-            var typed = (PersistentCounterGrain)grain;
-            return methodId switch
-            {
-                IncrementMethodId => await typed.IncrementAsync(),
-                GetValueMethodId => await typed.GetValueAsync(),
-                _ => throw new NotSupportedException($"Unknown method id {methodId}")
-            };
-        }
+    private readonly struct PersistentCounterGrain_GetValueInvokable : IGrainInvokable<int>
+    {
+        public uint MethodId => 1u;
+        public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).GetValueAsync());
     }
 
     private sealed class NullGrainFactory : IGrainFactory

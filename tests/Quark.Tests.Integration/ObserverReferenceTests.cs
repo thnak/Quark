@@ -71,8 +71,16 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
     }
 
     // -----------------------------------------------------------------------
-    // Observer proxy (hand-written; mirrors what code generator emits)
+    // Observer invokable + proxy (hand-written; mirrors what code generator emits)
     // -----------------------------------------------------------------------
+
+    private readonly struct EventObserverProxy_OnEventAsyncInvokable : IObserverVoidInvokable
+    {
+        private readonly string _message;
+        public EventObserverProxy_OnEventAsyncInvokable(string message) => _message = message;
+        public uint MethodId => 0u;
+        public ValueTask Invoke(object target) => new(((IEventObserver)target).OnEventAsync(_message));
+    }
 
     private sealed class EventObserverProxy
         : IEventObserver, IGrainObserverProxyActivator<EventObserverProxy>
@@ -90,21 +98,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             => new(grainId, invoker);
 
         public Task OnEventAsync(string message)
-            => _invoker.InvokeVoidAsync(_grainId, 0u, new object?[] { message });
-    }
-
-    private sealed class EventObserverMethodInvoker : IObserverMethodInvoker
-    {
-        public ValueTask<object?> Invoke(object target, uint methodId, object?[]? arguments)
-        {
-            var observer = (IEventObserver)target;
-            return methodId switch
-            {
-                0u => new ValueTask<object?>(observer.OnEventAsync((string)arguments![0]!)
-                    .ContinueWith(_ => (object?)null)),
-                _ => throw new NotSupportedException($"Unknown method id {methodId}")
-            };
-        }
+            => _invoker.InvokeObserverAsync(_grainId, new EventObserverProxy_OnEventAsyncInvokable(message));
     }
 
     // -----------------------------------------------------------------------
@@ -141,8 +135,33 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
     }
 
     // -----------------------------------------------------------------------
-    // Hand-written proxy + invoker
+    // Hand-written invokables + proxy
     // -----------------------------------------------------------------------
+
+    private readonly struct EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable : IGrainInvokable<int>
+    {
+        public uint MethodId => 0u;
+        public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).IncrementViaSelfRefAsync());
+    }
+
+    private readonly struct EventSourceGrainProxy_PublishAsyncInvokable : IGrainVoidInvokable
+    {
+        private readonly string _message;
+        private readonly IEventObserver _observer;
+        public EventSourceGrainProxy_PublishAsyncInvokable(string message, IEventObserver observer)
+        {
+            _message = message;
+            _observer = observer;
+        }
+        public uint MethodId => 1u;
+        public ValueTask Invoke(Grain grain) => new(((IEventSourceGrain)grain).PublishAsync(_message, _observer));
+    }
+
+    private readonly struct EventSourceGrainProxy_GetCountAsyncInvokable : IGrainInvokable<int>
+    {
+        public uint MethodId => 2u;
+        public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).GetCountAsync());
+    }
 
     private sealed class EventSourceGrainProxy
         : IEventSourceGrain, IGrainProxyActivator<EventSourceGrainProxy>
@@ -160,29 +179,15 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             => new(grainId, invoker);
 
         public Task<int> IncrementViaSelfRefAsync()
-            => _invoker.InvokeAsync<int>(_grainId, 0u, null);
+            => _invoker.InvokeAsync<EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable, int>(
+                _grainId, new EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable());
 
         public Task PublishAsync(string message, IEventObserver observer)
-            => _invoker.InvokeVoidAsync(_grainId, 1u, new object?[] { message, observer });
+            => _invoker.InvokeVoidAsync(_grainId, new EventSourceGrainProxy_PublishAsyncInvokable(message, observer));
 
         public Task<int> GetCountAsync()
-            => _invoker.InvokeAsync<int>(_grainId, 2u, null);
-    }
-
-    private sealed class EventSourceGrainMethodInvoker : IGrainMethodInvoker
-    {
-        public async ValueTask<object?> Invoke(Grain grain, uint methodId, object?[]? arguments)
-        {
-            var typed = (EventSourceGrain)grain;
-            return methodId switch
-            {
-                0u => await typed.IncrementViaSelfRefAsync(),
-                1u => await typed.PublishAsync((string)arguments![0]!, (IEventObserver)arguments[1]!)
-                    .ContinueWith(_ => (object?)null),
-                2u => await typed.GetCountAsync(),
-                _ => throw new NotSupportedException($"Unknown method id {methodId}")
-            };
-        }
+            => _invoker.InvokeAsync<EventSourceGrainProxy_GetCountAsyncInvokable, int>(
+                _grainId, new EventSourceGrainProxy_GetCountAsyncInvokable());
     }
 
     private sealed class EventSourceGrainActivatorFactory : IGrainActivatorFactory
@@ -214,8 +219,6 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
 
             services.AddQuarkRuntime();
             services.AddSingleton<IGrainActivatorFactory>(new EventSourceGrainActivatorFactory());
-            services.AddSingleton<EventSourceGrainMethodInvoker>();
-            services.AddSingleton<EventObserverMethodInvoker>();
 
             // Client registries
             services.AddSingleton<GrainProxyFactoryRegistry>();
@@ -227,14 +230,6 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             // Manual deferred registrations
             var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
             typeRegistry.Register(new GrainType("EventSourceGrain"), typeof(EventSourceGrain));
-
-            var invokerRegistry = _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
-            invokerRegistry.Register(typeof(EventSourceGrain),
-                _serviceProvider.GetRequiredService<EventSourceGrainMethodInvoker>());
-
-            var observerInvokerRegistry = _serviceProvider.GetRequiredService<ObserverMethodInvokerRegistry>();
-            observerInvokerRegistry.Register(typeof(IEventObserver),
-                _serviceProvider.GetRequiredService<EventObserverMethodInvoker>());
 
             var proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
             var interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
@@ -254,8 +249,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             var deferredInvoker = new DeferredGrainCallInvoker();
             var localFactory = new LocalGrainFactory(
                 proxyRegistry, interfaceRegistry, deferredInvoker,
-                observerProxyRegistry, observerRegistry,
-                observerInvokerRegistry);
+                observerProxyRegistry, observerRegistry);
 
             var realInvoker = new LocalGrainCallInvoker(
                 _activationTable,
@@ -273,7 +267,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             deferredInvoker.SetInvoker(realInvoker);
 
             Factory = new LocalGrainFactory(proxyRegistry, interfaceRegistry, realInvoker,
-                observerProxyRegistry, observerRegistry, observerInvokerRegistry);
+                observerProxyRegistry, observerRegistry);
             Client = new LocalGrainFactory(proxyRegistry, interfaceRegistry, realInvoker);
         }
 
@@ -293,6 +287,9 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             public Task<object?> InvokeAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default) => _inner!.InvokeAsync(id, method, args, ct);
             public Task<TResult> InvokeAsync<TResult>(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default) => _inner!.InvokeAsync<TResult>(id, method, args, ct);
             public Task InvokeVoidAsync(GrainId id, uint method, object?[]? args = null, CancellationToken ct = default) => _inner!.InvokeVoidAsync(id, method, args, ct);
+            public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainInvokable<TResult> => _inner!.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
+            public Task InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainVoidInvokable => _inner!.InvokeVoidAsync<TInvokable>(id, invokable, ct);
+            public Task InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IObserverVoidInvokable => _inner!.InvokeObserverAsync<TInvokable>(id, invokable, ct);
         }
     }
 }

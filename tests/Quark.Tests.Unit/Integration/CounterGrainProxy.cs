@@ -1,4 +1,4 @@
-﻿using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Tests.Unit.Integration;
@@ -15,22 +15,14 @@ public sealed class CounterGrainProxy : ICounterGrain
     }
 
     public Task<long> IncrementAsync()
-    {
-        return _invoker.InvokeAsync<long>(_grainId, CounterGrainMethodInvoker.IncrementMethodId);
-    }
+        => _invoker.InvokeAsync<CounterGrain_IncrementInvokable, long>(_grainId, new CounterGrain_IncrementInvokable());
 
     public Task<long> GetValueAsync()
-    {
-        return _invoker.InvokeAsync<long>(_grainId, CounterGrainMethodInvoker.GetValueMethodId);
-    }
+        => _invoker.InvokeAsync<CounterGrain_GetValueInvokable, long>(_grainId, new CounterGrain_GetValueInvokable());
 
     public Task ResetAsync()
-    {
-        return _invoker.InvokeVoidAsync(_grainId, CounterGrainMethodInvoker.ResetMethodId);
-    }
+        => _invoker.InvokeVoidAsync(_grainId, new CounterGrain_ResetInvokable());
 
     public Task SelfDestructAsync()
-    {
-        return _invoker.InvokeVoidAsync(_grainId, CounterGrainMethodInvoker.SelfDestructMethodId);
-    }
+        => _invoker.InvokeVoidAsync(_grainId, new CounterGrain_SelfDestructInvokable());
 }

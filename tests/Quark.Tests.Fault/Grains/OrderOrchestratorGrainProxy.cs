@@ -15,8 +15,6 @@ public sealed class OrderOrchestratorGrainProxy : IOrderOrchestratorGrain
     }
 
     public Task<OrchestratorStatus> ProcessAsync(string[] workerIds)
-        => _invoker.InvokeAsync<OrchestratorStatus>(
-            _grainId,
-            OrderOrchestratorGrainMethodInvoker.ProcessMethodId,
-            new object?[] { workerIds });
+        => _invoker.InvokeAsync<OrderOrchestratorGrain_ProcessInvokable, OrchestratorStatus>(
+            _grainId, new OrderOrchestratorGrain_ProcessInvokable(workerIds));
 }

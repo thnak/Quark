@@ -43,9 +43,6 @@ public sealed class GrainCallFixture : IAsyncDisposable
         // Register grain activator factory (no-reflection, AOT-safe)
         services.AddSingleton<IGrainActivatorFactory>(new CounterGrainActivatorFactory());
 
-        // Register method invoker
-        services.AddSingleton<CounterGrainMethodInvoker>();
-
         // Client-side registries
         services.AddSingleton<GrainProxyFactoryRegistry>();
         services.AddSingleton<GrainInterfaceTypeRegistry>();
@@ -61,10 +58,6 @@ public sealed class GrainCallFixture : IAsyncDisposable
         // Apply deferred registrations (normally done by hosted services)
         GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
         typeRegistry.Register(new GrainType("CounterGrain"), typeof(CounterGrain));
-
-        GrainMethodInvokerRegistry invokerRegistry = _serviceProvider.GetRequiredService<GrainMethodInvokerRegistry>();
-        invokerRegistry.Register(typeof(CounterGrain),
-            _serviceProvider.GetRequiredService<CounterGrainMethodInvoker>());
 
         GrainProxyFactoryRegistry proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
         GrainInterfaceTypeRegistry interfaceRegistry =

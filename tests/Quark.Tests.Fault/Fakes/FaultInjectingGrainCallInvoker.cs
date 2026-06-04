@@ -36,4 +36,22 @@ public sealed class FaultInjectingGrainCallInvoker : IGrainCallInvoker
         _plan.Check(id, method);
         return _inner.InvokeVoidAsync(id, method, args, ct);
     }
+
+    public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default)
+        where TInvokable : struct, IGrainInvokable<TResult>
+    {
+        _plan.Check(id, invokable.MethodId);
+        return _inner.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
+    }
+
+    public Task InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default)
+        where TInvokable : struct, IGrainVoidInvokable
+    {
+        _plan.Check(id, invokable.MethodId);
+        return _inner.InvokeVoidAsync<TInvokable>(id, invokable, ct);
+    }
+
+    public Task InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default)
+        where TInvokable : struct, IObserverVoidInvokable
+        => _inner.InvokeObserverAsync<TInvokable>(id, invokable, ct);
 }
