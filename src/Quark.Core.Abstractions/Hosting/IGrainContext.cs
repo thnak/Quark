@@ -1,6 +1,7 @@
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Lifecycle;
+using Quark.Core.Abstractions.Reminders;
 using Quark.Core.Abstractions.Timers;
 
 namespace Quark.Core.Abstractions.Hosting;
@@ -45,4 +46,9 @@ public interface IGrainContext
         Func<TState, CancellationToken, Task> callback,
         TState state,
         GrainTimerCreationOptions options);
+
+    /// <summary>
+    ///     The reminder service for this activation, or <c>null</c> if no reminder provider is registered.
+    /// </summary>
+    IReminderService? ReminderService { get; }
 }
