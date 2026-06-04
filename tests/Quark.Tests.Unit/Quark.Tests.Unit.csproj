@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\src\Quark.Persistence.InMemory\Quark.Persistence.InMemory.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Persistence.Redis\Quark.Persistence.Redis.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Reminders.Abstractions\Quark.Reminders.Abstractions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
