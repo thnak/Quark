@@ -17,12 +17,12 @@ Orleans architecture reference: [`README.md`](README.md)
 
 ## Phase 2 — Persistence extension
 
-- [ ] **F-04** `IPersistentState<T>` + `[PersistentState("name","provider")]` attribute + named storage registry — _Complexity: M_
-- [ ] **F-05** `AsReference<T>()` (grain self-reference) + `CreateObjectReference<T>()` (observer wrapper) — _Complexity: M_
+- [x] **F-04** `IPersistentState<T>` + `[PersistentState("name","provider")]` attribute + named storage registry — _Complexity: M_
+- [x] **F-05** `AsReference<T>()` (grain self-reference) + `CreateObjectReference<T>()` (observer wrapper) — _Complexity: M_
 
 ## Phase 3 — Advanced grain patterns
 
-- [ ] **F-06** Grain Reminders (`IRemindable`, `RegisterOrUpdateReminder`, `IGrainReminder`, durable `IReminderService`) — _Complexity: L_
+- [x] **F-06** Grain Reminders (`IRemindable`, `RegisterOrUpdateReminder`, `IGrainReminder`, durable `IReminderService`) — _Complexity: L_
 - [ ] **F-09** `JournaledGrain<TState,TEvent>` (event sourcing, `RaiseEvent`, `ConfirmEventsAsync`, `RetrieveConfirmedEvents`) — _Complexity: L_
 
 ## Phase 4 — Distributed infrastructure
