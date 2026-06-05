@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
@@ -13,6 +14,12 @@ public sealed class GrainActivationTable : IAsyncDisposable
     // Lazy<Task<>> pattern: two concurrent callers both get the same Lazy; only one
     // actually runs the factory; both await the same Task.
     private readonly ConcurrentDictionary<GrainId, Lazy<Task<GrainActivation>>> _activations = new();
+    private readonly ILogger<GrainActivationTable> _logger;
+
+    public GrainActivationTable(ILogger<GrainActivationTable> logger)
+    {
+        _logger = logger;
+    }
 
     /// <summary>Total number of currently tracked activations (including pending).</summary>
     public int Count => _activations.Count;
@@ -32,8 +39,9 @@ public sealed class GrainActivationTable : IAsyncDisposable
                 GrainActivation activation = await lazy.Value.ConfigureAwait(false);
                 await activation.DisposeAsync().ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error disposing grain activation during silo shutdown.");
             }
         }
 
@@ -107,9 +115,9 @@ public sealed class GrainActivationTable : IAsyncDisposable
                 GrainActivation activation = await lazy.Value.ConfigureAwait(false);
                 await activation.DisposeAsync().ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex)
             {
-                /* already disposed or failed to create */
+                _logger.LogError(ex, "Error deactivating grain {GrainId}.", grainId);
             }
         }
     }
