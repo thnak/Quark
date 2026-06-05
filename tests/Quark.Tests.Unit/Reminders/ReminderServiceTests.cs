@@ -16,7 +16,7 @@ public sealed class ReminderServiceTests
         FakeGrainCallInvoker invoker,
         TimeSpan? pollInterval = null)
     {
-        var options = Options.Create(new ReminderOptions
+        IOptions<ReminderOptions> options = Options.Create(new ReminderOptions
         {
             PollInterval = pollInterval ?? TimeSpan.FromMilliseconds(20)
         });
@@ -29,7 +29,7 @@ public sealed class ReminderServiceTests
     {
         var storage = new FakeReminderStorage();
         var invoker = new FakeGrainCallInvoker();
-        var svc = CreateService(storage, invoker);
+        DefaultReminderService svc = CreateService(storage, invoker);
         var grainId = new GrainId(new GrainType("TestGrain"), "1");
 
         await svc.StartAsync(CancellationToken.None);
@@ -39,7 +39,7 @@ public sealed class ReminderServiceTests
 
         Assert.True(invoker.VoidCalls.Count >= 1,
             $"Expected >=1 ReceiveReminder call, got {invoker.VoidCalls.Count}");
-        var call = invoker.VoidCalls[0];
+        (GrainId GrainId, uint MethodId, string? ReminderName) call = invoker.VoidCalls[0];
         Assert.Equal(grainId, call.GrainId);
         Assert.Equal(ReminderMethodIds.ReceiveReminder, call.MethodId);
         Assert.Equal("tick", call.ReminderName);
@@ -50,7 +50,7 @@ public sealed class ReminderServiceTests
     {
         var storage = new FakeReminderStorage();
         var invoker = new FakeGrainCallInvoker();
-        var svc = CreateService(storage, invoker, pollInterval: TimeSpan.FromMilliseconds(15));
+        DefaultReminderService svc = CreateService(storage, invoker, pollInterval: TimeSpan.FromMilliseconds(15));
         var grainId = new GrainId(new GrainType("TestGrain"), "2");
 
         await svc.StartAsync(CancellationToken.None);
@@ -67,7 +67,7 @@ public sealed class ReminderServiceTests
     {
         var storage = new FakeReminderStorage();
         var invoker = new FakeGrainCallInvoker();
-        var svc = CreateService(storage, invoker, pollInterval: TimeSpan.FromMilliseconds(20));
+        DefaultReminderService svc = CreateService(storage, invoker, pollInterval: TimeSpan.FromMilliseconds(20));
         var grainId = new GrainId(new GrainType("TestGrain"), "3");
 
         await svc.StartAsync(CancellationToken.None);
@@ -86,7 +86,7 @@ public sealed class ReminderServiceTests
     {
         var storage = new FakeReminderStorage();
         var invoker = new FakeGrainCallInvoker();
-        var svc = CreateService(storage, invoker);
+        DefaultReminderService svc = CreateService(storage, invoker);
         var grainId = new GrainId(new GrainType("TestGrain"), "4");
 
         await svc.StartAsync(CancellationToken.None);
@@ -94,7 +94,7 @@ public sealed class ReminderServiceTests
         await svc.RegisterOrUpdateReminderAsync(grainId, "once", TimeSpan.FromHours(2), TimeSpan.FromHours(48));
         await svc.StopAsync(CancellationToken.None);
 
-        var entries = await storage.ReadAllAsync();
+        IReadOnlyList<ReminderEntry> entries = await storage.ReadAllAsync();
         Assert.Single(entries);
         Assert.Equal(TimeSpan.FromHours(48), entries[0].Period);
     }
@@ -135,7 +135,7 @@ public sealed class ReminderServiceTests
     private sealed class FakeGrainCallInvoker : IGrainCallInvoker
     {
         private readonly List<(GrainId GrainId, uint MethodId, string? ReminderName)> _voidCalls = [];
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         public IReadOnlyList<(GrainId GrainId, uint MethodId, string? ReminderName)> VoidCalls
         {

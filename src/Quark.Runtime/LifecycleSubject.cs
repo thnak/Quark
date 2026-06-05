@@ -10,7 +10,7 @@ namespace Quark.Runtime;
 public sealed class LifecycleSubject : ILifecycleSubject
 {
     private readonly List<ObserverEntry> _entries = new();
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private bool _started;
 
     /// <inheritdoc />
