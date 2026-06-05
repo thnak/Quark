@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Quark.Client;
@@ -25,11 +26,7 @@ internal sealed class ClientStartupService : IHostedService
             return Task.CompletedTask;
         }
 
-        IEnumerable<object> registrations = (IEnumerable<object>?)_services.GetService(
-            typeof(IEnumerable<ClientServiceCollectionExtensions.IProxyRegistration>)) ?? [];
-
-        foreach (ClientServiceCollectionExtensions.IProxyRegistration? reg in registrations
-                     .Cast<ClientServiceCollectionExtensions.IProxyRegistration>())
+        foreach (var reg in _services.GetServices<ClientServiceCollectionExtensions.IProxyRegistration>())
         {
             reg.Apply(proxyRegistry, interfaceRegistry);
         }
@@ -39,11 +36,7 @@ internal sealed class ClientStartupService : IHostedService
             _services.GetService(typeof(ObserverProxyFactoryRegistry)) as ObserverProxyFactoryRegistry;
         if (observerProxyRegistry is not null)
         {
-            IEnumerable<object> observerRegistrations = (IEnumerable<object>?)_services.GetService(
-                typeof(IEnumerable<ClientServiceCollectionExtensions.IObserverProxyRegistration>)) ?? [];
-
-            foreach (ClientServiceCollectionExtensions.IObserverProxyRegistration reg in observerRegistrations
-                         .Cast<ClientServiceCollectionExtensions.IObserverProxyRegistration>())
+            foreach (var reg in _services.GetServices<ClientServiceCollectionExtensions.IObserverProxyRegistration>())
             {
                 reg.Apply(observerProxyRegistry);
             }
