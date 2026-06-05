@@ -93,7 +93,11 @@ public sealed class StreamingIntegrationTests
         var stream = provider.GetStream<int>(StreamId.Create("readings", "sensor1"));
         await stream.OnNextAsync(42);
         await stream.OnNextAsync(99);
-        await Task.Delay(50);
+
+        // Poll until the grain reflects the last value (up to 2s)
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline && await grain.GetLastValueAsync() != 99)
+            await Task.Delay(10);
 
         Assert.Equal(99, await grain.GetLastValueAsync());
     }

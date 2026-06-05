@@ -22,13 +22,15 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
         return _registry.PublishAsync(StreamId, item, token ?? seq);
     }
 
-    public Task OnErrorAsync(Exception ex) => Task.CompletedTask;
-    public Task OnCompletedAsync() => Task.CompletedTask;
+    public Task OnErrorAsync(Exception ex) => _registry.PublishErrorAsync(StreamId, ex);
+    public Task OnCompletedAsync() => _registry.PublishCompletedAsync(StreamId);
 
     public Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
     {
         var subscriptionId = _registry.Subscribe(StreamId, observer);
-        var handle = new InMemorySubscriptionHandle<T>(subscriptionId, StreamId, _registry);
+        var handle = new InMemorySubscriptionHandle<T>(
+            subscriptionId, StreamId, _registry,
+            id => { lock (_handles) _handles.RemoveAll(h => h.HandleId == id); });
         lock (_handles) _handles.Add(handle);
         return Task.FromResult<StreamSubscriptionHandle<T>>(handle);
     }
@@ -48,12 +50,14 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
 internal sealed class InMemorySubscriptionHandle<T> : StreamSubscriptionHandle<T>
 {
     private readonly StreamSubscriptionRegistry _registry;
+    private readonly Action<Guid> _onUnsubscribe;
 
-    public InMemorySubscriptionHandle(Guid id, StreamId streamId, StreamSubscriptionRegistry registry)
+    public InMemorySubscriptionHandle(Guid id, StreamId streamId, StreamSubscriptionRegistry registry, Action<Guid> onUnsubscribe)
     {
         HandleId = id;
         StreamId = streamId;
         _registry = registry;
+        _onUnsubscribe = onUnsubscribe;
     }
 
     public override Guid HandleId { get; }
@@ -62,6 +66,7 @@ internal sealed class InMemorySubscriptionHandle<T> : StreamSubscriptionHandle<T
     public override Task UnsubscribeAsync()
     {
         _registry.Unsubscribe(StreamId, HandleId);
+        _onUnsubscribe(HandleId);
         return Task.CompletedTask;
     }
 
