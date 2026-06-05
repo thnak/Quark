@@ -81,7 +81,7 @@ public sealed class GrainMessageSerializer
     /// </summary>
     public static object? ReadArg(ref CodecReader reader) => ReadValue(reader);
 
-    private static void WriteValue(CodecWriter writer, object? value)
+    public static void WriteValue(CodecWriter writer, object? value)
     {
         switch (value)
         {

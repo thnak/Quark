@@ -42,6 +42,13 @@ public sealed class SerializerGeneratorTests
         Assert.Contains("CloneStatic(", generated);
         Assert.Contains("Name = input.Name,", generated);
         Assert.Contains("Age = input.Age,", generated);
+        // WriteStatic / ReadStatic — DI-free positional binary codec for transport path.
+        Assert.Contains("WriteStatic(", generated);
+        Assert.Contains("ReadStatic(", generated);
+        Assert.Contains("writer.WriteString(value.Name);", generated);
+        Assert.Contains("writer.WriteInt32(value.Age);", generated);
+        Assert.Contains("Name = reader.ReadString(),", generated);
+        Assert.Contains("Age = reader.ReadInt32(),", generated);
     }
 
     [Fact]

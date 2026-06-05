@@ -29,6 +29,16 @@ public sealed class DataIsolationAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/thnak/Quark/docs/data-isolation.md");
 
+    public static readonly DiagnosticDescriptor FallbackTransportSerialization = new(
+        "QRK0012",
+        "Grain argument uses boxed fallback for transport serialization",
+        "Parameter '{0}' of type '{1}' in '{2}' will use the boxed fallback encoder on the transport path. " +
+        "Apply [GenerateSerializer] to generate a zero-boxing codec, or use a primitive, string, byte[], or Guid.",
+        "Quark.DataIsolation",
+        DiagnosticSeverity.Info,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/thnak/Quark/docs/data-isolation.md");
+
     public static readonly DiagnosticDescriptor UncloneableReturnType = new(
         "QRK0011",
         "Grain return type will not be deep-copied",
@@ -41,7 +51,7 @@ public sealed class DataIsolationAnalyzer : DiagnosticAnalyzer
         helpLinkUri: "https://github.com/thnak/Quark/docs/data-isolation.md");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(ShallowCollectionClone, UncloneableReturnType);
+        ImmutableArray.Create(ShallowCollectionClone, UncloneableReturnType, FallbackTransportSerialization);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -75,12 +85,23 @@ public sealed class DataIsolationAnalyzer : DiagnosticAnalyzer
         string methodDisplayName = $"{containingType.Name}.{method.Name}";
 
         // Check parameters for mutable collections → QRK0010
+        // Check parameters for fallback transport serialization → QRK0012
         foreach (IParameterSymbol param in method.Parameters)
         {
             if (IsMutableCollection(param.Type))
             {
                 ctx.ReportDiagnostic(Diagnostic.Create(
                     ShallowCollectionClone,
+                    param.Locations.FirstOrDefault() ?? method.Locations.FirstOrDefault(),
+                    param.Name,
+                    param.Type.ToDisplayString(),
+                    methodDisplayName));
+            }
+
+            if (IsTransportSerializationFallback(param.Type))
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    FallbackTransportSerialization,
                     param.Locations.FirstOrDefault() ?? method.Locations.FirstOrDefault(),
                     param.Name,
                     param.Type.ToDisplayString(),
@@ -98,6 +119,52 @@ public sealed class DataIsolationAnalyzer : DiagnosticAnalyzer
                 returnType.ToDisplayString(),
                 methodDisplayName));
         }
+    }
+
+    // Returns true when the type falls through to GrainMessageSerializer.WriteValue boxing on the
+    // transport path — i.e., it is not a primitive, string, byte[], Guid, or [GenerateSerializer] type.
+    private static bool IsTransportSerializationFallback(ITypeSymbol type)
+    {
+        // Well-known SpecialType primitives + string
+        if (type.SpecialType is
+            SpecialType.System_Boolean or
+            SpecialType.System_Byte    or SpecialType.System_SByte  or
+            SpecialType.System_Char    or
+            SpecialType.System_Int16   or SpecialType.System_UInt16 or
+            SpecialType.System_Int32   or SpecialType.System_UInt32 or
+            SpecialType.System_Int64   or SpecialType.System_UInt64 or
+            SpecialType.System_Single  or SpecialType.System_Double or
+            SpecialType.System_String)
+            return false;
+
+        // Guid
+        if (type.ToDisplayString() == "System.Guid") return false;
+
+        // byte[] — array of byte
+        if (type is IArrayTypeSymbol arr && arr.ElementType.SpecialType == SpecialType.System_Byte)
+            return false;
+
+        // Collections (element types not checked here; covered separately)
+        if (type is INamedTypeSymbol named && named.IsGenericType)
+        {
+            string def = named.ConstructedFrom.ToDisplayString();
+            if (def is "System.Collections.Generic.List<T>"
+                    or "System.Collections.Generic.IList<T>"
+                    or "System.Collections.Generic.Dictionary<TKey, TValue>")
+                return false;
+        }
+
+        if (type is IArrayTypeSymbol) return false;
+
+        // [GenerateSerializer] types have a generated WriteStatic/ReadStatic
+        if (HasAttribute(type, GenerateSerializerFqn)) return false;
+
+        // [Immutable] reference types: still need serialization but the developer
+        // has opted out of copying, so only warn if it's also not a value type.
+        if (type.IsValueType) return false;
+
+        // Reference types without a known codec path
+        return type.TypeKind == TypeKind.Class || type.TypeKind == TypeKind.Interface;
     }
 
     private static bool IsMutableCollection(ITypeSymbol type)

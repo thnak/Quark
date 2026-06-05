@@ -9,3 +9,4 @@
  QRK0003 | Quark.AOT           | Error   | Do not use ISerializable
  QRK0010 | Quark.DataIsolation | Info    | Grain argument will be shallow-cloned
  QRK0011 | Quark.DataIsolation | Warning | Grain return type will not be deep-copied
+ QRK0012 | Quark.DataIsolation | Info    | Grain argument uses boxed fallback serialization

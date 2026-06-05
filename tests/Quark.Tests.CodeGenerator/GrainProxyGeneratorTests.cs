@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Quark.CodeGenerator;
 using Xunit;
@@ -41,6 +41,13 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("public CounterGrainProxy_ResetAsyncInvokable Clone()", generated);
         // No-arg invokables: Clone() returns this (zero cost).
         Assert.Contains("return this;", generated);
+        // Invokable structs must have Serialize / static Deserialize for the transport path.
+        Assert.Contains("public void Serialize(ref global::Quark.Serialization.Abstractions.Buffers.CodecWriter writer)", generated);
+        Assert.Contains("public static CounterGrainProxy_IncrementAsyncInvokable Deserialize(", generated);
+        Assert.Contains("public static CounterGrainProxy_ResetAsyncInvokable Deserialize(", generated);
+        // No-arg Serialize is empty body; Deserialize returns new().
+        Assert.Contains("{ }", generated);
+        Assert.Contains("=> new();", generated);
         // Proxy methods call .Clone() on the new invokable.
         Assert.Contains("_invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(_grainId, new CounterGrainProxy_IncrementAsyncInvokable().Clone())", generated);
         Assert.Contains(
@@ -49,8 +56,10 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("internal sealed class CounterGrainProxy_TransportDispatcher", generated);
         Assert.Contains(": global::Quark.Core.Abstractions.Hosting.ITransportGrainDispatcher", generated);
         Assert.Contains("DispatchAsync(", generated);
+        // Transport dispatcher uses Deserialize instead of boxed ReadArg.
         Assert.Contains("invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(", generated);
         Assert.Contains("invoker.InvokeVoidAsync<CounterGrainProxy_ResetAsyncInvokable>(", generated);
+        Assert.DoesNotContain("ReadArg(", generated);
     }
 
     [Fact]

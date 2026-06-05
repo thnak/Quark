@@ -97,11 +97,15 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                     continue;
                 }
 
+                var (serKind, copierFq) = GetMemberSerializeInfo(memberType);
+
                 members.Add(new MemberModel(
                     id,
                     member.Name,
                     memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    isProperty));
+                    isProperty,
+                    serKind,
+                    copierFq));
             }
         }
 
@@ -116,6 +120,50 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             members.OrderBy(m => m.Id).ToList(),
             typeSymbol.IsValueType);
+    }
+
+    private static (MemberSerializeKind kind, string? copierFq) GetMemberSerializeInfo(ITypeSymbol type)
+    {
+        MemberSerializeKind kind = type.SpecialType switch
+        {
+            SpecialType.System_Boolean => MemberSerializeKind.Bool,
+            SpecialType.System_Byte    => MemberSerializeKind.UInt8,
+            SpecialType.System_SByte   => MemberSerializeKind.Int8,
+            SpecialType.System_Char    => MemberSerializeKind.UInt16,
+            SpecialType.System_Int16   => MemberSerializeKind.Int16,
+            SpecialType.System_UInt16  => MemberSerializeKind.UInt16,
+            SpecialType.System_Int32   => MemberSerializeKind.Int32,
+            SpecialType.System_UInt32  => MemberSerializeKind.UInt32,
+            SpecialType.System_Int64   => MemberSerializeKind.Int64,
+            SpecialType.System_UInt64  => MemberSerializeKind.UInt64,
+            SpecialType.System_Single  => MemberSerializeKind.Float,
+            SpecialType.System_Double  => MemberSerializeKind.Double,
+            SpecialType.System_String  => MemberSerializeKind.String,
+            _                          => MemberSerializeKind.Fallback
+        };
+
+        if (kind != MemberSerializeKind.Fallback) return (kind, null);
+
+        // Guid
+        if (type.ToDisplayString() == "System.Guid")
+            return (MemberSerializeKind.Guid, null);
+
+        // [GenerateSerializer] — emit {TypeName}Copier.WriteStatic / ReadStatic
+        if (type is INamedTypeSymbol named)
+        {
+            foreach (AttributeData attr in type.GetAttributes())
+            {
+                if (attr.AttributeClass?.ToDisplayString() == GenerateSerializerFqn)
+                {
+                    string nsPrefix = named.ContainingNamespace.IsGlobalNamespace
+                        ? "global::"
+                        : $"global::{named.ContainingNamespace.ToDisplayString()}.";
+                    return (MemberSerializeKind.GeneratedCodec, $"{nsPrefix}{named.Name}Copier");
+                }
+            }
+        }
+
+        return (MemberSerializeKind.Fallback, null);
     }
 
     // -----------------------------------------------------------------------
@@ -314,9 +362,93 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         }
         sb.AppendLine("        };");
         sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // WriteStatic / ReadStatic — DI-free positional binary encoding used by generated
+        // invokable Serialize() / Deserialize() methods on the transport path.
+        // Members are written/read in [Id]-ascending order using direct CodecWriter/CodecReader calls.
+        string nullableSuffix = m.IsValueType ? "" : "?";
+        sb.AppendLine($"    public static void WriteStatic(");
+        sb.AppendLine("        ref global::Quark.Serialization.Abstractions.Buffers.CodecWriter writer,");
+        sb.AppendLine($"        {m.FqTypeName}{nullableSuffix} value)");
+        sb.AppendLine("    {");
+        if (!m.IsValueType)
+        {
+            sb.AppendLine("        if (value is null) { writer.WriteByte(0); return; }");
+            sb.AppendLine("        writer.WriteByte(1);");
+        }
+        foreach (MemberModel member in m.Members)
+        {
+            EmitMemberWrite(sb, member);
+        }
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        sb.AppendLine($"    public static {m.FqTypeName}{nullableSuffix} ReadStatic(");
+        sb.AppendLine("        ref global::Quark.Serialization.Abstractions.Buffers.CodecReader reader)");
+        sb.AppendLine("    {");
+        if (!m.IsValueType)
+        {
+            sb.AppendLine("        if (reader.ReadByte() == 0) return null;");
+        }
+        sb.AppendLine($"        return new {m.FqTypeName}");
+        sb.AppendLine("        {");
+        foreach (MemberModel member in m.Members)
+        {
+            EmitMemberRead(sb, member);
+        }
+        sb.AppendLine("        };");
+        sb.AppendLine("    }");
         sb.AppendLine("}");
 
         return sb.ToString();
+    }
+
+    private static void EmitMemberWrite(StringBuilder sb, MemberModel member)
+    {
+        string val = $"value.{member.Name}";
+        string expr = member.SerializeKind switch
+        {
+            MemberSerializeKind.Bool    => $"writer.WriteByte({val} ? (byte)1 : (byte)0);",
+            MemberSerializeKind.UInt8   => $"writer.WriteByte((byte){val});",
+            MemberSerializeKind.Int8    => $"writer.WriteInt32((int){val});",
+            MemberSerializeKind.Int16   => $"writer.WriteInt32((int){val});",
+            MemberSerializeKind.UInt16  => $"writer.WriteVarUInt32((uint){val});",
+            MemberSerializeKind.Int32   => $"writer.WriteInt32({val});",
+            MemberSerializeKind.UInt32  => $"writer.WriteVarUInt32({val});",
+            MemberSerializeKind.Int64   => $"writer.WriteInt64({val});",
+            MemberSerializeKind.UInt64  => $"writer.WriteVarUInt64({val});",
+            MemberSerializeKind.Float   => $"writer.WriteFixed32(unchecked((uint)global::System.BitConverter.SingleToInt32Bits({val})));",
+            MemberSerializeKind.Double  => $"writer.WriteFixed64(unchecked((ulong)global::System.BitConverter.DoubleToInt64Bits({val})));",
+            MemberSerializeKind.String  => $"writer.WriteString({val});",
+            MemberSerializeKind.Guid    => $"writer.WriteRaw({val}.ToByteArray());",
+            MemberSerializeKind.GeneratedCodec => $"{member.CopierFqTypeName}.WriteStatic(ref writer, {val});",
+            _ => $"global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, {val});"
+        };
+        sb.AppendLine($"        {expr}");
+    }
+
+    private static void EmitMemberRead(StringBuilder sb, MemberModel member)
+    {
+        string readExpr = member.SerializeKind switch
+        {
+            MemberSerializeKind.Bool    => "reader.ReadByte() != 0",
+            MemberSerializeKind.UInt8   => "reader.ReadByte()",
+            MemberSerializeKind.Int8
+                or MemberSerializeKind.Int16  => $"({member.FqTypeName})reader.ReadInt32()",
+            MemberSerializeKind.UInt16  => $"({member.FqTypeName})reader.ReadVarUInt32()",
+            MemberSerializeKind.Int32   => "reader.ReadInt32()",
+            MemberSerializeKind.UInt32  => "reader.ReadVarUInt32()",
+            MemberSerializeKind.Int64   => "reader.ReadInt64()",
+            MemberSerializeKind.UInt64  => "reader.ReadVarUInt64()",
+            MemberSerializeKind.Float   => "global::System.BitConverter.Int32BitsToSingle(unchecked((int)reader.ReadFixed32()))",
+            MemberSerializeKind.Double  => "global::System.BitConverter.Int64BitsToDouble(unchecked((long)reader.ReadFixed64()))",
+            MemberSerializeKind.String  => "reader.ReadString()",
+            MemberSerializeKind.Guid    => "new global::System.Guid(reader.ReadRaw(16))",
+            MemberSerializeKind.GeneratedCodec => $"{member.CopierFqTypeName}.ReadStatic(ref reader)!",
+            _ => $"({member.FqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
+        };
+        sb.AppendLine($"            {member.Name} = {readExpr},");
     }
 
     // -----------------------------------------------------------------------
@@ -337,11 +469,30 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         public bool IsValueType { get; } = isValueType;
     }
 
-    private sealed class MemberModel(uint id, string name, string fqTypeName, bool isProperty)
+    private enum MemberSerializeKind
+    {
+        Bool,
+        Int8, Int16, Int32, Int64,
+        UInt8, UInt16, UInt32, UInt64,
+        Float, Double,
+        String, Guid,
+        GeneratedCodec,
+        Fallback
+    }
+
+    private sealed class MemberModel(
+        uint id,
+        string name,
+        string fqTypeName,
+        bool isProperty,
+        MemberSerializeKind serializeKind = MemberSerializeKind.Fallback,
+        string? copierFqTypeName = null)
     {
         public uint Id { get; } = id;
         public string Name { get; } = name;
         public string FqTypeName { get; } = fqTypeName;
         public bool IsProperty { get; } = isProperty;
+        public MemberSerializeKind SerializeKind { get; } = serializeKind;
+        public string? CopierFqTypeName { get; } = copierFqTypeName;
     }
 }

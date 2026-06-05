@@ -154,7 +154,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     }
 
     // -----------------------------------------------------------------------
-    // Parameter clone strategy
+    // Parameter clone & serialize strategy
     // -----------------------------------------------------------------------
 
     private static ParameterModel BuildParameterModel(IParameterSymbol param)
@@ -163,72 +163,206 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         string name = param.Name;
         string fqTypeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        // Value types (struct, enum, primitive) are copied by value — no defensive clone needed.
-        if (type.IsValueType)
-            return new ParameterModel(name, fqTypeName, CloneKind.None);
+        // ---- Clone strategy ------------------------------------------------
 
-        // string is immutable — safe to share.
-        if (type.SpecialType == SpecialType.System_String)
-            return new ParameterModel(name, fqTypeName, CloneKind.None);
+        CloneKind cloneKind = CloneKind.None;
+        string? elementFqTypeName = null;
+        string? valueFqTypeName = null;
+        string? copierFqTypeName = null;
 
-        // [Immutable]-annotated types are opt-in safe-to-share.
-        if (HasAttribute(type, ImmutableAttributeFqn))
-            return new ParameterModel(name, fqTypeName, CloneKind.None);
-
-        // IReadOnly* interfaces guarantee the caller can't mutate through the reference.
-        if (type is INamedTypeSymbol readOnlyNamed && readOnlyNamed.IsGenericType)
+        if (!type.IsValueType && type.SpecialType != SpecialType.System_String
+            && !HasAttribute(type, ImmutableAttributeFqn))
         {
-            string def = readOnlyNamed.ConstructedFrom.ToDisplayString();
-            if (def is "System.Collections.Generic.IReadOnlyList<T>"
-                    or "System.Collections.Generic.IReadOnlyCollection<T>"
-                    or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>"
-                    or "System.Collections.Generic.IReadOnlySet<T>")
-                return new ParameterModel(name, fqTypeName, CloneKind.None);
+            // IReadOnly* interfaces — no clone needed
+            bool isReadOnly = false;
+            if (type is INamedTypeSymbol readOnlyNamed && readOnlyNamed.IsGenericType)
+            {
+                string def = readOnlyNamed.ConstructedFrom.ToDisplayString();
+                if (def is "System.Collections.Generic.IReadOnlyList<T>"
+                        or "System.Collections.Generic.IReadOnlyCollection<T>"
+                        or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>"
+                        or "System.Collections.Generic.IReadOnlySet<T>")
+                    isReadOnly = true;
+            }
+
+            if (!isReadOnly)
+            {
+                if (type is INamedTypeSymbol genericNamed && genericNamed.IsGenericType)
+                {
+                    string def = genericNamed.ConstructedFrom.ToDisplayString();
+                    if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
+                    {
+                        elementFqTypeName = genericNamed.TypeArguments[0]
+                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        cloneKind = CloneKind.NewList;
+                    }
+                    else if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
+                    {
+                        elementFqTypeName = genericNamed.TypeArguments[0]
+                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        valueFqTypeName = genericNamed.TypeArguments[1]
+                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        cloneKind = CloneKind.NewDictionary;
+                    }
+                }
+                else if (type is IArrayTypeSymbol arrayType)
+                {
+                    elementFqTypeName = arrayType.ElementType
+                        .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    cloneKind = CloneKind.NewArray;
+                }
+                else if (HasAttribute(type, GenerateSerializerFqn) && type is INamedTypeSymbol gsNamed)
+                {
+                    string ns2 = gsNamed.ContainingNamespace.IsGlobalNamespace
+                        ? "global::"
+                        : $"global::{gsNamed.ContainingNamespace.ToDisplayString()}.";
+                    copierFqTypeName = $"{ns2}{gsNamed.Name}Copier";
+                    cloneKind = CloneKind.GeneratedCopier;
+                }
+            }
         }
 
-        // Mutable generic collections — copy the container, share element references.
-        if (type is INamedTypeSymbol genericNamed && genericNamed.IsGenericType)
+        // ---- Serialize strategy --------------------------------------------
+
+        var serInfo = DetermineSerializeKind(type);
+
+        return new ParameterModel(
+            name, fqTypeName,
+            cloneKind,
+            elementFqTypeName: elementFqTypeName,
+            valueFqTypeName: valueFqTypeName,
+            copierFqTypeName: copierFqTypeName ?? serInfo.CopierFq,
+            serializeKind: serInfo.Kind,
+            elementSerializeKind: serInfo.ElementKind,
+            valueSerializeKind: serInfo.ValueKind,
+            elementCopierFqTypeName: serInfo.ElementCopierFq,
+            valueCopierFqTypeName: serInfo.ValueCopierFq);
+    }
+
+    private static SerializeInfo DetermineSerializeKind(ITypeSymbol type)
+    {
+        // Well-known primitive types
+        SerializeKind kind = type.SpecialType switch
         {
-            string def = genericNamed.ConstructedFrom.ToDisplayString();
+            SpecialType.System_Boolean => SerializeKind.Bool,
+            SpecialType.System_Byte    => SerializeKind.UInt8,
+            SpecialType.System_SByte   => SerializeKind.Int8,
+            SpecialType.System_Char    => SerializeKind.UInt16,
+            SpecialType.System_Int16   => SerializeKind.Int16,
+            SpecialType.System_UInt16  => SerializeKind.UInt16,
+            SpecialType.System_Int32   => SerializeKind.Int32,
+            SpecialType.System_UInt32  => SerializeKind.UInt32,
+            SpecialType.System_Int64   => SerializeKind.Int64,
+            SpecialType.System_UInt64  => SerializeKind.UInt64,
+            SpecialType.System_Single  => SerializeKind.Float,
+            SpecialType.System_Double  => SerializeKind.Double,
+            SpecialType.System_String  => SerializeKind.String,
+            _                          => SerializeKind.Fallback
+        };
+        if (kind != SerializeKind.Fallback) return new SerializeInfo(kind);
+
+        // Guid
+        if (type.ToDisplayString() == "System.Guid")
+            return new SerializeInfo(SerializeKind.Guid);
+
+        // byte[] — array of System.Byte
+        if (type is IArrayTypeSymbol byteArr && byteArr.ElementType.SpecialType == SpecialType.System_Byte)
+            return new SerializeInfo(SerializeKind.Bytes);
+
+        // Generic collections — List<T> / IList<T>
+        if (type is INamedTypeSymbol namedList && namedList.IsGenericType)
+        {
+            string def = namedList.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
             {
-                string elemFq = genericNamed.TypeArguments[0]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                return new ParameterModel(name, fqTypeName, CloneKind.NewList, elemFq);
+                var elemInfo = DetermineSerializeKind(namedList.TypeArguments[0]);
+                if (elemInfo.Kind != SerializeKind.Fallback)
+                    return new SerializeInfo(SerializeKind.List,
+                        elementKind: elemInfo.Kind,
+                        elementCopierFq: elemInfo.CopierFq);
             }
 
             if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
             {
-                string keyFq = genericNamed.TypeArguments[0]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                string valFq = genericNamed.TypeArguments[1]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                return new ParameterModel(name, fqTypeName, CloneKind.NewDictionary, keyFq, valFq);
+                var keyInfo = DetermineSerializeKind(namedList.TypeArguments[0]);
+                var valInfo = DetermineSerializeKind(namedList.TypeArguments[1]);
+                if (keyInfo.Kind != SerializeKind.Fallback && valInfo.Kind != SerializeKind.Fallback)
+                    return new SerializeInfo(SerializeKind.Dictionary,
+                        elementKind: keyInfo.Kind,
+                        valueKind: valInfo.Kind,
+                        elementCopierFq: keyInfo.CopierFq,
+                        valueCopierFq: valInfo.CopierFq);
             }
         }
 
-        // Arrays — copy the container, share element references.
-        if (type is IArrayTypeSymbol arrayType)
+        // T[] (non-byte element)
+        if (type is IArrayTypeSymbol arr)
         {
-            string elemFq = arrayType.ElementType
-                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            return new ParameterModel(name, fqTypeName, CloneKind.NewArray, elemFq);
+            var elemInfo = DetermineSerializeKind(arr.ElementType);
+            if (elemInfo.Kind != SerializeKind.Fallback)
+                return new SerializeInfo(SerializeKind.Array,
+                    elementKind: elemInfo.Kind,
+                    elementCopierFq: elemInfo.CopierFq);
         }
 
-        // [GenerateSerializer] types have a generated {TypeName}Copier.CloneStatic() method.
-        if (type is INamedTypeSymbol gsNamed && HasAttribute(type, GenerateSerializerFqn))
+        // [GenerateSerializer] types — use generated {TypeName}Copier.WriteStatic / ReadStatic
+        if (HasAttribute(type, GenerateSerializerFqn) && type is INamedTypeSymbol gsNamed)
         {
             string ns = gsNamed.ContainingNamespace.IsGlobalNamespace
                 ? "global::"
                 : $"global::{gsNamed.ContainingNamespace.ToDisplayString()}.";
             string copierFq = $"{ns}{gsNamed.Name}Copier";
-            return new ParameterModel(name, fqTypeName, CloneKind.GeneratedCopier,
-                copierFqTypeName: copierFq);
+            return new SerializeInfo(SerializeKind.GeneratedCodec, copierFq: copierFq);
         }
 
-        // Unknown mutable reference type — no clone at invokable level.
-        return new ParameterModel(name, fqTypeName, CloneKind.None);
+        return new SerializeInfo(SerializeKind.Fallback);
     }
+
+    // Returns the single-line write expression for primitive/string/Guid/Bytes/GeneratedCodec.
+    // Not used for collection types (those are emitted inline with loops).
+    private static string GetWriteExpr(SerializeKind kind, string valueExpr, string? copierFq, string fqTypeName)
+        => kind switch
+        {
+            SerializeKind.Bool    => $"writer.WriteByte({valueExpr} ? (byte)1 : (byte)0);",
+            SerializeKind.UInt8   => $"writer.WriteByte((byte){valueExpr});",
+            SerializeKind.Int8    => $"writer.WriteInt32((int){valueExpr});",
+            SerializeKind.Int16   => $"writer.WriteInt32((int){valueExpr});",
+            SerializeKind.UInt16  => $"writer.WriteVarUInt32((uint){valueExpr});",
+            SerializeKind.Int32   => $"writer.WriteInt32({valueExpr});",
+            SerializeKind.UInt32  => $"writer.WriteVarUInt32({valueExpr});",
+            SerializeKind.Int64   => $"writer.WriteInt64({valueExpr});",
+            SerializeKind.UInt64  => $"writer.WriteVarUInt64({valueExpr});",
+            SerializeKind.Float   => $"writer.WriteFixed32(unchecked((uint)global::System.BitConverter.SingleToInt32Bits({valueExpr})));",
+            SerializeKind.Double  => $"writer.WriteFixed64(unchecked((ulong)global::System.BitConverter.DoubleToInt64Bits({valueExpr})));",
+            SerializeKind.String  => $"writer.WriteString({valueExpr});",
+            SerializeKind.Bytes   => $"writer.WriteBytes({valueExpr} ?? global::System.Array.Empty<byte>());",
+            SerializeKind.Guid    => $"writer.WriteRaw({valueExpr}.ToByteArray());",
+            SerializeKind.GeneratedCodec => $"{copierFq}.WriteStatic(ref writer, {valueExpr});",
+            _ => $"global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, {valueExpr});"
+        };
+
+    // Returns the single-line read expression (the value, not assignment) for
+    // primitive/string/Guid/Bytes/GeneratedCodec. Cast uses fqTypeName for narrow int types.
+    private static string GetReadExpr(SerializeKind kind, string? copierFq, string fqTypeName)
+        => kind switch
+        {
+            SerializeKind.Bool    => "reader.ReadByte() != 0",
+            SerializeKind.UInt8   => "reader.ReadByte()",
+            SerializeKind.Int8
+                or SerializeKind.Int16  => $"({fqTypeName})reader.ReadInt32()",
+            SerializeKind.UInt16  => $"({fqTypeName})reader.ReadVarUInt32()",
+            SerializeKind.Int32   => "reader.ReadInt32()",
+            SerializeKind.UInt32  => "reader.ReadVarUInt32()",
+            SerializeKind.Int64   => "reader.ReadInt64()",
+            SerializeKind.UInt64  => "reader.ReadVarUInt64()",
+            SerializeKind.Float   => "global::System.BitConverter.Int32BitsToSingle(unchecked((int)reader.ReadFixed32()))",
+            SerializeKind.Double  => "global::System.BitConverter.Int64BitsToDouble(unchecked((long)reader.ReadFixed64()))",
+            SerializeKind.String  => "reader.ReadString()",
+            SerializeKind.Bytes   => "reader.ReadBytes()",
+            SerializeKind.Guid    => "new global::System.Guid(reader.ReadRaw(16))",
+            SerializeKind.GeneratedCodec => $"{copierFq}.ReadStatic(ref reader)!",
+            _ => $"({fqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
+        };
 
     private static bool HasAttribute(ITypeSymbol type, string fqAttributeName)
     {
@@ -414,6 +548,10 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         // element references are shared (shallow container copy).
         EmitCloneMethod(sb, structName, method);
 
+        // Serialize(ref CodecWriter) / static Deserialize(ref CodecReader) —
+        // type-specific wire encoding for the transport path (no boxing).
+        EmitSerializeMethods(sb, structName, method);
+
         sb.AppendLine("}");
         sb.AppendLine();
     }
@@ -453,6 +591,170 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("    }");
+    }
+
+    private static void EmitSerializeMethods(StringBuilder sb, string structName, MethodModel method)
+    {
+        sb.AppendLine();
+
+        // --- Serialize(ref CodecWriter writer) ---
+        sb.AppendLine("    public void Serialize(ref global::Quark.Serialization.Abstractions.Buffers.CodecWriter writer)");
+        if (method.Parameters.Count == 0)
+        {
+            sb.AppendLine("    { }");
+        }
+        else
+        {
+            sb.AppendLine("    {");
+            foreach (ParameterModel p in method.Parameters)
+            {
+                EmitParameterWrite(sb, p, "        ");
+            }
+            sb.AppendLine("    }");
+        }
+
+        sb.AppendLine();
+
+        // --- static Deserialize(ref CodecReader reader) ---
+        sb.AppendLine($"    public static {structName} Deserialize(");
+        sb.AppendLine("        ref global::Quark.Serialization.Abstractions.Buffers.CodecReader reader)");
+        if (method.Parameters.Count == 0)
+        {
+            sb.AppendLine("        => new();");
+        }
+        else
+        {
+            sb.AppendLine("    {");
+            foreach (ParameterModel p in method.Parameters)
+            {
+                EmitParameterRead(sb, p, "        ");
+            }
+            string ctorArgs = string.Join(", ", method.Parameters.Select(p => $"_{p.Name}"));
+            sb.AppendLine($"        return new {structName}({ctorArgs});");
+            sb.AppendLine("    }");
+        }
+    }
+
+    // Emits the write statement(s) for a single parameter inside Serialize().
+    private static void EmitParameterWrite(StringBuilder sb, ParameterModel p, string indent)
+    {
+        string fieldExpr = $"_{p.Name}";
+
+        switch (p.SerializeKind)
+        {
+            case SerializeKind.List:
+            {
+                string elemWriteExpr = GetWriteExpr(p.ElementSerializeKind, "__e", p.ElementCopierFqTypeName, p.ElementFqTypeName ?? "");
+                sb.AppendLine($"{indent}if ({fieldExpr} is null) {{ writer.WriteByte(0); }}");
+                sb.AppendLine($"{indent}else");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    writer.WriteByte(1);");
+                sb.AppendLine($"{indent}    writer.WriteVarUInt32((uint){fieldExpr}.Count);");
+                sb.AppendLine($"{indent}    foreach (var __e in {fieldExpr})");
+                sb.AppendLine($"{indent}        {elemWriteExpr}");
+                sb.AppendLine($"{indent}}}");
+                break;
+            }
+            case SerializeKind.Array:
+            {
+                string elemWriteExpr = GetWriteExpr(p.ElementSerializeKind, "__e", p.ElementCopierFqTypeName, p.ElementFqTypeName ?? "");
+                sb.AppendLine($"{indent}if ({fieldExpr} is null) {{ writer.WriteByte(0); }}");
+                sb.AppendLine($"{indent}else");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    writer.WriteByte(1);");
+                sb.AppendLine($"{indent}    writer.WriteVarUInt32((uint){fieldExpr}.Length);");
+                sb.AppendLine($"{indent}    foreach (var __e in {fieldExpr})");
+                sb.AppendLine($"{indent}        {elemWriteExpr}");
+                sb.AppendLine($"{indent}}}");
+                break;
+            }
+            case SerializeKind.Dictionary:
+            {
+                string keyWriteExpr = GetWriteExpr(p.ElementSerializeKind, "__kv.Key", p.ElementCopierFqTypeName, p.ElementFqTypeName ?? "");
+                string valWriteExpr = GetWriteExpr(p.ValueSerializeKind, "__kv.Value", p.ValueCopierFqTypeName, p.ValueFqTypeName ?? "");
+                sb.AppendLine($"{indent}if ({fieldExpr} is null) {{ writer.WriteByte(0); }}");
+                sb.AppendLine($"{indent}else");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    writer.WriteByte(1);");
+                sb.AppendLine($"{indent}    writer.WriteVarUInt32((uint){fieldExpr}.Count);");
+                sb.AppendLine($"{indent}    foreach (var __kv in {fieldExpr})");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        {keyWriteExpr}");
+                sb.AppendLine($"{indent}        {valWriteExpr}");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine($"{indent}}}");
+                break;
+            }
+            default:
+            {
+                string writeExpr = GetWriteExpr(p.SerializeKind, fieldExpr, p.CopierFqTypeName, p.FqTypeName);
+                sb.AppendLine($"{indent}{writeExpr}");
+                break;
+            }
+        }
+    }
+
+    // Emits the read local variable declaration(s) for a single parameter inside Deserialize().
+    private static void EmitParameterRead(StringBuilder sb, ParameterModel p, string indent)
+    {
+        string fqType = p.FqTypeName;
+
+        switch (p.SerializeKind)
+        {
+            case SerializeKind.List:
+            {
+                string elemFq = p.ElementFqTypeName ?? "object";
+                string elemReadExpr = GetReadExpr(p.ElementSerializeKind, p.ElementCopierFqTypeName, elemFq);
+                sb.AppendLine($"{indent}global::System.Collections.Generic.List<{elemFq}>? _{p.Name};");
+                sb.AppendLine($"{indent}if (reader.ReadByte() == 0) {{ _{p.Name} = null; }}");
+                sb.AppendLine($"{indent}else");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    uint __n_{p.Name} = reader.ReadVarUInt32();");
+                sb.AppendLine($"{indent}    _{p.Name} = new((int)__n_{p.Name});");
+                sb.AppendLine($"{indent}    for (uint __i = 0; __i < __n_{p.Name}; __i++)");
+                sb.AppendLine($"{indent}        _{p.Name}.Add({elemReadExpr});");
+                sb.AppendLine($"{indent}}}");
+                break;
+            }
+            case SerializeKind.Array:
+            {
+                string elemFq = p.ElementFqTypeName ?? "object";
+                string elemReadExpr = GetReadExpr(p.ElementSerializeKind, p.ElementCopierFqTypeName, elemFq);
+                sb.AppendLine($"{indent}{elemFq}[]? _{p.Name};");
+                sb.AppendLine($"{indent}if (reader.ReadByte() == 0) {{ _{p.Name} = null; }}");
+                sb.AppendLine($"{indent}else");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    uint __n_{p.Name} = reader.ReadVarUInt32();");
+                sb.AppendLine($"{indent}    _{p.Name} = new {elemFq}[__n_{p.Name}];");
+                sb.AppendLine($"{indent}    for (uint __i = 0; __i < __n_{p.Name}; __i++)");
+                sb.AppendLine($"{indent}        _{p.Name}[__i] = {elemReadExpr};");
+                sb.AppendLine($"{indent}}}");
+                break;
+            }
+            case SerializeKind.Dictionary:
+            {
+                string keyFq = p.ElementFqTypeName ?? "object";
+                string valFq = p.ValueFqTypeName ?? "object";
+                string keyReadExpr = GetReadExpr(p.ElementSerializeKind, p.ElementCopierFqTypeName, keyFq);
+                string valReadExpr = GetReadExpr(p.ValueSerializeKind, p.ValueCopierFqTypeName, valFq);
+                sb.AppendLine($"{indent}global::System.Collections.Generic.Dictionary<{keyFq}, {valFq}>? _{p.Name};");
+                sb.AppendLine($"{indent}if (reader.ReadByte() == 0) {{ _{p.Name} = null; }}");
+                sb.AppendLine($"{indent}else");
+                sb.AppendLine($"{indent}{{");
+                sb.AppendLine($"{indent}    uint __n_{p.Name} = reader.ReadVarUInt32();");
+                sb.AppendLine($"{indent}    _{p.Name} = new((int)__n_{p.Name});");
+                sb.AppendLine($"{indent}    for (uint __i = 0; __i < __n_{p.Name}; __i++)");
+                sb.AppendLine($"{indent}        _{p.Name}[{keyReadExpr}] = {valReadExpr};");
+                sb.AppendLine($"{indent}}}");
+                break;
+            }
+            default:
+            {
+                string readExpr = GetReadExpr(p.SerializeKind, p.CopierFqTypeName, fqType);
+                sb.AppendLine($"{indent}{fqType} _{p.Name} = {readExpr};");
+                break;
+            }
+        }
     }
 
     private static void EmitMethod(StringBuilder sb, InterfaceModel m, MethodModel method)
@@ -549,33 +851,26 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             if (method.Parameters.Count > 0)
             {
                 sb.AppendLine("                var _reader = new global::Quark.Serialization.Abstractions.Buffers.CodecReader(argumentPayload);");
-                for (int i = 0; i < method.Parameters.Count; i++)
-                {
-                    string fqType = method.Parameters[i].FqTypeName;
-                    sb.AppendLine($"                var _arg{i} = ({fqType})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref _reader)!;");
-                }
+                sb.AppendLine($"                var invokable = {structName}.Deserialize(ref _reader);");
             }
-
-            string ctorArgs = method.Parameters.Count == 0
-                ? string.Empty
-                : string.Join(", ", Enumerable.Range(0, method.Parameters.Count).Select(i => $"_arg{i}"));
-            string structCreate = method.Parameters.Count == 0
-                ? $"new {structName}()"
-                : $"new {structName}({ctorArgs})";
+            else
+            {
+                sb.AppendLine($"                var invokable = new {structName}();");
+            }
 
             if (m.IsObserver)
             {
-                sb.AppendLine($"                await invoker.InvokeObserverAsync<{structName}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
+                sb.AppendLine($"                await invoker.InvokeObserverAsync<{structName}>(grainId, invokable, ct).ConfigureAwait(false);");
                 sb.AppendLine("                return null;");
             }
             else if (method.IsTask || method.IsValueTask)
             {
-                sb.AppendLine($"                await invoker.InvokeVoidAsync<{structName}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
+                sb.AppendLine($"                await invoker.InvokeVoidAsync<{structName}>(grainId, invokable, ct).ConfigureAwait(false);");
                 sb.AppendLine("                return null;");
             }
             else
             {
-                sb.AppendLine($"                return await invoker.InvokeAsync<{structName}, {method.TaskResultType}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
+                sb.AppendLine($"                return await invoker.InvokeAsync<{structName}, {method.TaskResultType}>(grainId, invokable, ct).ConfigureAwait(false);");
             }
 
             sb.AppendLine("            }");
@@ -637,13 +932,56 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         GeneratedCopier  // [GenerateSerializer] — call {TypeName}Copier.CloneStatic(source)
     }
 
+    private enum SerializeKind
+    {
+        Bool,
+        Int8, Int16, Int32, Int64,
+        UInt8, UInt16, UInt32, UInt64,
+        Float, Double,
+        String, Bytes, Guid,
+        List, Array, Dictionary,
+        GeneratedCodec,
+        Fallback
+    }
+
+    private struct SerializeInfo
+    {
+        public SerializeKind Kind;
+        public SerializeKind ElementKind;
+        public SerializeKind ValueKind;
+        public string? CopierFq;
+        public string? ElementCopierFq;
+        public string? ValueCopierFq;
+
+        public SerializeInfo(
+            SerializeKind kind,
+            SerializeKind elementKind = SerializeKind.Fallback,
+            SerializeKind valueKind = SerializeKind.Fallback,
+            string? copierFq = null,
+            string? elementCopierFq = null,
+            string? valueCopierFq = null)
+        {
+            Kind = kind;
+            ElementKind = elementKind;
+            ValueKind = valueKind;
+            CopierFq = copierFq;
+            ElementCopierFq = elementCopierFq;
+            ValueCopierFq = valueCopierFq;
+        }
+    }
+
     private sealed class ParameterModel(
         string name,
         string fqTypeName,
         CloneKind cloneKind,
         string? elementFqTypeName = null,
         string? valueFqTypeName = null,
-        string? copierFqTypeName = null)
+        string? copierFqTypeName = null,
+        SerializeKind serializeKind = SerializeKind.Fallback,
+        SerializeKind elementSerializeKind = SerializeKind.Fallback,
+        SerializeKind valueSerializeKind = SerializeKind.Fallback,
+        string? elementCopierFqTypeName = null,
+        string? valueCopierFqTypeName = null)
     {
         public string Name { get; } = name;
         public string FqTypeName { get; } = fqTypeName;
@@ -651,5 +989,10 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         public string? ElementFqTypeName { get; } = elementFqTypeName;
         public string? ValueFqTypeName { get; } = valueFqTypeName;
         public string? CopierFqTypeName { get; } = copierFqTypeName;
+        public SerializeKind SerializeKind { get; } = serializeKind;
+        public SerializeKind ElementSerializeKind { get; } = elementSerializeKind;
+        public SerializeKind ValueSerializeKind { get; } = valueSerializeKind;
+        public string? ElementCopierFqTypeName { get; } = elementCopierFqTypeName;
+        public string? ValueCopierFqTypeName { get; } = valueCopierFqTypeName;
     }
 }
