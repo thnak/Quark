@@ -40,8 +40,13 @@ internal sealed class StreamSubscriptionRegistry
         if (!_subs.TryGetValue(streamId, out var list)) return;
         List<Subscription> snapshot;
         lock (list) snapshot = [..list];
+        List<Exception>? errors = null;
         foreach (var sub in snapshot)
-            await sub.OnNext(item!, token).ConfigureAwait(false);
+        {
+            try { await sub.OnNext(item!, token).ConfigureAwait(false); }
+            catch (Exception ex) { (errors ??= []).Add(ex); }
+        }
+        if (errors is { Count: > 0 }) throw new AggregateException(errors);
     }
 
     public async Task PublishErrorAsync(StreamId streamId, Exception ex)
@@ -49,8 +54,13 @@ internal sealed class StreamSubscriptionRegistry
         if (!_subs.TryGetValue(streamId, out var list)) return;
         List<Subscription> snapshot;
         lock (list) snapshot = [..list];
+        List<Exception>? errors = null;
         foreach (var sub in snapshot)
-            await sub.OnError(ex).ConfigureAwait(false);
+        {
+            try { await sub.OnError(ex).ConfigureAwait(false); }
+            catch (Exception e) { (errors ??= []).Add(e); }
+        }
+        if (errors is { Count: > 0 }) throw new AggregateException(errors);
     }
 
     public async Task PublishCompletedAsync(StreamId streamId)
@@ -58,7 +68,12 @@ internal sealed class StreamSubscriptionRegistry
         if (!_subs.TryGetValue(streamId, out var list)) return;
         List<Subscription> snapshot;
         lock (list) snapshot = [..list];
+        List<Exception>? errors = null;
         foreach (var sub in snapshot)
-            await sub.OnCompleted().ConfigureAwait(false);
+        {
+            try { await sub.OnCompleted().ConfigureAwait(false); }
+            catch (Exception ex) { (errors ??= []).Add(ex); }
+        }
+        if (errors is { Count: > 0 }) throw new AggregateException(errors);
     }
 }
