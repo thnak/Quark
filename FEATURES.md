@@ -23,7 +23,7 @@ Orleans architecture reference: [`README.md`](README.md)
 ## Phase 3 — Advanced grain patterns
 
 - [x] **F-06** Grain Reminders (`IRemindable`, `RegisterOrUpdateReminder`, `IGrainReminder`, durable `IReminderService`) — _Complexity: L_
-- [ ] **F-09** `JournaledGrain<TState,TEvent>` (event sourcing, `RaiseEvent`, `ConfirmEventsAsync`, `RetrieveConfirmedEvents`) — _Complexity: L_
+- [x] **F-09** `JournaledGrain<TState,TEvent>` (event sourcing, `RaiseEvent`, `ConfirmEventsAsync`, `RetrieveConfirmedEvents`) — _Complexity: L_
 
 ## Phase 4 — Distributed infrastructure
 
