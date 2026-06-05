@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -19,6 +20,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly ILogger<GrainActivation> _activationLogger;
     private readonly GrainActivationTable _activationTable;
     private readonly IGrainActivator _activator;
+    private readonly ICopierProvider? _copierProvider;
     private readonly IGrainDirectory _directory;
     // Resolved lazily to break the IGrainCallInvoker ↔ IGrainFactory circular dependency.
     private readonly Lazy<IGrainFactory> _grainFactory;
@@ -45,7 +47,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         ILogger<LocalGrainCallInvoker> logger,
         ILogger<GrainActivation> activationLogger,
         ObserverRegistry? observerRegistry = null,
-        IGrainFactory? grainFactory = null)
+        IGrainFactory? grainFactory = null,
+        ICopierProvider? copierProvider = null)
     {
         _activationTable = activationTable;
         _activator = activator;
@@ -59,6 +62,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _logger = logger;
         _activationLogger = activationLogger;
         _observerRegistry = observerRegistry;
+        _copierProvider = copierProvider;
     }
 
     /// <inheritdoc />
@@ -82,6 +86,13 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             try
             {
                 TResult result = await invokable.Invoke(activation.Grain).ConfigureAwait(false);
+                // Deep-copy the result to isolate the caller from the grain's internal state.
+                if (_copierProvider is not null)
+                {
+                    IDeepCopier<TResult>? copier = _copierProvider.TryGetCopier<TResult>();
+                    if (copier is not null)
+                        result = copier.DeepCopy(result, new CopyContext());
+                }
                 tcs.TrySetResult(result);
             }
             catch (Exception ex)

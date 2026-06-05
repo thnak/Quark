@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -66,7 +67,8 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
             sp.GetRequiredService<ILogger<LocalGrainCallInvoker>>(),
             sp.GetRequiredService<ILogger<GrainActivation>>(),
-            sp.GetService<ObserverRegistry>()));
+            sp.GetService<ObserverRegistry>(),
+            copierProvider: sp.GetService<ICopierProvider>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services for transport-routed grain calls.

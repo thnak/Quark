@@ -37,6 +37,11 @@ public sealed class SerializerGeneratorTests
             generated);
         Assert.Contains("_copiers.GetRequiredCopier<", generated);
         Assert.Contains("DeepCopy(input.Name, context)", generated);
+        // CloneStatic() — DI-free shallow clone for use by generated invokable Clone() methods.
+        Assert.Contains("public static", generated);
+        Assert.Contains("CloneStatic(", generated);
+        Assert.Contains("Name = input.Name,", generated);
+        Assert.Contains("Age = input.Age,", generated);
     }
 
     [Fact]

@@ -20,6 +20,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     private const string IGrainCallInvokerFqn = "Quark.Core.Abstractions.Hosting.IGrainCallInvoker";
     private const string IGrainProxyActivatorFqn = "Quark.Core.Abstractions.Hosting.IGrainProxyActivator";
     private const string IGrainObserverProxyActivatorFqn = "Quark.Core.Abstractions.Hosting.IGrainObserverProxyActivator";
+    private const string ImmutableAttributeFqn = "Quark.Core.Abstractions.ImmutableAttribute";
+    private const string GenerateSerializerFqn = "Quark.Serialization.Abstractions.Attributes.GenerateSerializerAttribute";
 
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -123,9 +125,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             }
 
             var parameters = method.Parameters
-                .Select(p => new ParameterModel(
-                    p.Name,
-                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+                .Select(p => BuildParameterModel(p))
                 .ToList();
 
             methods.Add(new MethodModel(
@@ -151,6 +151,93 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             proxySuffix,
             methods,
             isObserver);
+    }
+
+    // -----------------------------------------------------------------------
+    // Parameter clone strategy
+    // -----------------------------------------------------------------------
+
+    private static ParameterModel BuildParameterModel(IParameterSymbol param)
+    {
+        ITypeSymbol type = param.Type;
+        string name = param.Name;
+        string fqTypeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        // Value types (struct, enum, primitive) are copied by value — no defensive clone needed.
+        if (type.IsValueType)
+            return new ParameterModel(name, fqTypeName, CloneKind.None);
+
+        // string is immutable — safe to share.
+        if (type.SpecialType == SpecialType.System_String)
+            return new ParameterModel(name, fqTypeName, CloneKind.None);
+
+        // [Immutable]-annotated types are opt-in safe-to-share.
+        if (HasAttribute(type, ImmutableAttributeFqn))
+            return new ParameterModel(name, fqTypeName, CloneKind.None);
+
+        // IReadOnly* interfaces guarantee the caller can't mutate through the reference.
+        if (type is INamedTypeSymbol readOnlyNamed && readOnlyNamed.IsGenericType)
+        {
+            string def = readOnlyNamed.ConstructedFrom.ToDisplayString();
+            if (def is "System.Collections.Generic.IReadOnlyList<T>"
+                    or "System.Collections.Generic.IReadOnlyCollection<T>"
+                    or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>"
+                    or "System.Collections.Generic.IReadOnlySet<T>")
+                return new ParameterModel(name, fqTypeName, CloneKind.None);
+        }
+
+        // Mutable generic collections — copy the container, share element references.
+        if (type is INamedTypeSymbol genericNamed && genericNamed.IsGenericType)
+        {
+            string def = genericNamed.ConstructedFrom.ToDisplayString();
+            if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
+            {
+                string elemFq = genericNamed.TypeArguments[0]
+                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                return new ParameterModel(name, fqTypeName, CloneKind.NewList, elemFq);
+            }
+
+            if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
+            {
+                string keyFq = genericNamed.TypeArguments[0]
+                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                string valFq = genericNamed.TypeArguments[1]
+                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                return new ParameterModel(name, fqTypeName, CloneKind.NewDictionary, keyFq, valFq);
+            }
+        }
+
+        // Arrays — copy the container, share element references.
+        if (type is IArrayTypeSymbol arrayType)
+        {
+            string elemFq = arrayType.ElementType
+                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return new ParameterModel(name, fqTypeName, CloneKind.NewArray, elemFq);
+        }
+
+        // [GenerateSerializer] types have a generated {TypeName}Copier.CloneStatic() method.
+        if (type is INamedTypeSymbol gsNamed && HasAttribute(type, GenerateSerializerFqn))
+        {
+            string ns = gsNamed.ContainingNamespace.IsGlobalNamespace
+                ? "global::"
+                : $"global::{gsNamed.ContainingNamespace.ToDisplayString()}.";
+            string copierFq = $"{ns}{gsNamed.Name}Copier";
+            return new ParameterModel(name, fqTypeName, CloneKind.GeneratedCopier,
+                copierFqTypeName: copierFq);
+        }
+
+        // Unknown mutable reference type — no clone at invokable level.
+        return new ParameterModel(name, fqTypeName, CloneKind.None);
+    }
+
+    private static bool HasAttribute(ITypeSymbol type, string fqAttributeName)
+    {
+        foreach (AttributeData attr in type.GetAttributes())
+        {
+            if (attr.AttributeClass?.ToDisplayString() == fqAttributeName)
+                return true;
+        }
+        return false;
     }
 
     // -----------------------------------------------------------------------
@@ -321,8 +408,51 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             sb.AppendLine(invokeBody);
         }
 
+        // Clone() — creates a data-isolated copy of this invokable's arguments.
+        // For value types and immutable reference types this is a no-op struct copy.
+        // For mutable collections (List<T>, T[], Dictionary<K,V>) a new container is allocated;
+        // element references are shared (shallow container copy).
+        EmitCloneMethod(sb, structName, method);
+
         sb.AppendLine("}");
         sb.AppendLine();
+    }
+
+    private static void EmitCloneMethod(StringBuilder sb, string structName, MethodModel method)
+    {
+        bool needsClone = method.Parameters.Any(p => p.CloneKind != CloneKind.None);
+
+        sb.AppendLine();
+        sb.AppendLine($"    public {structName} Clone()");
+        sb.AppendLine("    {");
+
+        if (!needsClone)
+        {
+            sb.AppendLine("        return this;");
+        }
+        else
+        {
+            var ctorArgExprs = new List<string>();
+            foreach (ParameterModel p in method.Parameters)
+            {
+                string expr = p.CloneKind switch
+                {
+                    CloneKind.NewList =>
+                        $"_{p.Name} is null ? default! : new global::System.Collections.Generic.List<{p.ElementFqTypeName}>(_{p.Name})",
+                    CloneKind.NewArray =>
+                        $"_{p.Name}?.ToArray()!",
+                    CloneKind.NewDictionary =>
+                        $"_{p.Name} is null ? default! : new global::System.Collections.Generic.Dictionary<{p.ElementFqTypeName}, {p.ValueFqTypeName}>(_{p.Name})",
+                    CloneKind.GeneratedCopier =>
+                        $"_{p.Name} is null ? default! : {p.CopierFqTypeName}.CloneStatic(_{p.Name})",
+                    _ => $"_{p.Name}"
+                };
+                ctorArgExprs.Add(expr);
+            }
+            sb.AppendLine($"        return new {structName}({string.Join(", ", ctorArgExprs)});");
+        }
+
+        sb.AppendLine("    }");
     }
 
     private static void EmitMethod(StringBuilder sb, InterfaceModel m, MethodModel method)
@@ -330,9 +460,11 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         string paramList = string.Join(", ", method.Parameters.Select(p => $"{p.FqTypeName} {p.Name}"));
         string structName = $"{m.ProxyClassName}_{method.Name}Invokable";
         string ctorArgs = string.Join(", ", method.Parameters.Select(p => p.Name));
-        string structCreate = method.Parameters.Count == 0
+        string structNew = method.Parameters.Count == 0
             ? $"new {structName}()"
             : $"new {structName}({ctorArgs})";
+        // Always call Clone() — for value-type-only invokables this is return this; (zero cost).
+        string structCreate = $"{structNew}.Clone()";
 
         sb.Append($"    public {method.ReturnType} {method.Name}(");
         sb.Append(paramList);
@@ -496,9 +628,28 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         public IReadOnlyList<ParameterModel> Parameters { get; } = parameters;
     }
 
-    private sealed class ParameterModel(string name, string fqTypeName)
+    private enum CloneKind
+    {
+        None,            // value type, string, [Immutable], or readonly interface — no clone needed
+        NewList,         // List<T> or IList<T> — new container, element refs shared
+        NewArray,        // T[] — ToArray() clone
+        NewDictionary,   // Dictionary<K,V> — new container, entry refs shared
+        GeneratedCopier  // [GenerateSerializer] — call {TypeName}Copier.CloneStatic(source)
+    }
+
+    private sealed class ParameterModel(
+        string name,
+        string fqTypeName,
+        CloneKind cloneKind,
+        string? elementFqTypeName = null,
+        string? valueFqTypeName = null,
+        string? copierFqTypeName = null)
     {
         public string Name { get; } = name;
         public string FqTypeName { get; } = fqTypeName;
+        public CloneKind CloneKind { get; } = cloneKind;
+        public string? ElementFqTypeName { get; } = elementFqTypeName;
+        public string? ValueFqTypeName { get; } = valueFqTypeName;
+        public string? CopierFqTypeName { get; } = copierFqTypeName;
     }
 }

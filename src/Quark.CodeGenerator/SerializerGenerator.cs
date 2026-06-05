@@ -293,6 +293,27 @@ public sealed class SerializerGenerator : IIncrementalGenerator
 
         sb.AppendLine("        return copy;");
         sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // CloneStatic — DI-free shallow clone used by generated invokable Clone() methods.
+        // Copies value-type and string members directly; reference-type members get a direct
+        // reference copy (shallow). Generated invokable Clone() calls this for [GenerateSerializer]
+        // parameter types so grain args are isolated without requiring DI access in a struct.
+        sb.AppendLine($"    public static {m.FqTypeName} CloneStatic({m.FqTypeName} input)");
+        sb.AppendLine("    {");
+        if (!m.IsValueType)
+        {
+            sb.AppendLine("        if (input is null) return default!;");
+        }
+
+        sb.AppendLine($"        return new {m.FqTypeName}");
+        sb.AppendLine("        {");
+        foreach (MemberModel member in m.Members)
+        {
+            sb.AppendLine($"            {member.Name} = input.{member.Name},");
+        }
+        sb.AppendLine("        };");
+        sb.AppendLine("    }");
         sb.AppendLine("}");
 
         return sb.ToString();

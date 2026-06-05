@@ -36,9 +36,15 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("=> new CounterGrainProxy(grainId, invoker);", generated);
         Assert.Contains("internal readonly struct CounterGrainProxy_IncrementAsyncInvokable", generated);
         Assert.Contains("internal readonly struct CounterGrainProxy_ResetAsyncInvokable", generated);
-        Assert.Contains("_invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(_grainId, new CounterGrainProxy_IncrementAsyncInvokable())", generated);
+        // Invokable structs must have a Clone() method for data isolation.
+        Assert.Contains("public CounterGrainProxy_IncrementAsyncInvokable Clone()", generated);
+        Assert.Contains("public CounterGrainProxy_ResetAsyncInvokable Clone()", generated);
+        // No-arg invokables: Clone() returns this (zero cost).
+        Assert.Contains("return this;", generated);
+        // Proxy methods call .Clone() on the new invokable.
+        Assert.Contains("_invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(_grainId, new CounterGrainProxy_IncrementAsyncInvokable().Clone())", generated);
         Assert.Contains(
-            "return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, new CounterGrainProxy_ResetAsyncInvokable()));",
+            "return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, new CounterGrainProxy_ResetAsyncInvokable().Clone()));",
             generated);
         Assert.Contains("internal sealed class CounterGrainProxy_TransportDispatcher", generated);
         Assert.Contains(": global::Quark.Core.Abstractions.Hosting.ITransportGrainDispatcher", generated);
