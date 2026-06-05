@@ -15,6 +15,8 @@
         <Project Path="src/Quark.Serialization.Abstractions/Quark.Serialization.Abstractions.csproj"/>
         <Project Path="src/Quark.Serialization/Quark.Serialization.csproj"/>
         <Project Path="src/Quark.Server/Quark.Server.csproj"/>
+        <Project Path="src/Quark.Streaming.Abstractions/Quark.Streaming.Abstractions.csproj"/>
+        <Project Path="src/Quark.Streaming.InMemory/Quark.Streaming.InMemory.csproj"/>
         <Project Path="src/Quark.Testing/Quark.Testing.csproj"/>
         <Project Path="src/Quark.Transport.Abstractions/Quark.Transport.Abstractions.csproj"/>
         <Project Path="src/Quark.Transport.Tcp/Quark.Transport.Tcp.csproj"/>
