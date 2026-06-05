@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -81,11 +82,7 @@ public sealed class SiloHostedService : IHostedService
             return;
         }
 
-        IEnumerable<object> registrations = (IEnumerable<object>?)_services.GetService(
-            typeof(IEnumerable<RuntimeServiceCollectionExtensions.IGrainRegistration>)) ?? [];
-
-        foreach (RuntimeServiceCollectionExtensions.IGrainRegistration? reg in registrations
-                     .Cast<RuntimeServiceCollectionExtensions.IGrainRegistration>())
+        foreach (var reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainRegistration>())
         {
             reg.Apply(typeRegistry);
         }
@@ -100,11 +97,7 @@ public sealed class SiloHostedService : IHostedService
             return;
         }
 
-        IEnumerable<object> registrations = (IEnumerable<object>?)_services.GetService(
-            typeof(IEnumerable<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>)) ?? [];
-
-        foreach (RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration reg in registrations
-                     .Cast<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>())
+        foreach (var reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>())
         {
             reg.Apply(dispatcherRegistry);
         }
