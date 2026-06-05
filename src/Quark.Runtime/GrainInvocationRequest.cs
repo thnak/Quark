@@ -5,4 +5,4 @@ namespace Quark.Runtime;
 /// <summary>
 ///     Payload contract for a network-routed grain call.
 /// </summary>
-public sealed record GrainInvocationRequest(GrainId GrainId, uint MethodId, object?[]? Arguments);
+public sealed record GrainInvocationRequest(GrainId GrainId, uint MethodId, ReadOnlyMemory<byte> ArgumentPayload);

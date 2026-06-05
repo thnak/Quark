@@ -400,7 +400,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         sb.AppendLine("    public async global::System.Threading.Tasks.Task<object?> DispatchAsync(");
         sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
         sb.AppendLine("        uint methodId,");
-        sb.AppendLine("        object?[]? args,");
+        sb.AppendLine("        global::System.ReadOnlyMemory<byte> argumentPayload,");
         sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker invoker,");
         sb.AppendLine("        global::System.Threading.CancellationToken ct = default)");
         sb.AppendLine("    {");
@@ -410,14 +410,27 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         foreach (MethodModel method in m.Methods)
         {
             string structName = $"{m.ProxyClassName}_{method.Name}Invokable";
+
+            sb.AppendLine($"            case {method.MethodId}u:");
+            sb.AppendLine("            {");
+
+            if (method.Parameters.Count > 0)
+            {
+                sb.AppendLine("                var _reader = new global::Quark.Serialization.Abstractions.Buffers.CodecReader(argumentPayload);");
+                for (int i = 0; i < method.Parameters.Count; i++)
+                {
+                    string fqType = method.Parameters[i].FqTypeName;
+                    sb.AppendLine($"                var _arg{i} = ({fqType})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref _reader)!;");
+                }
+            }
+
             string ctorArgs = method.Parameters.Count == 0
                 ? string.Empty
-                : string.Join(", ", method.Parameters.Select((p, i) => $"({p.FqTypeName})args![{i}]!"));
+                : string.Join(", ", Enumerable.Range(0, method.Parameters.Count).Select(i => $"_arg{i}"));
             string structCreate = method.Parameters.Count == 0
                 ? $"new {structName}()"
                 : $"new {structName}({ctorArgs})";
 
-            sb.AppendLine($"            case {method.MethodId}u:");
             if (m.IsObserver)
             {
                 sb.AppendLine($"                await invoker.InvokeObserverAsync<{structName}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
@@ -432,6 +445,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 sb.AppendLine($"                return await invoker.InvokeAsync<{structName}, {method.TaskResultType}>(grainId, {structCreate}, ct).ConfigureAwait(false);");
             }
+
+            sb.AppendLine("            }");
         }
 
         sb.AppendLine("        }");

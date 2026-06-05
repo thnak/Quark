@@ -36,10 +36,11 @@ public sealed class MessageSerializerTests
     [Fact]
     public void GrainInvocation_Request_And_Response_RoundTrip()
     {
+        ReadOnlyMemory<byte> argPayload = GrainMessageSerializer.SerializeArgs(42, "hello", true);
         GrainInvocationRequest request = new(
             new GrainId(new GrainType("CounterGrain"), "abc"),
             7u,
-            new object?[] { 42, "hello", true });
+            argPayload);
 
         GrainMessageSerializer serializer = new();
 
@@ -48,7 +49,7 @@ public sealed class MessageSerializerTests
 
         Assert.Equal(request.GrainId, decodedRequest.GrainId);
         Assert.Equal(request.MethodId, decodedRequest.MethodId);
-        Assert.Equal(request.Arguments, decodedRequest.Arguments);
+        Assert.Equal(request.ArgumentPayload.ToArray(), decodedRequest.ArgumentPayload.ToArray());
 
         GrainInvocationResponse response = new(true, 99L, null);
         byte[] responseBytes = serializer.SerializeResponse(response);

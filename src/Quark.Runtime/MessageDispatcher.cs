@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Reminders;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
@@ -59,9 +60,10 @@ public sealed class MessageDispatcher : IMessageDispatcher
             // transport dispatcher needed per grain type.
             if (request.MethodId == ReminderMethodIds.ReceiveReminder)
             {
-                var invokable = new ReceiveReminderInvokable(
-                    (string)request.Arguments![0]!,
-                    (TickStatus)request.Arguments[1]!);
+                CodecReader reminderReader = new(request.ArgumentPayload);
+                string reminderName = (string)GrainMessageSerializer.ReadArg(ref reminderReader)!;
+                var tickStatus = (TickStatus)GrainMessageSerializer.ReadArg(ref reminderReader)!;
+                var invokable = new ReceiveReminderInvokable(reminderName, tickStatus);
                 await _invoker.InvokeVoidAsync(request.GrainId, invokable, cancellationToken)
                     .ConfigureAwait(false);
                 result = null;
@@ -71,7 +73,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 ITransportGrainDispatcher dispatcher =
                     _dispatcherRegistry.GetDispatcher(request.GrainId.Type);
                 result = await dispatcher
-                    .DispatchAsync(request.GrainId, request.MethodId, request.Arguments, _invoker,
+                    .DispatchAsync(request.GrainId, request.MethodId, request.ArgumentPayload, _invoker,
                         cancellationToken)
                     .ConfigureAwait(false);
             }

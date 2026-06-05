@@ -38,7 +38,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         GrainInvocationRequest request = new(
             new GrainId(new GrainType("DispatchCounterGrain"), "counter-1"),
             IncrementMethodId,
-            null);
+            ReadOnlyMemory<byte>.Empty);
 
         MessageEnvelope envelope = new()
         {
@@ -69,7 +69,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             Payload = _fixture.Serializer.SerializeRequest(new GrainInvocationRequest(
                 grainId,
                 IncrementMethodId,
-                null))
+                ReadOnlyMemory<byte>.Empty))
         };
 
         _ = await _fixture.Dispatcher.DispatchAsync(increment);
@@ -81,7 +81,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             Payload = _fixture.Serializer.SerializeRequest(new GrainInvocationRequest(
                 grainId,
                 ResetMethodId,
-                null))
+                ReadOnlyMemory<byte>.Empty))
         };
 
         MessageEnvelope? oneWayResponse = await _fixture.Dispatcher.DispatchAsync(reset);
@@ -94,7 +94,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             Payload = _fixture.Serializer.SerializeRequest(new GrainInvocationRequest(
                 grainId,
                 GetValueMethodId,
-                null))
+                ReadOnlyMemory<byte>.Empty))
         };
 
         MessageEnvelope? valueResponseEnvelope = await _fixture.Dispatcher.DispatchAsync(getValue);
@@ -158,7 +158,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         public static readonly DispatchCounterGrainProxy_TransportDispatcher Instance = new();
 
         public async Task<object?> DispatchAsync(
-            GrainId grainId, uint methodId, object?[]? args,
+            GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
             IGrainCallInvoker invoker, CancellationToken ct = default)
         {
             switch (methodId)

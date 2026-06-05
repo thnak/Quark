@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using Quark.Core.Abstractions.Identity;
+using Quark.Core.Abstractions.Reminders;
 using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Runtime;
@@ -19,13 +20,8 @@ public sealed class GrainMessageSerializer
         writer.WriteString(request.GrainId.Type.Value);
         writer.WriteString(request.GrainId.Key);
         writer.WriteVarUInt32(request.MethodId);
-
-        object?[] args = request.Arguments ?? [];
-        writer.WriteVarUInt32((uint)args.Length);
-        foreach (object? arg in args)
-        {
-            WriteValue(writer, arg);
-        }
+        if (request.ArgumentPayload.Length > 0)
+            writer.WriteRaw(request.ArgumentPayload.Span);
 
         return buffer.WrittenMemory.ToArray();
     }
@@ -37,15 +33,9 @@ public sealed class GrainMessageSerializer
         GrainType grainType = new(reader.ReadString());
         string key = reader.ReadString();
         uint methodId = reader.ReadVarUInt32();
-        uint argCount = reader.ReadVarUInt32();
+        ReadOnlyMemory<byte> argPayload = buffer.Slice(reader.Position);
 
-        object?[] arguments = new object?[argCount];
-        for (int i = 0; i < argCount; i++)
-        {
-            arguments[i] = ReadValue(reader);
-        }
-
-        return new GrainInvocationRequest(new GrainId(grainType, key), methodId, arguments);
+        return new GrainInvocationRequest(new GrainId(grainType, key), methodId, argPayload);
     }
 
     /// <summary>Serializes a grain invocation response.</summary>
@@ -70,6 +60,26 @@ public sealed class GrainMessageSerializer
         string? error = ReadValue(reader) as string;
         return new GrainInvocationResponse(success, result, error);
     }
+
+    /// <summary>
+    ///     Builds a serialized argument payload from boxed values.
+    ///     Intended for tests and hand-written senders; generated proxies emit typed write calls directly.
+    /// </summary>
+    public static ReadOnlyMemory<byte> SerializeArgs(params object?[] args)
+    {
+        if (args.Length == 0) return ReadOnlyMemory<byte>.Empty;
+        ArrayBufferWriter<byte> buffer = new();
+        CodecWriter writer = new(buffer);
+        foreach (object? arg in args)
+            WriteValue(writer, arg);
+        return buffer.WrittenMemory.ToArray();
+    }
+
+    /// <summary>
+    ///     Reads one tagged argument value from <paramref name="reader" />.
+    ///     Called by generated <c>*_TransportDispatcher</c> classes.
+    /// </summary>
+    public static object? ReadArg(ref CodecReader reader) => ReadValue(reader);
 
     private static void WriteValue(CodecWriter writer, object? value)
     {
@@ -121,10 +131,13 @@ public sealed class GrainMessageSerializer
             case decimal dec:
                 writer.WriteByte((byte)ValueKind.Decimal);
                 foreach (int part in decimal.GetBits(dec))
-                {
                     writer.WriteInt32(part);
-                }
-
+                break;
+            case TickStatus ts:
+                writer.WriteByte((byte)ValueKind.TickStatus);
+                writer.WriteInt64(ts.FirstTickTime.UtcTicks);
+                writer.WriteInt64(ts.Period.Ticks);
+                writer.WriteInt64(ts.CurrentTickTime.UtcTicks);
                 break;
             default:
                 throw new NotSupportedException(
@@ -154,6 +167,10 @@ public sealed class GrainMessageSerializer
                 reader.ReadInt32(),
                 reader.ReadInt32()
             ]),
+            ValueKind.TickStatus => new TickStatus(
+                new DateTimeOffset(reader.ReadInt64(), TimeSpan.Zero),
+                TimeSpan.FromTicks(reader.ReadInt64()),
+                new DateTimeOffset(reader.ReadInt64(), TimeSpan.Zero)),
             _ => throw new NotSupportedException($"Unsupported serialized value kind '{kind}'.")
         };
     }
@@ -171,6 +188,7 @@ public sealed class GrainMessageSerializer
         ByteArray = 8,
         Double = 9,
         Single = 10,
-        Decimal = 11
+        Decimal = 11,
+        TickStatus = 12
     }
 }
