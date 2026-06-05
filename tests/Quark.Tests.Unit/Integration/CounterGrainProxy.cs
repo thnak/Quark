@@ -3,7 +3,7 @@ using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Tests.Unit.Integration;
 
-public sealed class CounterGrainProxy : ICounterGrain
+public sealed class CounterGrainProxy : ICounterGrain, IGrainProxyActivator<CounterGrainProxy>
 {
     private readonly GrainId _grainId;
     private readonly IGrainCallInvoker _invoker;
@@ -13,6 +13,9 @@ public sealed class CounterGrainProxy : ICounterGrain
         _grainId = grainId;
         _invoker = invoker;
     }
+
+    public static CounterGrainProxy Create(GrainId grainId, IGrainCallInvoker invoker)
+        => new(grainId, invoker);
 
     public Task<long> IncrementAsync()
         => _invoker.InvokeAsync<CounterGrain_IncrementInvokable, long>(_grainId, new CounterGrain_IncrementInvokable());

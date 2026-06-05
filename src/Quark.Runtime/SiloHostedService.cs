@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Runtime.Clustering;
 
 namespace Quark.Runtime;
 
@@ -53,6 +55,15 @@ public sealed class SiloHostedService : IHostedService
 
         await _lifecycle.StartAsync(cancellationToken).ConfigureAwait(false);
 
+        // Register this silo in the cluster router so remote silos can forward calls to us.
+        var router = _services.GetService(typeof(ISiloRouter)) as ISiloRouter;
+        if (router is not null)
+        {
+            var invoker = _services.GetRequiredService<IGrainCallInvoker>();
+            router.Register(_options.SiloAddress, invoker);
+            _logger.LogDebug("Silo {SiloAddress} registered in cluster router.", _options.SiloAddress);
+        }
+
         _logger.LogInformation("Quark silo '{SiloName}' is active.", _options.SiloName);
     }
 
@@ -60,6 +71,10 @@ public sealed class SiloHostedService : IHostedService
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Stopping Quark silo '{SiloName}'...", _options.SiloName);
+
+        // Remove from router before stopping so no new calls are routed here.
+        var router = _services.GetService(typeof(ISiloRouter)) as ISiloRouter;
+        router?.Unregister(_options.SiloAddress);
 
         var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
         if (messagePump is not null)

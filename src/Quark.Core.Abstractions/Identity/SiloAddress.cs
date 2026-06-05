@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace Quark.Runtime;
+namespace Quark.Core.Abstractions.Identity;
 
 /// <summary>
 ///     Identifies the network endpoint of a single Quark silo.

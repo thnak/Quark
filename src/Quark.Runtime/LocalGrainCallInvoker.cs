@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Runtime;
@@ -28,6 +29,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly ObserverRegistry? _observerRegistry;
     private readonly IServiceProvider _services;
     private readonly SiloAddress _siloAddress;
+    private readonly ISiloRouter? _siloRouter;
     private readonly IGrainTypeRegistry _typeRegistry;
 
     /// <summary>Initialises the local grain invoker.</summary>
@@ -48,7 +50,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         ILogger<GrainActivation> activationLogger,
         ObserverRegistry? observerRegistry = null,
         IGrainFactory? grainFactory = null,
-        ICopierProvider? copierProvider = null)
+        ICopierProvider? copierProvider = null,
+        ISiloRouter? siloRouter = null)
     {
         _activationTable = activationTable;
         _activator = activator;
@@ -63,6 +66,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _activationLogger = activationLogger;
         _observerRegistry = observerRegistry;
         _copierProvider = copierProvider;
+        _siloRouter = siloRouter;
     }
 
     /// <inheritdoc />
@@ -76,6 +80,11 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         activity?.SetTag("grain.type", grainId.Type.Value);
         activity?.SetTag("grain.key", grainId.Key);
         activity?.SetTag("grain.method_id", invokable.MethodId);
+
+        IGrainCallInvoker? remote = TryRouteRemote(grainId);
+        if (remote is not null)
+            return await remote.InvokeAsync<TInvokable, TResult>(grainId, invokable, cancellationToken)
+                .ConfigureAwait(false);
 
         GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
 
@@ -123,6 +132,13 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         activity?.SetTag("grain.type", grainId.Type.Value);
         activity?.SetTag("grain.key", grainId.Key);
         activity?.SetTag("grain.method_id", invokable.MethodId);
+
+        IGrainCallInvoker? remote = TryRouteRemote(grainId);
+        if (remote is not null)
+        {
+            await remote.InvokeVoidAsync(grainId, invokable, cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
 
@@ -180,6 +196,22 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    ///     Returns the remote invoker for <paramref name="grainId" /> if the grain is owned by another silo,
+    ///     or <see langword="null" /> if the grain should be activated locally.
+    ///     Also removes stale directory entries for silos no longer in the router.
+    /// </summary>
+    private IGrainCallInvoker? TryRouteRemote(GrainId grainId)
+    {
+        if (_siloRouter is null) return null;
+        if (!_directory.TryLookup(grainId, out SiloAddress owner)) return null;
+        if (owner == _siloAddress) return null;
+        if (_siloRouter.TryGetInvoker(owner, out IGrainCallInvoker? remote)) return remote;
+        // Directory points to a silo that is no longer in the router — remove stale entry
+        _directory.TryUnregister(grainId, owner);
+        return null;
+    }
 
     private async Task<GrainActivation> GetOrActivateAsync(GrainId grainId, CancellationToken ct)
     {

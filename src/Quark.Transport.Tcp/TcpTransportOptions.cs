@@ -14,4 +14,10 @@ public sealed class TcpTransportOptions : TransportOptions
     ///     Enable SO_KEEPALIVE. Default: <c>true</c>.
     /// </summary>
     public bool KeepAlive { get; set; } = true;
+
+    /// <summary>
+    ///     Optional TLS configuration. When set, all TCP connections are wrapped in <c>SslStream</c>.
+    ///     Configure via <c>UseTls()</c> on the silo builder.
+    /// </summary>
+    public TlsOptions? Tls { get; set; }
 }

@@ -59,12 +59,15 @@ public sealed class TestCluster : IAsyncDisposable
             throw new InvalidOperationException("TestCluster is already started.");
         }
 
+        SharedTestClusterState? sharedState = _options.EnableClustering ? new SharedTestClusterState() : null;
+        _options.SharedClusterState = sharedState;
+
         for (int i = 0; i < _options.InitialSilosCount; i++)
         {
             int siloPort = _options.BaseSiloPort + i;
             int gatewayPort = _options.BaseGatewayPort + i;
 
-            TestSilo silo = new($"TestSilo-{i}", siloPort, gatewayPort, _options);
+            TestSilo silo = new($"TestSilo-{i}", siloPort, gatewayPort, _options, sharedState);
             await silo.StartAsync(cancellationToken).ConfigureAwait(false);
             _silos.Add(silo);
         }

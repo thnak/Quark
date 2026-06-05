@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Quark.Transport.Abstractions;
@@ -8,7 +9,7 @@ using Quark.Transport.Abstractions;
 namespace Quark.Transport.Tcp;
 
 /// <summary>
-///     Wraps a <see cref="Socket" /> as an <see cref="ITransportConnection" /> backed by
+///     Wraps a <see cref="Socket" /> (plain or TLS) as an <see cref="ITransportConnection" /> backed by
 ///     <see cref="System.IO.Pipelines" /> for efficient buffer management.
 /// </summary>
 internal sealed class TcpTransportConnection : ITransportConnection
@@ -18,10 +19,20 @@ internal sealed class TcpTransportConnection : ITransportConnection
     private readonly ILogger _logger;
     private readonly Pipe _outputPipe = new();
     private readonly Socket _socket;
+    private readonly Stream _stream;
 
+    /// <summary>Creates a plain-TCP connection.</summary>
     internal TcpTransportConnection(Socket socket, ILogger logger)
+        : this(socket, new NetworkStream(socket, ownsSocket: false), logger) { }
+
+    /// <summary>Creates a TLS connection backed by the provided <paramref name="sslStream" />.</summary>
+    internal TcpTransportConnection(Socket socket, SslStream sslStream, ILogger logger)
+        : this(socket, (Stream)sslStream, logger) { }
+
+    private TcpTransportConnection(Socket socket, Stream stream, ILogger logger)
     {
         _socket = socket;
+        _stream = stream;
         ConnectionId = Guid.NewGuid().ToString("N");
         LocalEndPoint = socket.LocalEndPoint;
         RemoteEndPoint = socket.RemoteEndPoint;
@@ -69,10 +80,10 @@ internal sealed class TcpTransportConnection : ITransportConnection
     }
 
     /// <inheritdoc />
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await _stream.DisposeAsync().ConfigureAwait(false);
         _socket.Dispose();
-        return ValueTask.CompletedTask;
     }
 
     private async Task FillInputPipeAsync(CancellationToken ct)
@@ -83,7 +94,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
             while (true)
             {
                 Memory<byte> buffer = writer.GetMemory(4096);
-                int read = await _socket.ReceiveAsync(buffer, SocketFlags.None, ct).ConfigureAwait(false);
+                int read = await _stream.ReadAsync(buffer, ct).ConfigureAwait(false);
                 if (read == 0)
                 {
                     break;
@@ -119,7 +130,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
 
                 foreach (ReadOnlyMemory<byte> segment in buffer)
                 {
-                    await _socket.SendAsync(segment, SocketFlags.None, ct).ConfigureAwait(false);
+                    await _stream.WriteAsync(segment, ct).ConfigureAwait(false);
                 }
 
                 reader.AdvanceTo(buffer.End);

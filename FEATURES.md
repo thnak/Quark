@@ -27,9 +27,9 @@ Orleans architecture reference: [`README.md`](README.md)
 
 ## Phase 4 — Distributed infrastructure
 
-- [ ] **F-10** Real multi-silo clustering (`IMembershipTable`, membership oracle, distributed `IGrainDirectory`) — _Complexity: XL_
-- [ ] **F-12** `ILocalSiloDetails` (silo address/name/cluster metadata injectable into grains) — _Complexity: S_ _(after F-10)_
-- [ ] **F-13** TLS transport (`UseTls()`, `TlsOptions`, `SslStream` integration in TCP transport) — _Complexity: L_ _(after F-10)_
+- [x] **F-10** Real multi-silo clustering (`IMembershipTable`, membership oracle, distributed `IGrainDirectory`) — _Complexity: XL_
+- [x] **F-12** `ILocalSiloDetails` (silo address/name/cluster metadata injectable into grains) — _Complexity: S_ _(after F-10)_
+- [x] **F-13** TLS transport (`UseTls()`, `TlsOptions`, `SslStream` integration in TCP transport) — _Complexity: L_ _(after F-10)_
 
 ## Phase 5 — Complex subsystems
 

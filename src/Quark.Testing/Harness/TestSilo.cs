@@ -1,6 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Quark.Core.Abstractions.Clustering;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
+using Quark.Runtime;
+using Quark.Runtime.Clustering;
 
 namespace Quark.Testing.Harness;
 
@@ -10,13 +17,16 @@ namespace Quark.Testing.Harness;
 public sealed class TestSilo : IAsyncDisposable
 {
     private IHost? _host;
+    private readonly SharedTestClusterState? _sharedState;
 
-    internal TestSilo(string name, int siloPort, int gatewayPort, TestClusterOptions options)
+    internal TestSilo(string name, int siloPort, int gatewayPort, TestClusterOptions options,
+        SharedTestClusterState? sharedState = null)
     {
         Name = name;
         SiloPort = siloPort;
         GatewayPort = gatewayPort;
         Options = options;
+        _sharedState = sharedState;
     }
 
     /// <summary>Friendly name of this silo (used in logs and diagnostics).</summary>
@@ -55,7 +65,29 @@ public sealed class TestSilo : IAsyncDisposable
         HostApplicationBuilder builder = Host.CreateApplicationBuilder();
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
-        // Minimal silo setup — will expand in M3 to include real silo runtime.
+        // If clustering is enabled, inject shared state before caller services so they can override.
+        if (_sharedState is not null)
+        {
+            // Override default single-node directory with the shared one.
+            builder.Services.RemoveAll<IGrainDirectory>();
+            builder.Services.AddSingleton<IGrainDirectory>(_sharedState.Directory);
+            builder.Services.AddSingleton<InMemoryGrainDirectory>(_sharedState.Directory);
+
+            // Shared router and membership table.
+            builder.Services.AddSingleton<ISiloRouter>(_sharedState.Router);
+            builder.Services.AddSingleton<IMembershipTable>(_sharedState.MembershipTable);
+
+            // Per-silo address (unique port per silo).
+            builder.Services.Configure<SiloRuntimeOptions>(o =>
+            {
+                o.SiloName = Name;
+                o.SiloAddress = SiloAddress.Loopback(SiloPort);
+                o.GatewayAddress = SiloAddress.Loopback(GatewayPort);
+            });
+
+            builder.Services.AddHostedService<MembershipOracle>();
+        }
+
         Options.ConfigureSiloServices?.Invoke(builder.Services);
         Options.ConfigureClientServices?.Invoke(builder.Services);
 

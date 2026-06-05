@@ -21,4 +21,17 @@ public sealed class TestClusterOptions
 
     /// <summary>Called to add additional services to the client's DI container.</summary>
     public Action<IServiceCollection>? ConfigureClientServices { get; set; }
+
+    /// <summary>
+    ///     When <see langword="true" />, all silos in the cluster share a grain directory, router,
+    ///     and membership table so grains are reachable across silo boundaries.
+    ///     Default: <see langword="false" /> (each silo is independent).
+    /// </summary>
+    public bool EnableClustering { get; set; }
+
+    /// <summary>
+    ///     Shared clustering state injected into each silo when <see cref="EnableClustering" /> is true.
+    ///     Created automatically by <see cref="TestCluster" />.
+    /// </summary>
+    internal SharedTestClusterState? SharedClusterState { get; set; }
 }

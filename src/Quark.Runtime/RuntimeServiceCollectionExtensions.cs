@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Runtime;
@@ -36,6 +37,9 @@ public static class RuntimeServiceCollectionExtensions
         // Grain type registry — populated via AddGrain<T>() calls.
         services.TryAddSingleton<GrainTypeRegistry>();
         services.TryAddSingleton<IGrainTypeRegistry>(sp => sp.GetRequiredService<GrainTypeRegistry>());
+
+        // Silo identity — readable by grains and services via ILocalSiloDetails.
+        services.TryAddSingleton<ILocalSiloDetails, LocalSiloDetails>();
 
         // Grain directory — in-memory for single-node / testing; swap for clustered.
         services.TryAddSingleton<InMemoryGrainDirectory>();
@@ -68,7 +72,8 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<ILogger<LocalGrainCallInvoker>>(),
             sp.GetRequiredService<ILogger<GrainActivation>>(),
             sp.GetService<ObserverRegistry>(),
-            copierProvider: sp.GetService<ICopierProvider>()));
+            copierProvider: sp.GetService<ICopierProvider>(),
+            siloRouter: sp.GetService<ISiloRouter>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services for transport-routed grain calls.
