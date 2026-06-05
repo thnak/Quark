@@ -39,27 +39,44 @@ internal sealed class GrainTimer<TState> : IGrainTimer
 
     private void OnFire(object? _)
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
 
         if (!_interleave && Interlocked.CompareExchange(ref _pending, 1, 0) != 0)
+        {
             return;
+        }
 
-        var postTask = _post(async () =>
+        ValueTask postTask = _post(async () =>
         {
             try
             {
-                if (!_disposed) await _callback(_state, CancellationToken.None).ConfigureAwait(false);
+                if (!_disposed)
+                {
+                    await _callback(_state, CancellationToken.None).ConfigureAwait(false);
+                }
             }
             finally
             {
-                if (!_interleave) Interlocked.Exchange(ref _pending, 0);
+                if (!_interleave)
+                {
+                    Interlocked.Exchange(ref _pending, 0);
+                }
             }
         });
 
         if (!postTask.IsCompletedSuccessfully)
         {
-            _ = postTask.AsTask().ContinueWith(
-                t => { if (!_interleave) Interlocked.Exchange(ref _pending, 0); },
+            Task __ = postTask.AsTask().ContinueWith(
+                _ =>
+                {
+                    if (!_interleave)
+                    {
+                        Interlocked.Exchange(ref _pending, 0);
+                    }
+                },
                 CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);

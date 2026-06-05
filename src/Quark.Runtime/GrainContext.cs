@@ -52,15 +52,21 @@ public sealed class GrainContext : IGrainContext
     /// <inheritdoc />
     public void Deactivate(DeactivationReason reason)
     {
-        if (_status == GrainActivationStatus.Active ||
-            _status == GrainActivationStatus.Activating)
+        if (_status != GrainActivationStatus.Active &&
+            _status != GrainActivationStatus.Activating)
         {
-            DeactivationReason = reason;
-            _status = GrainActivationStatus.Deactivating;
-            if (_deactivationCallback is { } cb)
-                cb(reason);
-            else
-                _ = StopInternalAsync(default);
+            return;
+        }
+
+        DeactivationReason = reason;
+        _status = GrainActivationStatus.Deactivating;
+        if (_deactivationCallback is { } cb)
+        {
+            cb(reason);
+        }
+        else
+        {
+            _ = StopInternalAsync(CancellationToken.None);
         }
     }
 
@@ -71,12 +77,16 @@ public sealed class GrainContext : IGrainContext
         GrainTimerCreationOptions options)
     {
         if (_scheduler is null)
+        {
             throw new InvalidOperationException(
                 "Grain is not activated yet. Call RegisterGrainTimer from OnActivateAsync or a grain method.");
+        }
 
         if (_status is GrainActivationStatus.Deactivating or GrainActivationStatus.Inactive)
+        {
             throw new InvalidOperationException(
                 "Cannot register a timer on a deactivating or inactive grain.");
+        }
 
         var timer = new GrainTimer<TState>(callback, state, options, _scheduler);
         lock (_timersLock)
@@ -141,7 +151,10 @@ public sealed class GrainContext : IGrainContext
             timers = [.. _timers];
             _timers.Clear();
         }
-        foreach (IGrainTimer timer in timers) timer.Dispose();
+        foreach (IGrainTimer timer in timers)
+        {
+            timer.Dispose();
+        }
     }
 
     private async Task StopInternalAsync(CancellationToken cancellationToken)
@@ -150,7 +163,10 @@ public sealed class GrainContext : IGrainContext
         {
             DisposeTimers();
             if (_grain is { } grain && DeactivationReason is { } reason)
+            {
                 await grain.OnDeactivateAsync(reason, cancellationToken).ConfigureAwait(false);
+            }
+
             await Lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
