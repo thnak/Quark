@@ -20,7 +20,7 @@ public class MonsterGrain : Grain, IMonsterGrain
         _timer = RegisterGrainTimer(
             _ => Move(),
             TimeSpan.FromSeconds(150),
-            TimeSpan.FromMinutes(150));
+            TimeSpan.FromSeconds(150));
     }
 
     public Task<MonsterInfo?> GetInfoAsync() => Task.FromResult(_info);

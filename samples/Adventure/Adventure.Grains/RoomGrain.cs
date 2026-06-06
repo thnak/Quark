@@ -87,8 +87,8 @@ public class RoomGrain : Grain, IRoomGrain
     {
         var thing = _things.FirstOrDefault(
             t => string.Equals(t.Name, thingName, StringComparison.OrdinalIgnoreCase));
-        if (thing is null || !thing.CanCarry)
-            return Task.FromResult<Thing?>(null);
+        if (thing is null) return Task.FromResult<Thing?>(null);
+        if (!thing.CanCarry) return Task.FromResult<Thing?>(thing);  // found but not carryable
         _things.Remove(thing);
         return Task.FromResult<Thing?>(thing);
     }

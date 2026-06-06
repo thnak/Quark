@@ -52,6 +52,7 @@ public class PlayerGrain : Grain, IPlayerGrain
         if (_room is null) return "You are nowhere.";
         var thing = await _room.PickUpAsync(Me(), thingName);
         if (thing is null) return $"There is no '{thingName}' here.";
+        if (!thing.CanCarry) return $"You can't pick up the {thing.Name}.";
         _inventory.Add(thing);
         return $"You pick up the {thing.Name}.";
     }
