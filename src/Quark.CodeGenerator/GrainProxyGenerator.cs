@@ -22,6 +22,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     private const string IGrainObserverProxyActivatorFqn = "Quark.Core.Abstractions.Hosting.IGrainObserverProxyActivator";
     private const string ImmutableAttributeFqn = "Quark.Core.Abstractions.ImmutableAttribute";
     private const string GenerateSerializerFqn = "Quark.Serialization.Abstractions.Attributes.GenerateSerializerAttribute";
+    private const string IGrainWithStringKeyFqn  = "Quark.Core.Abstractions.Grains.IGrainWithStringKey";
+    private const string IGrainWithGuidKeyFqn    = "Quark.Core.Abstractions.Grains.IGrainWithGuidKey";
+    private const string IGrainWithIntegerKeyFqn = "Quark.Core.Abstractions.Grains.IGrainWithIntegerKey";
 
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -315,6 +318,21 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             return new SerializeInfo(SerializeKind.GeneratedCodec, copierFq: copierFq);
         }
 
+        // Grain-ref parameters — type implements IGrain
+        if (type is INamedTypeSymbol grainNamed)
+        {
+            bool isGrain = false;
+            SerializeKind grainRefKind = SerializeKind.GrainRefString; // default
+            foreach (INamedTypeSymbol iface in grainNamed.AllInterfaces)
+            {
+                string ifaceFqn = iface.ToDisplayString();
+                if (ifaceFqn == IGrainFqn)               isGrain = true;
+                if (ifaceFqn == IGrainWithGuidKeyFqn)    grainRefKind = SerializeKind.GrainRefGuid;
+                if (ifaceFqn == IGrainWithIntegerKeyFqn) grainRefKind = SerializeKind.GrainRefInteger;
+            }
+            if (isGrain) return new SerializeInfo(grainRefKind);
+        }
+
         return new SerializeInfo(SerializeKind.Fallback);
     }
 
@@ -338,6 +356,10 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.Bytes   => $"writer.WriteBytes({valueExpr} ?? global::System.Array.Empty<byte>());",
             SerializeKind.Guid    => $"writer.WriteRaw({valueExpr}.ToByteArray());",
             SerializeKind.GeneratedCodec => $"{copierFq}.WriteStatic(ref writer, {valueExpr});",
+            SerializeKind.GrainRefString
+                or SerializeKind.GrainRefGuid
+                or SerializeKind.GrainRefInteger =>
+                $"writer.WriteString(((global::Quark.Core.Abstractions.Hosting.IGrainProxy){valueExpr}).GrainId.Key);",
             _ => $"global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, {valueExpr});"
         };
 
@@ -361,6 +383,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.Bytes   => "reader.ReadBytes()",
             SerializeKind.Guid    => "new global::System.Guid(reader.ReadRaw(16))",
             SerializeKind.GeneratedCodec => $"{copierFq}.ReadStatic(ref reader)!",
+            SerializeKind.GrainRefString   => $"factory!.GetGrain<{fqTypeName}>(reader.ReadString())",
+            SerializeKind.GrainRefGuid     => $"factory!.GetGrain<{fqTypeName}>(global::System.Guid.ParseExact(reader.ReadString(), \"N\"))",
+            SerializeKind.GrainRefInteger  => $"factory!.GetGrain<{fqTypeName}>(long.Parse(reader.ReadString()))",
             _ => $"({fqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
         };
 
@@ -423,9 +448,18 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         sb.AppendLine($"internal sealed class {m.ProxyClassName}");
         sb.AppendLine($"    : {m.FqInterfaceName}");
         sb.AppendLine($"    , {activatorInterface}");
+        if (!m.IsObserver)
+        {
+            sb.AppendLine("    , global::Quark.Core.Abstractions.Hosting.IGrainProxy");
+        }
         sb.AppendLine("{");
         sb.AppendLine("    private readonly global::Quark.Core.Abstractions.Identity.GrainId _grainId;");
         sb.AppendLine("    private readonly global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker _invoker;");
+        if (!m.IsObserver)
+        {
+            sb.AppendLine();
+            sb.AppendLine("    public global::Quark.Core.Abstractions.Identity.GrainId GrainId => _grainId;");
+        }
         sb.AppendLine();
         sb.AppendLine($"    public {m.ProxyClassName}(");
         sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
@@ -615,9 +649,10 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         sb.AppendLine();
 
-        // --- static Deserialize(ref CodecReader reader) ---
+        // --- static Deserialize(ref CodecReader reader, IGrainFactory? factory = null) ---
         sb.AppendLine($"    public static {structName} Deserialize(");
-        sb.AppendLine("        ref global::Quark.Serialization.Abstractions.Buffers.CodecReader reader)");
+        sb.AppendLine("        ref global::Quark.Serialization.Abstractions.Buffers.CodecReader reader,");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainFactory? factory = null)");
         if (method.Parameters.Count == 0)
         {
             sb.AppendLine("        => new();");
@@ -852,7 +887,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             if (method.Parameters.Count > 0)
             {
                 sb.AppendLine("                var _reader = new global::Quark.Serialization.Abstractions.Buffers.CodecReader(argumentPayload);");
-                sb.AppendLine($"                var invokable = {structName}.Deserialize(ref _reader);");
+                sb.AppendLine($"                var invokable = {structName}.Deserialize(ref _reader, factory);");
             }
             else
             {
@@ -942,6 +977,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         String, Bytes, Guid,
         List, Array, Dictionary,
         GeneratedCodec,
+        GrainRefString,
+        GrainRefGuid,
+        GrainRefInteger,
         Fallback
     }
 
