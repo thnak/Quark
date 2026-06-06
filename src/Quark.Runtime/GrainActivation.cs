@@ -44,6 +44,12 @@ public sealed class GrainActivation : IAsyncDisposable
         _onDeactivated = onDeactivated;
     }
 
+    /// <summary>The grain instance.</summary>
+    public Grain Grain { get; }
+
+    /// <summary>The activation context (identity + lifecycle).</summary>
+    public GrainContext Context { get; }
+
     /// <summary>
     ///     Returns <see langword="true"/> when this activation has received no calls for longer
     ///     than <paramref name="threshold"/> as measured from <paramref name="now"/>.
@@ -53,12 +59,6 @@ public sealed class GrainActivation : IAsyncDisposable
         long lastTicks = Interlocked.Read(ref _lastAccessedTicks);
         return (now.UtcTicks - lastTicks) > threshold.Ticks;
     }
-
-    /// <summary>The grain instance.</summary>
-    public Grain Grain { get; }
-
-    /// <summary>The activation context (identity + lifecycle).</summary>
-    public GrainContext Context { get; }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
@@ -134,14 +134,15 @@ public sealed class GrainActivation : IAsyncDisposable
     /// </summary>
     public async ValueTask PostAsync(Func<Task> workItem)
     {
-        Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         if (_isReentrant)
         {
             _cts.Token.ThrowIfCancellationRequested();
+            Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
             await workItem().ConfigureAwait(false);
             return;
         }
 
+        Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         // Capture the caller's execution context so that AsyncLocal values (e.g. transaction IDs)
         // flow into the grain's execution turn even though it runs on a different thread via the channel.
         var ctx = ExecutionContext.Capture();
