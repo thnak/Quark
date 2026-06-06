@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
@@ -73,6 +74,25 @@ public sealed class GrainActivationTable : IAsyncDisposable
         {
             _activations.TryRemove(new KeyValuePair<GrainId, Lazy<Task<GrainActivation>>>(grainId, lazy));
         }
+    }
+
+    /// <summary>
+    ///     Returns a snapshot of all currently active (fully-started, non-deactivating) activations.
+    ///     Called by <see cref="GrainIdleCollector"/> each collection cycle.
+    /// </summary>
+    public IReadOnlyList<(GrainId GrainId, GrainActivation Activation)> GetActiveActivations()
+    {
+        var result = new List<(GrainId, GrainActivation)>();
+        foreach (var (grainId, lazy) in _activations)
+        {
+            if (!lazy.IsValueCreated || !lazy.Value.IsCompletedSuccessfully)
+                continue;
+
+            GrainActivation activation = lazy.Value.Result;
+            if (activation.Context.ActivationStatus == GrainActivationStatus.Active)
+                result.Add((grainId, activation));
+        }
+        return result;
     }
 
     /// <summary>
