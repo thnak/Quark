@@ -40,6 +40,9 @@ public static class RuntimeSiloBuilderExtensions
         // Membership oracle runs the IAmAlive loop and detects dead silos.
         builder.Services.AddHostedService<MembershipOracle>();
 
+        // Gateway pump accepts external TCP client connections on the gateway port.
+        builder.Services.AddHostedService<GatewayMessagePump>();
+
         // Configure silo identity.
         builder.Configure<SiloRuntimeOptions>(o =>
         {
