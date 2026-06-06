@@ -17,6 +17,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
     private readonly IGrainCallInvoker _invoker;
     private readonly GrainMessageSerializer _serializer;
 
+    /// <summary>Initializes the dispatcher.</summary>
     public MessageDispatcher(
         TransportGrainDispatcherRegistry dispatcherRegistry,
         IGrainCallInvoker invoker,
@@ -58,6 +59,8 @@ public sealed class MessageDispatcher : IMessageDispatcher
         {
             object? result;
 
+            // Well-known reminder delivery uses a typed invokable directly — no registered
+            // transport dispatcher needed per grain type.
             if (request.MethodId == ReminderMethodIds.ReceiveReminder)
             {
                 CodecReader reminderReader = new(request.ArgumentPayload);
