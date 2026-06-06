@@ -36,4 +36,17 @@ public sealed class SiloRuntimeOptions
     ///     Default: loopback on port 30000.
     /// </summary>
     public SiloAddress GatewayAddress { get; set; } = SiloAddress.Loopback(30000);
+
+    /// <summary>
+    ///     How long a grain must be idle before the collector deactivates it.
+    ///     <c>TimeSpan.Zero</c> (the default) disables automatic collection entirely.
+    /// </summary>
+    public TimeSpan GrainCollectionAge { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    ///     How often the idle-timeout collector scans for stale activations.
+    ///     Only used when <see cref="GrainCollectionAge"/> is non-zero.
+    ///     Default: 1 minute.
+    /// </summary>
+    public TimeSpan GrainCollectionInterval { get; set; } = TimeSpan.FromMinutes(1);
 }
