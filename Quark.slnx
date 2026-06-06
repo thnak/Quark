@@ -30,4 +30,10 @@
         <Project Path="tests/Quark.Tests.Fault/Quark.Tests.Fault.csproj"/>
         <Project Path="tests/Quark.Tests.Fault.Integration/Quark.Tests.Fault.Integration.csproj"/>
     </Folder>
+    <Folder Name="/samples/">
+        <Project Path="samples/Adventure/Adventure.GrainInterfaces/Adventure.GrainInterfaces.csproj"/>
+        <Project Path="samples/Adventure/Adventure.Grains/Adventure.Grains.csproj"/>
+        <Project Path="samples/Adventure/Adventure.Server/Adventure.Server.csproj"/>
+        <Project Path="samples/Adventure/Adventure.Client/Adventure.Client.csproj"/>
+    </Folder>
 </Solution>
