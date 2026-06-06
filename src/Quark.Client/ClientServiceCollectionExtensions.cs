@@ -76,12 +76,12 @@ public static class ClientServiceCollectionExtensions
 
     // -----------------------------------------------------------------------
 
-    internal interface IProxyRegistration
+    public interface IProxyRegistration
     {
         void Apply(GrainProxyFactoryRegistry proxyRegistry, GrainInterfaceTypeRegistry interfaceRegistry);
     }
 
-    internal interface IObserverProxyRegistration
+    public interface IObserverProxyRegistration
     {
         void Apply(ObserverProxyFactoryRegistry observerProxyRegistry);
     }

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <PackageId>Quark.Client.Tcp</PackageId>
+    <Description>TCP gateway client for the Quark distributed actor framework.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quark.Client\Quark.Client.csproj"/>
+    <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj"/>
+    <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Options"/>
+  </ItemGroup>
+</Project>
