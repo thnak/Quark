@@ -82,6 +82,9 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<IMessageDispatcher, MessageDispatcher>();
         services.TryAddSingleton<SiloMessagePump>();
 
+        // Idle-timeout grain collector.
+        services.AddHostedService<GrainIdleCollector>();
+
         // Hosted service drives the silo lifecycle.
         services.AddHostedService<SiloHostedService>();
 
