@@ -1,0 +1,47 @@
+{
+  "rooms": [
+    {
+      "id": 1,
+      "name": "Town Square",
+      "description": "A cobblestone square at the centre of a small town. A well stands in the middle.",
+      "exits": { "north": 2, "east": 3 },
+      "things": [
+        { "name": "sword", "category": "weapon", "canCarry": true }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Forest Edge",
+      "description": "Tall oaks line the path. Sunlight barely filters through the canopy.",
+      "exits": { "south": 1, "north": 4 },
+      "things": [
+        { "name": "mushroom", "category": "food", "canCarry": true }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Tavern",
+      "description": "A warm, smoky tavern. The barkeep nods as you enter.",
+      "exits": { "west": 1 },
+      "things": [
+        { "name": "ale", "category": "drink", "canCarry": true },
+        { "name": "bread", "category": "food", "canCarry": true }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Deep Forest",
+      "description": "The trees press close. Strange sounds echo from the darkness.",
+      "exits": { "south": 2 }
+    }
+  ],
+  "monsters": [
+    {
+      "id": 1,
+      "name": "Goblin",
+      "killOn": "sword",
+      "attack": "The Goblin snarls and lunges at you!",
+      "roomId": 2
+    }
+  ]
+}

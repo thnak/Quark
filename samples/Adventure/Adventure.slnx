@@ -1,0 +1,6 @@
+<Solution>
+    <Project Path="Adventure.GrainInterfaces/Adventure.GrainInterfaces.csproj"/>
+    <Project Path="Adventure.Grains/Adventure.Grains.csproj"/>
+    <Project Path="Adventure.Server/Adventure.Server.csproj"/>
+    <Project Path="Adventure.Client/Adventure.Client.csproj"/>
+</Solution>
