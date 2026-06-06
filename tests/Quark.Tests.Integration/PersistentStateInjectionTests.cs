@@ -9,6 +9,7 @@ using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Xunit;
 
 namespace Quark.Tests.Integration;
@@ -189,24 +190,28 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
     {
         public uint MethodId => 0u;
         public ValueTask Invoke(Grain grain) => new(((TwoSlotGrain)grain).IncrementAAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct TwoSlotGrain_IncrementBInvokable : IGrainVoidInvokable
     {
         public uint MethodId => 1u;
         public ValueTask Invoke(Grain grain) => new(((TwoSlotGrain)grain).IncrementBAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct TwoSlotGrain_GetAInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 2u;
         public ValueTask<int> Invoke(Grain grain) => new(((TwoSlotGrain)grain).GetAAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct TwoSlotGrain_GetBInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 3u;
         public ValueTask<int> Invoke(Grain grain) => new(((TwoSlotGrain)grain).GetBAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class NullGrainFactory : IGrainFactory

@@ -9,6 +9,7 @@ using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Xunit;
 
 namespace Quark.Tests.Integration;
@@ -130,12 +131,14 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
     {
         public uint MethodId => 0u;
         public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).IncrementAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct PersistentCounterGrain_GetValueInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 1u;
         public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).GetValueAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class NullGrainFactory : IGrainFactory

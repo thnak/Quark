@@ -4,6 +4,7 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Streaming.Abstractions;
 using Quark.Streaming.InMemory;
 using Quark.Testing.Harness;
@@ -137,6 +138,7 @@ public sealed class StreamingIntegrationTests
     {
         public uint MethodId => 0u;
         public ValueTask<int> Invoke(Grain grain) => new(((IStreamListenerGrain)grain).GetLastValueAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class StreamListenerGrainProxy : IStreamListenerGrain, IGrainProxyActivator<StreamListenerGrainProxy>

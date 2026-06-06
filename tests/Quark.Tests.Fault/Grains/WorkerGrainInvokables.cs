@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Tests.Fault.Grains;
 
@@ -7,4 +8,5 @@ internal readonly struct WorkerGrain_DoWorkInvokable : IGrainInvokable<WorkerSta
 {
     public uint MethodId => 0u;
     public ValueTask<WorkerStatus> Invoke(Grain grain) => new(((IWorkerGrain)grain).DoWorkAsync());
+    public void Serialize(ref CodecWriter writer) { }
 }

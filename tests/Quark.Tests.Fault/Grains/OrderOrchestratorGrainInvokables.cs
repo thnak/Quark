@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Tests.Fault.Grains;
 
@@ -13,4 +14,6 @@ internal readonly struct OrderOrchestratorGrain_ProcessInvokable : IGrainInvokab
 
     public ValueTask<OrchestratorStatus> Invoke(Grain grain)
         => new(((IOrderOrchestratorGrain)grain).ProcessAsync(_workerIds));
+
+    public void Serialize(ref CodecWriter writer) { }
 }

@@ -8,6 +8,7 @@ using Quark.Core.Abstractions.Reminders;
 using Quark.Reminders.Abstractions;
 using Quark.Reminders.InMemory;
 using Quark.Runtime;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Testing.Harness;
 using Xunit;
 
@@ -176,6 +177,7 @@ public sealed class ReminderIntegrationTests
         }
         public uint MethodId => 0u;
         public ValueTask Invoke(Grain grain) => new(((IReminderTestGrain)grain).RegisterReminderAsync(_name, _dueTime, _period));
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct ReminderTestGrainProxy_UnregisterReminderAsyncInvokable : IGrainVoidInvokable
@@ -184,12 +186,14 @@ public sealed class ReminderIntegrationTests
         public ReminderTestGrainProxy_UnregisterReminderAsyncInvokable(string name) => _name = name;
         public uint MethodId => 1u;
         public ValueTask Invoke(Grain grain) => new(((IReminderTestGrain)grain).UnregisterReminderAsync(_name));
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct ReminderTestGrainProxy_GetReceiveCountAsyncInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 2u;
         public ValueTask<int> Invoke(Grain grain) => new(((IReminderTestGrain)grain).GetReceiveCountAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct ReminderTestGrainProxy_GetReminderListAsyncInvokable : IGrainInvokable<IReadOnlyList<IGrainReminder>>
@@ -197,6 +201,7 @@ public sealed class ReminderIntegrationTests
         public uint MethodId => 3u;
         public ValueTask<IReadOnlyList<IGrainReminder>> Invoke(Grain grain)
             => new(((IReminderTestGrain)grain).GetReminderListAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     // ---- Hand-written proxy (client side) ----

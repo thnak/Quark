@@ -7,6 +7,7 @@ using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Quark.Serialization;
+using Quark.Serialization.Abstractions.Buffers;
 using Xunit;
 
 namespace Quark.Tests.Integration;
@@ -80,6 +81,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         public EventObserverProxy_OnEventAsyncInvokable(string message) => _message = message;
         public uint MethodId => 0u;
         public ValueTask Invoke(object target) => new(((IEventObserver)target).OnEventAsync(_message));
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class EventObserverProxy
@@ -142,6 +144,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
     {
         public uint MethodId => 0u;
         public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).IncrementViaSelfRefAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct EventSourceGrainProxy_PublishAsyncInvokable : IGrainVoidInvokable
@@ -155,12 +158,14 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         }
         public uint MethodId => 1u;
         public ValueTask Invoke(Grain grain) => new(((IEventSourceGrain)grain).PublishAsync(_message, _observer));
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct EventSourceGrainProxy_GetCountAsyncInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 2u;
         public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).GetCountAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class EventSourceGrainProxy

@@ -6,6 +6,7 @@ using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Quark.Serialization;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 using Xunit;
 
@@ -138,18 +139,21 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
     {
         public uint MethodId => 0u;
         public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).IncrementAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct DispatchCounterGrainProxy_GetValueAsyncInvokable : IGrainInvokable<long>
     {
         public uint MethodId => 1u;
         public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).GetValueAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct DispatchCounterGrainProxy_ResetAsyncInvokable : IGrainVoidInvokable
     {
         public uint MethodId => 2u;
         public ValueTask Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).ResetAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     // Hand-written transport dispatcher (mirror what GrainProxyGenerator would emit)

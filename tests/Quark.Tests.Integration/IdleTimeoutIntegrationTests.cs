@@ -4,6 +4,7 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Testing.Harness;
 using Xunit;
 
@@ -136,6 +137,7 @@ public sealed class IdleTimeoutIntegrationTests
     {
         public uint MethodId => 0u;
         public ValueTask Invoke(Grain grain) => new(((IIdleGrain)grain).PingAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class IdleGrainProxy : IIdleGrain, IGrainProxyActivator<IdleGrainProxy>
@@ -191,6 +193,7 @@ public sealed class IdleTimeoutIntegrationTests
     {
         public uint MethodId => 0u;
         public ValueTask Invoke(Grain grain) => new(((IDelayGrain)grain).PingAndDelayAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private sealed class DelayGrainProxy : IDelayGrain, IGrainProxyActivator<DelayGrainProxy>

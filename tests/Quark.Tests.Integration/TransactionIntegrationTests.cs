@@ -8,6 +8,7 @@ using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Testing.Harness;
 using Quark.Transactions;
 using Xunit;
@@ -143,12 +144,14 @@ public sealed class TransactionIntegrationTests
         public AccountGrain_DepositInvokable(decimal amount) => _amount = amount;
         public uint MethodId => 0u;
         public ValueTask Invoke(Grain grain) => new(((IAccountGrain)grain).DepositAsync(_amount));
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct AccountGrain_GetBalanceInvokable : IGrainInvokable<decimal>
     {
         public uint MethodId => 1u;
         public ValueTask<decimal> Invoke(Grain grain) => new(((IAccountGrain)grain).GetBalanceAsync());
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     // Proxy
