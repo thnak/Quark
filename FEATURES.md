@@ -39,3 +39,7 @@ Orleans architecture reference: [`README.md`](README.md)
 ## Phase 6 — Grain lifecycle management
 
 - [x] **F-14** Idle-timeout grain collector (`GrainCollectionAge`, `GrainCollectionInterval`, `GrainIdleCollector`) + `DelayDeactivation(TimeSpan)` — _Complexity: M_
+
+## Phase 7 — TCP gateway client
+
+- [x] **F-15** TCP Gateway Client (`TcpGatewayClusterClient`, `UseLocalhostGateway()`, `GatewayMessagePump`, `Quark.Client.Tcp`, grain-ref serialisation in code generator) — _Complexity: L_
