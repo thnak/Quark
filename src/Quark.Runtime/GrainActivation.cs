@@ -129,7 +129,18 @@ public sealed class GrainActivation : IAsyncDisposable
             return;
         }
 
-        await _queue.Writer.WriteAsync(workItem, _cts.Token).ConfigureAwait(false);
+        // Capture the caller's execution context so that AsyncLocal values (e.g. transaction IDs)
+        // flow into the grain's execution turn even though it runs on a different thread via the channel.
+        var ctx = ExecutionContext.Capture();
+        Func<Task> dispatched = ctx is null
+            ? workItem
+            : () =>
+            {
+                Task? task = null;
+                ExecutionContext.Run(ctx, _ => task = workItem(), null);
+                return task!;
+            };
+        await _queue.Writer.WriteAsync(dispatched, _cts.Token).ConfigureAwait(false);
     }
 
     private async Task RunLoopAsync(CancellationToken ct)

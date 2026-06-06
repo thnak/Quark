@@ -33,5 +33,5 @@ Orleans architecture reference: [`README.md`](README.md)
 
 ## Phase 5 — Complex subsystems
 
-- [ ] **F-07** Streams (`IAsyncStream<T>`, `IAsyncObserver<T>`, `ImplicitStreamSubscription`, in-memory stream provider) — _Complexity: XL_
-- [ ] **F-08** Transactions (`ITransactionalState<T>`, `[Transaction]`, 2-phase commit coordinator, `UseTransactions()`) — _Complexity: XL_
+- [x] **F-07** Streams (`IAsyncStream<T>`, `IAsyncObserver<T>`, `ImplicitStreamSubscription`, in-memory stream provider) — _Complexity: XL_
+- [x] **F-08** Transactions (`ITransactionalState<T>`, `[Transaction]`, 2-phase commit coordinator, `UseTransactions()`) — _Complexity: XL_
