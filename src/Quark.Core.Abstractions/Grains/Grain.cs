@@ -55,13 +55,12 @@ public abstract class Grain : IGrain
 
     /// <summary>
     ///     Delays automatic deactivation by <paramref name="timeSpan" /> from now.
-    ///     Not yet implemented in M3; reserved for the idle-timeout scheduler (M3/M6).
+    ///     Has no effect if the idle-timeout collector is disabled (<c>GrainCollectionAge = TimeSpan.Zero</c>).
     ///     Drop-in equivalent of Orleans' <c>DelayDeactivation(TimeSpan)</c>.
     /// </summary>
     protected void DelayDeactivation(TimeSpan timeSpan)
     {
-        // TODO (M3/M6): pass hint to per-grain idle timer.
-        _ = timeSpan; // suppress unused warning until implemented.
+        GrainContext.DelayDeactivation(timeSpan);
     }
 
     /// <summary>
