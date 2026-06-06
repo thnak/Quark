@@ -36,7 +36,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
         ConnectionId = Guid.NewGuid().ToString("N");
         LocalEndPoint = socket.LocalEndPoint;
         RemoteEndPoint = socket.RemoteEndPoint;
-        Transport = new DuplexPipe(_outputPipe.Reader, _inputPipe.Writer);
+        Transport = new DuplexPipe(_inputPipe.Reader, _outputPipe.Writer);
         _logger = logger;
     }
 

@@ -96,7 +96,14 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             remaining = _connectionTasks.ToArray();
         }
 
-        await Task.WhenAll(remaining).ConfigureAwait(false);
+        try
+        {
+            await Task.WhenAll(remaining).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_cts?.IsCancellationRequested == true)
+        {
+            // Normal shutdown — connection tasks were cancelled.
+        }
         _cts?.Dispose();
         _cts = null;
     }

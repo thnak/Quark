@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Transport.Tcp;
@@ -18,6 +19,11 @@ public static class TcpTransportServiceCollectionExtensions
         {
             services.Configure(configure);
         }
+
+        // Bridge IOptions<TcpTransportOptions> → TcpTransportOptions so that
+        // TcpTransport can take the concrete class (no IOptions<T> dependency in the ctor).
+        services.TryAddSingleton<TcpTransportOptions>(
+            sp => sp.GetRequiredService<IOptions<TcpTransportOptions>>().Value);
 
         services.TryAddSingleton<TcpTransport>();
         services.TryAddSingleton<ITransport>(sp => sp.GetRequiredService<TcpTransport>());

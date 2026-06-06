@@ -71,20 +71,25 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
 
     public async Task CloseAsync()
     {
-        _readCts?.Cancel();
-        if (_connection is not null)
-            await _connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
-        if (_readLoop is not null)
+        // Guard against double-close (StopAsync then DisposeAsync both call this).
+        CancellationTokenSource? cts = Interlocked.Exchange(ref _readCts, null);
+        if (cts is not null)
         {
-            try { await _readLoop.ConfigureAwait(false); }
-            catch { }
+            cts.Cancel();
+            if (_connection is not null)
+                await _connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+            if (_readLoop is not null)
+            {
+                try { await _readLoop.ConfigureAwait(false); }
+                catch { }
+            }
+            if (_executeLoop is not null)
+            {
+                try { await _executeLoop.ConfigureAwait(false); }
+                catch { }
+            }
+            cts.Dispose();
         }
-        if (_executeLoop is not null)
-        {
-            try { await _executeLoop.ConfigureAwait(false); }
-            catch { }
-        }
-        _readCts?.Dispose();
     }
 
     public async ValueTask DisposeAsync()
