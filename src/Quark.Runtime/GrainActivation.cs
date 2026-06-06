@@ -17,6 +17,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly Task _processingLoop;
     private readonly bool _isReentrant;
     private Func<Task>? _onDeactivated;
+    private long _lastAccessedTicks;
 
     private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
@@ -30,6 +31,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _processingLoop = RunLoopAsync(_cts.Token);
         context.SetScheduler(PostAsync);
         context.SetDeactivationCallback(ScheduleDeactivation);
+        _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
 
     /// <summary>
@@ -40,6 +42,16 @@ public sealed class GrainActivation : IAsyncDisposable
     internal void SetOnDeactivated(Func<Task> onDeactivated)
     {
         _onDeactivated = onDeactivated;
+    }
+
+    /// <summary>
+    ///     Returns <see langword="true"/> when this activation has received no calls for longer
+    ///     than <paramref name="threshold"/> as measured from <paramref name="now"/>.
+    /// </summary>
+    public bool IsIdleLongerThan(TimeSpan threshold, DateTimeOffset now)
+    {
+        long lastTicks = Interlocked.Read(ref _lastAccessedTicks);
+        return (now.UtcTicks - lastTicks) > threshold.Ticks;
     }
 
     /// <summary>The grain instance.</summary>
@@ -122,6 +134,7 @@ public sealed class GrainActivation : IAsyncDisposable
     /// </summary>
     public async ValueTask PostAsync(Func<Task> workItem)
     {
+        Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         if (_isReentrant)
         {
             _cts.Token.ThrowIfCancellationRequested();
