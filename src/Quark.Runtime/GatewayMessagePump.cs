@@ -65,10 +65,8 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_cts is not null)
-        {
-            _cts.Cancel();
-        }
+        CancellationTokenSource? cts = _cts;
+        cts?.Cancel();
 
         if (_listener is not null)
         {
@@ -83,7 +81,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             {
                 await _acceptLoop.ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (_cts?.IsCancellationRequested == true)
+            catch (OperationCanceledException) when (cts is { IsCancellationRequested: true })
             {
             }
 
@@ -100,11 +98,11 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         {
             await Task.WhenAll(remaining).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (_cts?.IsCancellationRequested == true)
+        catch (OperationCanceledException) when (cts is { IsCancellationRequested: true })
         {
             // Normal shutdown — connection tasks were cancelled.
         }
-        _cts?.Dispose();
+        cts?.Dispose();
         _cts = null;
     }
 

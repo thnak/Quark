@@ -15,6 +15,10 @@ using Xunit;
 
 namespace Quark.Tests.Integration;
 
+/// <summary>Serialises all GatewayIntegrationTests to prevent port-reuse races.</summary>
+[CollectionDefinition("GatewayTests", DisableParallelization = true)]
+public sealed class GatewayTestsCollection { }
+
 /// <summary>
 ///     End-to-end gateway tests using real loopback TCP sockets.
 ///     Tests spin up a silo host and a separate client host in-process.
@@ -76,8 +80,6 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
             .Build();
 
         await _siloHost.StartAsync();
-        // Small delay to let gateway listener bind before client connects.
-        await Task.Delay(50);
         await _clientHost.StartAsync();
     }
 

@@ -47,7 +47,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
             lockTaken = true;
             await _serializer.WriteAsync(_connection!.Transport.Output, envelope, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (lockTaken)
+        catch (Exception ex)
         {
             _pending.TryRemove(envelope.CorrelationId, out _);
             tcs.TrySetException(ex);
