@@ -9,7 +9,7 @@ using Quark.Core.Abstractions.Hosting;
 var host = Host.CreateDefaultBuilder(args)
     .UseQuarkClient(client =>
     {
-        client.UseLocalhostGateway();
+        client.UseLocalhostGateway(gatewayPort: 30001);
         client.Services.AddGrainProxy<IPlayerGrain, PlayerGrainProxy>();
     })
     .Build();

@@ -9,12 +9,14 @@ using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Client;
 using Quark.Runtime;
+using Quark.Transport.Tcp;
 
 var host = Host.CreateDefaultBuilder(args)
     .UseQuark(silo =>
     {
         silo.Services.AddQuarkRuntime();
-        silo.UseLocalhostClustering();
+        silo.Services.AddTcpTransport();
+        silo.UseLocalhostClustering(gatewayPort: 30001);
 
         silo.Services.AddGrain<PlayerGrain>();
         silo.Services.AddGrainActivatorFactory<PlayerGrainActivatorFactory>();
@@ -54,6 +56,6 @@ if (!File.Exists(mapFile))
         "..", "..", "..", "..", "AdventureMap.json");
 
 await AdventureGame.LoadAsync(grainFactory, mapFile);
-Console.WriteLine("Adventure server ready on port 30000. Press Ctrl+C to stop.");
+Console.WriteLine("Adventure server ready on port 30001. Press Ctrl+C to stop.");
 
 await host.WaitForShutdownAsync();

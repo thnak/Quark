@@ -10,6 +10,7 @@
     <ProjectReference Include="../../../src/Quark.Core/Quark.Core.csproj"/>
     <ProjectReference Include="../../../src/Quark.Runtime/Quark.Runtime.csproj"/>
     <ProjectReference Include="../../../src/Quark.Client/Quark.Client.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Transport.Tcp/Quark.Transport.Tcp.csproj"/>
     <PackageReference Include="Microsoft.Extensions.Hosting"/>
   </ItemGroup>
   <ItemGroup>
