@@ -1,5 +1,6 @@
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Core.Abstractions.Reminders;
 
@@ -22,4 +23,6 @@ public readonly struct ReceiveReminderInvokable : IGrainVoidInvokable
 
     public ValueTask Invoke(Grain grain)
         => new(((IRemindable)grain).ReceiveReminder(ReminderName, Status));
+
+    public void Serialize(ref CodecWriter writer) { }
 }

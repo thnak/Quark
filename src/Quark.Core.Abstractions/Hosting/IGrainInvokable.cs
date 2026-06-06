@@ -1,4 +1,5 @@
 using Quark.Core.Abstractions.Grains;
+using Quark.Serialization.Abstractions.Buffers;
 
 namespace Quark.Core.Abstractions.Hosting;
 
@@ -15,6 +16,9 @@ public interface IGrainInvokable<TResult>
 
     /// <summary>Invokes the grain method on <paramref name="grain" /> and returns the result.</summary>
     ValueTask<TResult> Invoke(Grain grain);
+
+    /// <summary>Serialises all method arguments into <paramref name="writer" /> for transport.</summary>
+    void Serialize(ref CodecWriter writer);
 }
 
 /// <summary>
@@ -28,6 +32,9 @@ public interface IGrainVoidInvokable
 
     /// <summary>Invokes the grain method on <paramref name="grain" />.</summary>
     ValueTask Invoke(Grain grain);
+
+    /// <summary>Serialises all method arguments into <paramref name="writer" /> for transport.</summary>
+    void Serialize(ref CodecWriter writer);
 }
 
 /// <summary>
@@ -44,4 +51,7 @@ public interface IObserverVoidInvokable
 
     /// <summary>Invokes the observer method on <paramref name="target" />.</summary>
     ValueTask Invoke(object target);
+
+    /// <summary>No-op — observer calls are local-only and never travel over TCP.</summary>
+    void Serialize(ref CodecWriter writer);
 }
