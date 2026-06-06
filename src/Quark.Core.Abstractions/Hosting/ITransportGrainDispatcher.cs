@@ -4,7 +4,7 @@ namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
 ///     Dispatches an incoming transport message to the correct grain method,
-///     mapping a numeric method ID and pre-serialized argument bytes to a strongly-typed
+///     mapping a numeric method ID and pre-serialised argument bytes to a strongly-typed
 ///     <see cref="IGrainCallInvoker" /> overload.
 ///     One implementation is generated per grain or observer interface by
 ///     <c>Quark.CodeGenerator</c>.
@@ -16,5 +16,6 @@ public interface ITransportGrainDispatcher
         uint methodId,
         ReadOnlyMemory<byte> argumentPayload,
         IGrainCallInvoker invoker,
+        IGrainFactory? factory,
         CancellationToken cancellationToken = default);
 }

@@ -163,7 +163,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
         public async Task<object?> DispatchAsync(
             GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
-            IGrainCallInvoker invoker, CancellationToken ct = default)
+            IGrainCallInvoker invoker, IGrainFactory? factory, CancellationToken ct = default)
         {
             switch (methodId)
             {

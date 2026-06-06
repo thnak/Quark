@@ -836,6 +836,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         sb.AppendLine("        uint methodId,");
         sb.AppendLine("        global::System.ReadOnlyMemory<byte> argumentPayload,");
         sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker invoker,");
+        sb.AppendLine("        global::Quark.Core.Abstractions.Hosting.IGrainFactory? factory,");
         sb.AppendLine("        global::System.Threading.CancellationToken ct = default)");
         sb.AppendLine("    {");
         sb.AppendLine("        switch (methodId)");

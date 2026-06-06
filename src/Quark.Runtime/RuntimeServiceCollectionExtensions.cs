@@ -78,7 +78,11 @@ public static class RuntimeServiceCollectionExtensions
         // Message dispatch / pump services for transport-routed grain calls.
         services.TryAddSingleton<MessageSerializer>();
         services.TryAddSingleton<GrainMessageSerializer>();
-        services.TryAddSingleton<IMessageDispatcher, MessageDispatcher>();
+        services.TryAddSingleton<IMessageDispatcher>(sp => new MessageDispatcher(
+            sp.GetRequiredService<TransportGrainDispatcherRegistry>(),
+            sp.GetRequiredService<IGrainCallInvoker>(),
+            sp.GetRequiredService<GrainMessageSerializer>(),
+            sp.GetService<IGrainFactory>()));
         services.TryAddSingleton<SiloMessagePump>();
 
         // Idle-timeout grain collector.

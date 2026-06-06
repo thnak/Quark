@@ -13,18 +13,20 @@ namespace Quark.Runtime;
 public sealed class MessageDispatcher : IMessageDispatcher
 {
     private readonly TransportGrainDispatcherRegistry _dispatcherRegistry;
+    private readonly IGrainFactory? _grainFactory;
     private readonly IGrainCallInvoker _invoker;
     private readonly GrainMessageSerializer _serializer;
 
-    /// <summary>Initializes the dispatcher.</summary>
     public MessageDispatcher(
         TransportGrainDispatcherRegistry dispatcherRegistry,
         IGrainCallInvoker invoker,
-        GrainMessageSerializer serializer)
+        GrainMessageSerializer serializer,
+        IGrainFactory? grainFactory = null)
     {
         _dispatcherRegistry = dispatcherRegistry;
         _invoker = invoker;
         _serializer = serializer;
+        _grainFactory = grainFactory;
     }
 
     /// <inheritdoc />
@@ -56,8 +58,6 @@ public sealed class MessageDispatcher : IMessageDispatcher
         {
             object? result;
 
-            // Well-known reminder delivery uses a typed invokable directly — no registered
-            // transport dispatcher needed per grain type.
             if (request.MethodId == ReminderMethodIds.ReceiveReminder)
             {
                 CodecReader reminderReader = new(request.ArgumentPayload);
@@ -73,8 +73,8 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 ITransportGrainDispatcher dispatcher =
                     _dispatcherRegistry.GetDispatcher(request.GrainId.Type);
                 result = await dispatcher
-                    .DispatchAsync(request.GrainId, request.MethodId, request.ArgumentPayload, _invoker,
-                        cancellationToken)
+                    .DispatchAsync(request.GrainId, request.MethodId, request.ArgumentPayload,
+                        _invoker, _grainFactory, cancellationToken)
                     .ConfigureAwait(false);
             }
 
