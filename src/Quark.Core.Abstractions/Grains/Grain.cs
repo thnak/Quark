@@ -75,6 +75,19 @@ public abstract class Grain : IGrain
         => GrainContext.RegisterTimer(callback, state, options);
 
     /// <summary>
+    ///     Stateless convenience overload — no state object is passed to the callback.
+    ///     Drop-in equivalent of Orleans' <c>RegisterGrainTimer(callback, dueTime, period)</c>.
+    /// </summary>
+    protected IGrainTimer RegisterGrainTimer(
+        Func<CancellationToken, Task> callback,
+        TimeSpan dueTime,
+        TimeSpan period)
+        => RegisterGrainTimer<object?>(
+            (_, ct) => callback(ct),
+            null,
+            new GrainTimerCreationOptions { DueTime = dueTime, Period = period });
+
+    /// <summary>
     ///     Registers or updates a durable reminder for this grain.
     ///     Requires an <see cref="IReminderService" /> registered in DI (e.g. <c>AddInMemoryReminders()</c>).
     ///     Drop-in equivalent of Orleans' <c>this.RegisterOrUpdateReminder()</c>.
