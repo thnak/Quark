@@ -318,19 +318,23 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             return new SerializeInfo(SerializeKind.GeneratedCodec, copierFq: copierFq);
         }
 
-        // Grain-ref parameters — type implements IGrain
+        // Grain-ref parameters — type implements IGrain with an explicit key-type interface.
+        // Only return a GrainRef kind when one of the three concrete key-type interfaces is
+        // present; raw IGrain / compound-key interfaces fall through to Fallback so that the
+        // generator never emits a call to IGrainFactory.GetGrain<T> with an unsupported overload.
         if (type is INamedTypeSymbol grainNamed)
         {
             bool isGrain = false;
-            SerializeKind grainRefKind = SerializeKind.GrainRefString; // default
+            SerializeKind? grainRefKind = null;
             foreach (INamedTypeSymbol iface in grainNamed.AllInterfaces)
             {
                 string ifaceFqn = iface.ToDisplayString();
                 if (ifaceFqn == IGrainFqn)               isGrain = true;
+                if (ifaceFqn == IGrainWithStringKeyFqn)  grainRefKind = SerializeKind.GrainRefString;
                 if (ifaceFqn == IGrainWithGuidKeyFqn)    grainRefKind = SerializeKind.GrainRefGuid;
                 if (ifaceFqn == IGrainWithIntegerKeyFqn) grainRefKind = SerializeKind.GrainRefInteger;
             }
-            if (isGrain) return new SerializeInfo(grainRefKind);
+            if (isGrain && grainRefKind.HasValue) return new SerializeInfo(grainRefKind.Value);
         }
 
         return new SerializeInfo(SerializeKind.Fallback);
@@ -385,7 +389,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.GeneratedCodec => $"{copierFq}.ReadStatic(ref reader)!",
             SerializeKind.GrainRefString   => $"factory!.GetGrain<{fqTypeName}>(reader.ReadString())",
             SerializeKind.GrainRefGuid     => $"factory!.GetGrain<{fqTypeName}>(global::System.Guid.ParseExact(reader.ReadString(), \"N\"))",
-            SerializeKind.GrainRefInteger  => $"factory!.GetGrain<{fqTypeName}>(long.Parse(reader.ReadString()))",
+            SerializeKind.GrainRefInteger  => $"factory!.GetGrain<{fqTypeName}>(long.Parse(reader.ReadString(), global::System.Globalization.CultureInfo.InvariantCulture))",
             _ => $"({fqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
         };
 

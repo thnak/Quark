@@ -60,6 +60,9 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(", generated);
         Assert.Contains("invoker.InvokeVoidAsync<CounterGrainProxy_ResetAsyncInvokable>(", generated);
         Assert.DoesNotContain("ReadArg(", generated);
+        // Grain proxy implements IGrainProxy and exposes GrainId.
+        Assert.Contains(", global::Quark.Core.Abstractions.Hosting.IGrainProxy", generated);
+        Assert.Contains("public global::Quark.Core.Abstractions.Identity.GrainId GrainId => _grainId;", generated);
     }
 
     [Fact]
@@ -93,6 +96,8 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("InvokeObserverAsync(_grainId, new MyObserverProxy_OnEventAsyncInvokable(", generated);
         Assert.Contains("internal sealed class MyObserverProxy_TransportDispatcher", generated);
         Assert.Contains("invoker.InvokeObserverAsync<MyObserverProxy_OnEventAsyncInvokable>(", generated);
+        // Observer proxy must NOT implement IGrainProxy.
+        Assert.DoesNotContain("IGrainProxy", generated);
     }
 
     [Fact]
@@ -111,6 +116,49 @@ public sealed class GrainProxyGeneratorTests
 
         AssertNoErrors(result.Diagnostics);
         Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generates_GrainRef_Serialize_For_StringKey_Parameter()
+    {
+        // A grain method that takes an IGrainWithStringKey parameter should produce
+        // writer.WriteString(((IGrainProxy)...).GrainId.Key) in Serialize, and
+        // factory!.GetGrain<T>(reader.ReadString()) in Deserialize.
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public interface ITargetGrain : IGrainWithStringKey
+                              {
+                                  Task PingAsync();
+                              }
+
+                              public interface ICallerGrain : IGrainWithStringKey
+                              {
+                                  Task ForwardAsync(ITargetGrain target);
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        // Two proxies are generated (one per grain interface).
+        Assert.Equal(2, result.GeneratedSources.Length);
+
+        // Find the CallerGrain proxy source (the one with the ForwardAsync method).
+        string callerSource = result.GeneratedSources.Single(s => s.Contains("CallerGrainProxy"));
+
+        // Serialize must cast to IGrainProxy to read the GrainId key.
+        Assert.Contains(
+            "writer.WriteString(((global::Quark.Core.Abstractions.Hosting.IGrainProxy)_target).GrainId.Key);",
+            callerSource);
+
+        // Deserialize must reconstruct the grain ref via factory.GetGrain<T>(string).
+        Assert.Contains(
+            "factory!.GetGrain<global::Demo.ITargetGrain>(reader.ReadString())",
+            callerSource);
     }
 
     private static void AssertNoErrors(ImmutableArray<Diagnostic> diagnostics)
