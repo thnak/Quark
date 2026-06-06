@@ -35,3 +35,7 @@ Orleans architecture reference: [`README.md`](README.md)
 
 - [x] **F-07** Streams (`IAsyncStream<T>`, `IAsyncObserver<T>`, `ImplicitStreamSubscription`, in-memory stream provider) — _Complexity: XL_
 - [x] **F-08** Transactions (`ITransactionalState<T>`, `[Transaction]`, 2-phase commit coordinator, `UseTransactions()`) — _Complexity: XL_
+
+## Phase 6 — Grain lifecycle management
+
+- [x] **F-14** Idle-timeout grain collector (`GrainCollectionAge`, `GrainCollectionInterval`, `GrainIdleCollector`) + `DelayDeactivation(TimeSpan)` — _Complexity: M_
