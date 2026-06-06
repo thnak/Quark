@@ -40,19 +40,23 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
         var tcs = new TaskCompletionSource<MessageEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[envelope.CorrelationId] = tcs;
 
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        bool lockTaken = false;
         try
         {
+            await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+            lockTaken = true;
             await _serializer.WriteAsync(_connection!.Transport.Output, envelope, ct).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (lockTaken)
         {
             _pending.TryRemove(envelope.CorrelationId, out _);
             tcs.TrySetException(ex);
-            _writeLock.Release();
             throw;
         }
-        _writeLock.Release();
+        finally
+        {
+            if (lockTaken) _writeLock.Release();
+        }
 
         using var reg = ct.Register(static state =>
         {
@@ -116,8 +120,10 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
 
     private void FaultAllPending(Exception ex)
     {
-        foreach ((long _, TaskCompletionSource<MessageEnvelope> tcs) in _pending)
-            tcs.TrySetException(ex);
-        _pending.Clear();
+        foreach (long key in _pending.Keys.ToArray())
+        {
+            if (_pending.TryRemove(key, out TaskCompletionSource<MessageEnvelope>? tcs))
+                tcs.TrySetException(ex);
+        }
     }
 }
