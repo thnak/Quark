@@ -18,6 +18,7 @@ public sealed class GrainContext : IGrainContext
     private Grain? _grain;
     private readonly Lock _timersLock = new();
     private readonly List<IGrainTimer> _timers = [];
+    private long _deactivationNotBeforeTicks;
 
     /// <summary>Creates a context for the supplied grain identity.</summary>
     public GrainContext(GrainId grainId, IGrainFactory grainFactory, IServiceProvider serviceProvider)
@@ -68,6 +69,29 @@ public sealed class GrainContext : IGrainContext
         {
             _ = StopInternalAsync(CancellationToken.None);
         }
+    }
+
+    /// <inheritdoc />
+    public void DelayDeactivation(TimeSpan timeSpan)
+    {
+        long newTicks = (DateTimeOffset.UtcNow + timeSpan).UtcTicks;
+        long current;
+        do
+        {
+            current = Interlocked.Read(ref _deactivationNotBeforeTicks);
+            if (newTicks <= current) return;
+        } while (Interlocked.CompareExchange(ref _deactivationNotBeforeTicks, newTicks, current) != current);
+    }
+
+    /// <summary>
+    ///     Returns <see langword="true"/> when automatic deactivation is currently allowed
+    ///     — either no deadline has been set or the deadline has already passed.
+    ///     Called by <see cref="GrainIdleCollector"/> before triggering idle deactivation.
+    /// </summary>
+    internal bool IsDeactivationAllowed(DateTimeOffset now)
+    {
+        long notBefore = Interlocked.Read(ref _deactivationNotBeforeTicks);
+        return notBefore == 0 || now.UtcTicks >= notBefore;
     }
 
     /// <inheritdoc />

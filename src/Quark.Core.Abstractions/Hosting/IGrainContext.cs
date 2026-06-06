@@ -39,6 +39,14 @@ public interface IGrainContext
     void Deactivate(DeactivationReason reason);
 
     /// <summary>
+    ///     Extends the automatic deactivation deadline by <paramref name="timeSpan"/> from now.
+    ///     If the idle-timeout collector would normally deactivate this grain before the new
+    ///     deadline, it will skip it until the deadline passes.
+    ///     Drop-in equivalent of Orleans' <c>DelayDeactivation(TimeSpan)</c>.
+    /// </summary>
+    void DelayDeactivation(TimeSpan timeSpan);
+
+    /// <summary>
     ///     Creates and registers a grain-scoped timer.
     ///     The timer is automatically disposed when the grain deactivates.
     /// </summary>
