@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 
