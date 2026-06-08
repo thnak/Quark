@@ -6,9 +6,13 @@ namespace Quark.Streaming.InMemory;
 public sealed class InMemoryStreamProvider : IStreamProvider
 {
     private readonly ConcurrentDictionary<(StreamId StreamId, Type ElementType), object> _streams = new();
-    private readonly StreamSubscriptionRegistry _registry = new();
+    private readonly StreamSubscriptionRegistry _registry;
 
-    public InMemoryStreamProvider(string name) => Name = name;
+    public InMemoryStreamProvider(string name, StreamSubscriptionRegistry registry)
+    {
+        Name = name;
+        _registry = registry;
+    }
 
     public string Name { get; }
 

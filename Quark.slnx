@@ -35,5 +35,8 @@
         <Project Path="samples/Adventure/Adventure.Grains/Adventure.Grains.csproj"/>
         <Project Path="samples/Adventure/Adventure.Server/Adventure.Server.csproj"/>
         <Project Path="samples/Adventure/Adventure.Client/Adventure.Client.csproj"/>
+        <Project Path="samples/ChatRoom/ChatRoom.Common/ChatRoom.Common.csproj"/>
+        <Project Path="samples/ChatRoom/ChatRoom.Server/ChatRoom.Server.csproj"/>
+        <Project Path="samples/ChatRoom/ChatRoom.Client/ChatRoom.Client.csproj"/>
     </Folder>
 </Solution>

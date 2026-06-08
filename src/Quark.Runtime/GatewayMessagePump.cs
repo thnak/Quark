@@ -1,8 +1,12 @@
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Streaming.Abstractions;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
@@ -21,6 +25,12 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     private readonly SiloRuntimeOptions _options;
     private readonly MessageSerializer _serializer;
     private readonly IServiceProvider _services;
+
+    // Optional streaming dependencies — null when stream providers are not registered.
+    private readonly IUntypedStreamSubscriptionRegistry? _streamRegistry;
+    private readonly GatewayClientSubscriptionTable? _subTable;
+    private readonly ICodecProvider? _codecs;
+
     private Task? _acceptLoop;
     private CancellationTokenSource? _cts;
     private ITransportListener? _listener;
@@ -37,6 +47,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         _dispatcher = dispatcher;
         _options = options.Value;
         _logger = logger;
+
+        _streamRegistry = services.GetService<IUntypedStreamSubscriptionRegistry>();
+        _subTable = services.GetService<GatewayClientSubscriptionTable>();
+        _codecs = services.GetService<ICodecProvider>();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -117,6 +131,9 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task executeTask = connection.ExecuteAsync(linkedCts.Token);
 
+        using var writeLock = new SemaphoreSlim(1, 1);
+        var connectionSubscriptions = new List<Guid>();
+
         try
         {
             while (!linkedCts.IsCancellationRequested)
@@ -128,17 +145,52 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                     break;
                 }
 
-                MessageEnvelope? response = await _dispatcher.DispatchAsync(envelope, linkedCts.Token)
-                    .ConfigureAwait(false);
-                if (response is not null)
+                switch (envelope.MessageType)
                 {
-                    await _serializer.WriteAsync(connection.Transport.Output, response, linkedCts.Token)
-                        .ConfigureAwait(false);
+                    case MessageType.StreamSubscribe:
+                        await HandleStreamSubscribeAsync(
+                            envelope, connection.Transport.Output, writeLock,
+                            connectionSubscriptions, linkedCts.Token).ConfigureAwait(false);
+                        break;
+
+                    case MessageType.StreamUnsubscribe:
+                        HandleStreamUnsubscribe(envelope, connectionSubscriptions);
+                        break;
+
+                    default:
+                        MessageEnvelope? response = await _dispatcher.DispatchAsync(envelope, linkedCts.Token)
+                            .ConfigureAwait(false);
+                        if (response is not null)
+                        {
+                            await writeLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+                            try
+                            {
+                                await _serializer.WriteAsync(connection.Transport.Output, response, linkedCts.Token)
+                                    .ConfigureAwait(false);
+                            }
+                            finally
+                            {
+                                writeLock.Release();
+                            }
+                        }
+
+                        break;
                 }
             }
         }
         finally
         {
+            // Clean up all subscriptions created by this connection.
+            if (connectionSubscriptions.Count > 0)
+            {
+                foreach (Guid subId in connectionSubscriptions)
+                {
+                    _streamRegistry?.UnsubscribeUntyped(subId);
+                }
+
+                _subTable?.RemoveAll(connectionSubscriptions);
+            }
+
             linkedCts.Cancel();
             await connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
             try
@@ -150,6 +202,112 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             }
 
             await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleStreamSubscribeAsync(
+        MessageEnvelope envelope,
+        PipeWriter output,
+        SemaphoreSlim writeLock,
+        List<Guid> connectionSubscriptions,
+        CancellationToken cancellationToken)
+    {
+        if (_streamRegistry is null || _subTable is null || _codecs is null)
+        {
+            _logger.LogWarning("StreamSubscribe received but streaming services are not registered; ignoring.");
+            return;
+        }
+
+        string? ns = envelope.Headers?.Get("stream-ns");
+        string? key = envelope.Headers?.Get("stream-key");
+        string? subIdStr = envelope.Headers?.Get("sub-id");
+
+        if (ns is null || key is null || subIdStr is null || !Guid.TryParse(subIdStr, out Guid subId))
+        {
+            _logger.LogWarning("StreamSubscribe envelope is missing required headers (stream-ns, stream-key, sub-id); ignoring.");
+            return;
+        }
+
+        StreamId streamId = StreamId.Create(ns, key);
+
+        // Push delegate: serializes payload and writes a StreamPush envelope back to client.
+        // Captured variables are all connection-scoped; writeLock serialises concurrent pushes.
+        var sub = new GatewayClientSubscription(subId, streamId, _codecs,
+            async (payload, token) =>
+            {
+                var pushHeaders = new MessageHeaders();
+                pushHeaders.Set("stream-ns", ns);
+                pushHeaders.Set("stream-key", key);
+                pushHeaders.Set("sub-id", subIdStr);
+                pushHeaders.Set("seq", token?.ToString() ?? "0");
+
+                var push = new MessageEnvelope
+                {
+                    MessageType = MessageType.StreamPush,
+                    CorrelationId = -1,
+                    Headers = pushHeaders,
+                    Payload = payload
+                };
+
+                await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await _serializer.WriteAsync(output, push, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    writeLock.Release();
+                }
+            });
+
+        _streamRegistry.SubscribeUntyped(streamId, sub);
+        _subTable.Add(sub);
+
+        lock (connectionSubscriptions)
+        {
+            connectionSubscriptions.Add(subId);
+        }
+
+        // Send ack response with the same CorrelationId.
+        var ack = new MessageEnvelope
+        {
+            MessageType = MessageType.Response,
+            CorrelationId = envelope.CorrelationId,
+            Headers = envelope.Headers,
+            Payload = ReadOnlyMemory<byte>.Empty
+        };
+
+        await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _serializer.WriteAsync(output, ack, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            writeLock.Release();
+        }
+    }
+
+    private void HandleStreamUnsubscribe(MessageEnvelope envelope, List<Guid> connectionSubscriptions)
+    {
+        if (_streamRegistry is null || _subTable is null)
+        {
+            return;
+        }
+
+        string? subIdStr = envelope.Headers?.Get("sub-id");
+        if (subIdStr is null || !Guid.TryParse(subIdStr, out Guid subId))
+        {
+            _logger.LogWarning("StreamUnsubscribe envelope is missing or has invalid sub-id header; ignoring.");
+            return;
+        }
+
+        _streamRegistry.UnsubscribeUntyped(subId);
+        _subTable.Remove(subId);
+
+        lock (connectionSubscriptions)
+        {
+            connectionSubscriptions.Remove(subId);
         }
     }
 

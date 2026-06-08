@@ -85,6 +85,9 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetService<IGrainFactory>()));
         services.TryAddSingleton<SiloMessagePump>();
 
+        // Gateway client subscription table — tracks per-connection subscriptions for cleanup.
+        services.TryAddSingleton<GatewayClientSubscriptionTable>();
+
         // Idle-timeout grain collector.
         services.AddHostedService<GrainIdleCollector>();
 

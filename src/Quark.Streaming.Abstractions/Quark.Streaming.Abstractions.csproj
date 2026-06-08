@@ -5,7 +5,6 @@
     <Description>Stream pub/sub abstractions for the Quark distributed actor framework.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
   </ItemGroup>
 </Project>

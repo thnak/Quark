@@ -1,5 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Streaming.Abstractions;
 
 namespace Quark.Client;
 
@@ -11,11 +13,13 @@ namespace Quark.Client;
 public sealed class LocalClusterClient : IClusterClient
 {
     private readonly LocalGrainFactory _factory;
+    private readonly IServiceProvider? _services;
 
     /// <summary>Initialises the client.</summary>
-    public LocalClusterClient(LocalGrainFactory factory)
+    public LocalClusterClient(LocalGrainFactory factory, IServiceProvider? services = null)
     {
         _factory = factory;
+        _services = services;
     }
 
     /// <inheritdoc />
@@ -97,4 +101,9 @@ public sealed class LocalClusterClient : IClusterClient
     {
         return _factory.GetGrain(grainInterfaceType, key);
     }
+
+    /// <inheritdoc />
+    public IStreamProvider GetStreamProvider(string name)
+        => _services?.GetRequiredKeyedService<IStreamProvider>(name)
+           ?? throw new InvalidOperationException("No IServiceProvider available on this client.");
 }

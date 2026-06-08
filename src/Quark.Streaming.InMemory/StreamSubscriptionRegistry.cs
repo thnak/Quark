@@ -3,7 +3,7 @@ using Quark.Streaming.Abstractions;
 
 namespace Quark.Streaming.InMemory;
 
-internal sealed class StreamSubscriptionRegistry
+public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegistry
 {
     private sealed class Subscription
     {
@@ -14,6 +14,8 @@ internal sealed class StreamSubscriptionRegistry
     }
 
     private readonly ConcurrentDictionary<StreamId, List<Subscription>> _subs = new();
+    private readonly ConcurrentDictionary<StreamId, List<(Guid SubId, IUntypedStreamObserver Observer)>> _untyped = new();
+    private readonly ConcurrentDictionary<Guid, StreamId> _untypedIndex = new();
 
     public Guid Subscribe<T>(StreamId streamId, IAsyncObserver<T> observer)
     {
@@ -35,18 +37,46 @@ internal sealed class StreamSubscriptionRegistry
         lock (list) list.RemoveAll(s => s.Id == subscriptionId);
     }
 
+    public Guid SubscribeUntyped(StreamId streamId, IUntypedStreamObserver observer)
+    {
+        var subId = Guid.NewGuid();
+        _untyped.AddOrUpdate(
+            streamId,
+            _ => [(subId, observer)],
+            (_, list) => { lock (list) { list.Add((subId, observer)); } return list; });
+        _untypedIndex[subId] = streamId;
+        return subId;
+    }
+
+    public void UnsubscribeUntyped(Guid subId)
+    {
+        if (!_untypedIndex.TryRemove(subId, out var streamId)) return;
+        if (_untyped.TryGetValue(streamId, out var list))
+            lock (list) { list.RemoveAll(x => x.SubId == subId); }
+    }
+
     public async Task PublishAsync<T>(StreamId streamId, T item, StreamSequenceToken? token)
     {
-        if (!_subs.TryGetValue(streamId, out var list)) return;
-        List<Subscription> snapshot;
-        lock (list) snapshot = [..list];
-        List<Exception>? errors = null;
-        foreach (var sub in snapshot)
+        if (_subs.TryGetValue(streamId, out var list))
         {
-            try { await sub.OnNext(item!, token).ConfigureAwait(false); }
-            catch (Exception ex) { (errors ??= []).Add(ex); }
+            List<Subscription> snapshot;
+            lock (list) snapshot = [..list];
+            List<Exception>? errors = null;
+            foreach (var sub in snapshot)
+            {
+                try { await sub.OnNext(item!, token).ConfigureAwait(false); }
+                catch (Exception ex) { (errors ??= []).Add(ex); }
+            }
+            if (errors is { Count: > 0 }) throw new AggregateException(errors);
         }
-        if (errors is { Count: > 0 }) throw new AggregateException(errors);
+
+        if (_untyped.TryGetValue(streamId, out var untypedList))
+        {
+            List<(Guid, IUntypedStreamObserver)> snapshot;
+            lock (untypedList) { snapshot = [..untypedList]; }
+            foreach (var (_, obs) in snapshot)
+                await obs.OnNextAsync(item!, token).ConfigureAwait(false);
+        }
     }
 
     public async Task PublishErrorAsync(StreamId streamId, Exception ex)

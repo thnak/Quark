@@ -13,5 +13,14 @@ public enum MessageType : byte
     OneWayRequest = 2,
 
     /// <summary>Internal system/control message (heartbeat, membership, etc.).</summary>
-    System = 3
+    System = 3,
+
+    /// <summary>Subscribe to a grain stream (client → server).</summary>
+    StreamSubscribe = 4,
+
+    /// <summary>Unsubscribe from a grain stream (client → server, one-way).</summary>
+    StreamUnsubscribe = 5,
+
+    /// <summary>Push stream data (server → client, unsolicited).</summary>
+    StreamPush = 6
 }
