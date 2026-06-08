@@ -66,6 +66,23 @@ public static class SerializationServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    ///     Registers a typed <see cref="IFieldCodec{T}" /> and automatically wraps it as an
+    ///     <see cref="IGeneralizedCodec" /> via <see cref="Adapters.FieldCodecGeneralizedAdapter{T}" />.
+    ///     Use this for stream-item types so the gateway can serialize by runtime type.
+    /// </summary>
+    public static IServiceCollection AddStreamableCodec<T,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCodec>(
+        this IServiceCollection services)
+        where TCodec : class, IFieldCodec<T>
+    {
+        services.TryAddSingleton<TCodec>();
+        services.AddSingleton<IFieldCodec<T>>(sp => sp.GetRequiredService<TCodec>());
+        services.AddSingleton<IGeneralizedCodec>(sp =>
+            new Adapters.FieldCodecGeneralizedAdapter<T>(sp.GetRequiredService<IFieldCodec<T>>()));
+        return services;
+    }
+
     /// <summary>Registers a generalized copier that handles multiple types.</summary>
     public static IServiceCollection AddGeneralizedCopier<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCopier>(
