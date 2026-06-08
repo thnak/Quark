@@ -53,6 +53,7 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
 
     public async Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
     {
+        ArgumentNullException.ThrowIfNull(observer);
         var subId = Guid.NewGuid();
 
         var headers = new MessageHeaders();
