@@ -69,6 +69,19 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
         return await tcs.Task.ConfigureAwait(false);
     }
 
+    public async Task SendOneWayAsync(MessageEnvelope envelope, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _serializer.WriteAsync(_connection!.Transport.Output, envelope, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     public async Task CloseAsync()
     {
         // Guard against double-close (StopAsync then DisposeAsync both call this).
