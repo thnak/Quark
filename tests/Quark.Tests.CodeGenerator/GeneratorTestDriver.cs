@@ -48,7 +48,7 @@ internal static class GeneratorTestDriver
         return trustedPlatformAssemblies
             .Select(static path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .Append(MetadataReference.CreateFromFile(typeof(IGrain).Assembly.Location))
-            .Append(MetadataReference.CreateFromFile(typeof(IGrainActivator).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(LocalGrainCallInvoker).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(IGrainStorage).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(GenerateSerializerAttribute).Assembly.Location))
             .GroupBy(static reference => reference.Display, StringComparer.OrdinalIgnoreCase)

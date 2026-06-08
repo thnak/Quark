@@ -27,8 +27,22 @@ public sealed class TransactionIntegrationTests
             services.AddInMemoryGrainStorage();
             services.AddSingleton<IDeepCopier<Balance>, BalanceCopier>();
             services.AddTransactions();
-            services.AddGrain<AccountGrain>();
-            services.AddGrainActivatorFactory<AccountGrainActivatorFactory>();
+            services.AddGrainBehavior<IAccountGrain, AccountGrainBehavior>();
+
+            // AccountGrainBehavior needs a TransactionalState<Balance> per activation.
+            // Wire it as scoped so each call scope sees the same instance as the grain.
+            services.AddScoped<ITransactionalState<Balance>>(sp =>
+            {
+                var ctx = sp.GetRequiredService<ICallContext>();
+                var storage = sp.GetRequiredService<IGrainStorage>();
+                var coordinator = sp.GetRequiredService<TransactionCoordinator>();
+                return new TransactionalState<Balance>(
+                    "balance",
+                    ctx.GrainId,
+                    storage,
+                    coordinator,
+                    src => new Balance { Value = src.Value });
+            });
         };
         options.ConfigureClientServices = services =>
         {
@@ -97,14 +111,16 @@ public sealed class TransactionIntegrationTests
         Task<decimal> GetBalanceAsync();
     }
 
-    private sealed class AccountGrain : Grain, IAccountGrain
+    private sealed class AccountGrainBehavior : IGrainBehavior, IAccountGrain, IActivationLifecycle
     {
         private readonly ITransactionalState<Balance> _balance;
 
-        public AccountGrain(ITransactionalState<Balance> balance) => _balance = balance;
+        public AccountGrainBehavior(ITransactionalState<Balance> balance) => _balance = balance;
 
-        public override Task OnActivateAsync(CancellationToken cancellationToken)
+        public Task OnActivateAsync(CancellationToken cancellationToken)
             => ((TransactionalState<Balance>)_balance).LoadAsync();
+
+        public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct) => Task.CompletedTask;
 
         [Transaction(TransactionOption.CreateOrJoin)]
         public Task DepositAsync(decimal amount) => _balance.PerformUpdate(b => b.Value += amount);
@@ -119,38 +135,20 @@ public sealed class TransactionIntegrationTests
         public Balance DeepCopy(Balance input, CopyContext context) => new() { Value = input.Value };
     }
 
-    private sealed class AccountGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(AccountGrain);
-
-        public Grain Create(GrainId grainId, IServiceProvider services)
-        {
-            var storage = services.GetRequiredService<IGrainStorage>();
-            var coordinator = services.GetRequiredService<TransactionCoordinator>();
-            var balance = new TransactionalState<Balance>(
-                "balance",
-                grainId,
-                storage,
-                coordinator,
-                src => new Balance { Value = src.Value });
-            return new AccountGrain(balance);
-        }
-    }
-
     // Invokables
     private readonly struct AccountGrain_DepositInvokable : IGrainVoidInvokable
     {
         private readonly decimal _amount;
         public AccountGrain_DepositInvokable(decimal amount) => _amount = amount;
         public uint MethodId => 0u;
-        public ValueTask Invoke(Grain grain) => new(((IAccountGrain)grain).DepositAsync(_amount));
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IAccountGrain)behavior).DepositAsync(_amount));
         public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct AccountGrain_GetBalanceInvokable : IGrainInvokable<decimal>
     {
         public uint MethodId => 1u;
-        public ValueTask<decimal> Invoke(Grain grain) => new(((IAccountGrain)grain).GetBalanceAsync());
+        public ValueTask<decimal> Invoke(IGrainBehavior behavior) => new(((IAccountGrain)behavior).GetBalanceAsync());
         public void Serialize(ref CodecWriter writer) { }
         public decimal DeserializeResult(ref CodecReader reader) => throw new NotSupportedException("Local-only invokable.");
     }

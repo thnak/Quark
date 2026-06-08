@@ -141,19 +141,18 @@ public sealed class GrainCallIntegrationTests : IAsyncLifetime
         // Touch the grain so it activates.
         await grain.IncrementAsync();
 
-        // Capture the grain instance before it's removed from the table.
+        // Capture the activation before it is removed from the table.
         var grainId = new GrainId(new GrainType("CounterGrain"), "deactivate-call-test");
         _fixture.ActivationTable.TryGetActivation(grainId, out GrainActivation? activation);
-        var counterGrain = (CounterGrain)activation!.Grain;
 
-        // SelfDestructAsync calls DeactivateOnIdle() internally.
+        // SelfDestructAsync calls Deactivate() internally.
         await grain.SelfDestructAsync();
 
         // Allow the deactivation work item and table-removal continuation to run.
         await Task.Delay(100);
 
-        Assert.True(counterGrain.DeactivateCalled,
-            "OnDeactivateAsync should have been called after DeactivateOnIdle()");
+        Assert.True(activation!.GetOrCreateHolder<CounterState>().Value.DeactivateCalled,
+            "OnDeactivateAsync should have been called after Deactivate()");
     }
 
     [Fact]

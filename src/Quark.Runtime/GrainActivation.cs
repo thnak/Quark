@@ -1,14 +1,20 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
+using Quark.Core.Abstractions.Timers;
+using Quark.Persistence.Abstractions;
 
 namespace Quark.Runtime;
 
 /// <summary>
 ///     Represents a single live grain activation on this silo.
-///     Owns a sequential <see cref="Channel{T}" /> that ensures grain methods are
-///     processed one at a time (single-threaded turn-based execution model).
+///     Owns the sequential mailbox and the activation-scoped memory bag.
+///     Behavior objects are constructed per-call from a fresh <see cref="IServiceScope" />.
 /// </summary>
 public sealed class GrainActivation : IAsyncDisposable
 {
@@ -16,39 +22,128 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly ILogger<GrainActivation> _logger;
     private readonly Task _processingLoop;
     private readonly bool _isReentrant;
+    private readonly IServiceProvider _root;
+    private readonly ConcurrentDictionary<Type, object> _memoryBag = new();
+    private readonly Lock _timersLock = new();
+    private readonly List<IGrainTimer> _timers = [];
     private Func<Task>? _onDeactivated;
     private long _lastAccessedTicks;
+    private long _deactivationNotBeforeTicks;
+    private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
     private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
 
-    internal GrainActivation(Grain grain, GrainContext context, ILogger<GrainActivation> logger)
+    public GrainActivation(
+        GrainId grainId,
+        GrainType grainType,
+        bool isReentrant,
+        IServiceProvider root,
+        ILogger<GrainActivation> logger)
     {
+        GrainId = grainId;
+        GrainType = grainType;
+        _isReentrant = isReentrant;
+        _root = root;
         _logger = logger;
-        Grain = grain;
-        Context = context;
-        _isReentrant = grain.GetType().IsDefined(typeof(ReentrantAttribute), inherit: true);
         _processingLoop = RunLoopAsync(_cts.Token);
-        context.SetScheduler(PostAsync);
-        context.SetDeactivationCallback(ScheduleDeactivation);
         _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
 
-    /// <summary>
-    ///     Registers a callback invoked after the grain's deactivation sequence completes and
-    ///     the processing loop exits.  Used by <see cref="LocalGrainCallInvoker" /> to remove
-    ///     the activation from the <see cref="GrainActivationTable" />.
-    /// </summary>
-    internal void SetOnDeactivated(Func<Task> onDeactivated)
+    // Probe constructor — no processing loop, used only by BehaviorStartupValidator.
+    private GrainActivation(GrainId grainId, GrainType grainType, IServiceProvider root)
     {
-        _onDeactivated = onDeactivated;
+        GrainId = grainId;
+        GrainType = grainType;
+        _isReentrant = false;
+        _root = root;
+        _logger = NullLogger<GrainActivation>.Instance;
+        _processingLoop = Task.CompletedTask;
+        _status = GrainActivationStatus.Active;
+        _lastAccessedTicks = 0;
     }
 
-    /// <summary>The grain instance.</summary>
-    public Grain Grain { get; }
+    /// <summary>
+    ///     Creates a lightweight probe shell for startup DI validation.
+    ///     Does not start a processing loop.
+    /// </summary>
+    internal static GrainActivation CreateProbe(GrainId grainId, GrainType grainType, IServiceProvider root)
+        => new(grainId, grainType, root);
 
-    /// <summary>The activation context (identity + lifecycle).</summary>
-    public GrainContext Context { get; }
+    /// <summary>The stable identity of this grain.</summary>
+    public GrainId GrainId { get; }
+
+    /// <summary>The grain type key used to look up the behavior class.</summary>
+    public GrainType GrainType { get; }
+
+    /// <summary>Current lifecycle status of this activation.</summary>
+    public GrainActivationStatus ActivationStatus => _status;
+
+    /// <summary>Marks this activation as fully active. Called by LocalGrainCallInvoker after OnActivateAsync.</summary>
+    internal void MarkActive() => _status = GrainActivationStatus.Active;
+
+    /// <summary>
+    ///     Returns or creates the <see cref="StateHolder{TState}" /> for the given state type.
+    ///     One holder per (activation, TState); shared between IActivationMemory and
+    ///     IPersistentActivationMemory accessors.
+    /// </summary>
+    public StateHolder<TState> GetOrCreateHolder<TState>() where TState : class, new()
+        => (StateHolder<TState>)_memoryBag.GetOrAdd(typeof(TState), static _ => new StateHolder<TState>());
+
+    /// <summary>
+    ///     Registers a grain-scoped timer. The timer posts callbacks through this grain's mailbox.
+    ///     Automatically disposed when the activation deactivates.
+    /// </summary>
+    public IGrainTimer RegisterTimer<TState>(
+        Func<TState, CancellationToken, Task> callback,
+        TState state,
+        GrainTimerCreationOptions options)
+    {
+        if (_status is GrainActivationStatus.Deactivating or GrainActivationStatus.Inactive)
+            throw new InvalidOperationException("Cannot register a timer on a deactivating or inactive grain.");
+
+        var timer = new GrainTimer<TState>(callback, state, options, PostAsync);
+        lock (_timersLock) { _timers.Add(timer); }
+        return timer;
+    }
+
+    /// <summary>
+    ///     Requests deactivation. Posts the full lifecycle teardown as the next mailbox work item.
+    /// </summary>
+    public void Deactivate(DeactivationReason reason)
+    {
+        if (_status != GrainActivationStatus.Active && _status != GrainActivationStatus.Activating)
+            return;
+
+        _status = GrainActivationStatus.Deactivating;
+        _ = PostAsync(() => RunDeactivationAsync(reason));
+
+        _ = _processingLoop.ContinueWith(
+            _ => _onDeactivated?.Invoke() ?? Task.CompletedTask,
+            TaskScheduler.Default).Unwrap();
+    }
+
+    /// <inheritdoc cref="IGrainContext.DelayDeactivation" />
+    public void DelayDeactivation(TimeSpan timeSpan)
+    {
+        long newTicks = (DateTimeOffset.UtcNow + timeSpan).UtcTicks;
+        long current;
+        do
+        {
+            current = Interlocked.Read(ref _deactivationNotBeforeTicks);
+            if (newTicks <= current) return;
+        } while (Interlocked.CompareExchange(ref _deactivationNotBeforeTicks, newTicks, current) != current);
+    }
+
+    /// <summary>
+    ///     Returns <see langword="true"/> when idle deactivation is currently permitted —
+    ///     no delay deadline has been set, or the deadline has already passed.
+    /// </summary>
+    internal bool IsDeactivationAllowed(DateTimeOffset now)
+    {
+        long notBefore = Interlocked.Read(ref _deactivationNotBeforeTicks);
+        return notBefore == 0 || now.UtcTicks >= notBefore;
+    }
 
     /// <summary>
     ///     Returns <see langword="true"/> when this activation has received no calls for longer
@@ -60,12 +155,20 @@ public sealed class GrainActivation : IAsyncDisposable
         return (now.UtcTicks - lastTicks) > threshold.Ticks;
     }
 
+    /// <summary>
+    ///     Registers a callback invoked after the grain's deactivation sequence completes.
+    ///     Used by <see cref="LocalGrainCallInvoker"/> to remove the activation from the table.
+    /// </summary>
+    internal void SetOnDeactivated(Func<Task> onDeactivated)
+    {
+        _onDeactivated = onDeactivated;
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (Context.ActivationStatus is GrainActivationStatus.Active or GrainActivationStatus.Activating)
+        if (_status is GrainActivationStatus.Active or GrainActivationStatus.Activating)
         {
-            // Run OnDeactivateAsync on the grain's scheduler before tearing down the loop.
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             try
             {
@@ -73,12 +176,10 @@ public sealed class GrainActivation : IAsyncDisposable
                 {
                     try
                     {
-                        await Context.DeactivateAsync(Grain, DeactivationReason.ShuttingDown)
-                            .ConfigureAwait(false);
+                        await RunDeactivationAsync(DeactivationReason.ShuttingDown).ConfigureAwait(false);
                     }
                     finally
                     {
-                        _queue.Writer.TryComplete();
                         done.TrySetResult();
                     }
                 }).ConfigureAwait(false);
@@ -106,31 +207,8 @@ public sealed class GrainActivation : IAsyncDisposable
     // -----------------------------------------------------------------------
 
     /// <summary>
-    ///     Called by <see cref="GrainContext.Deactivate" /> (via the deactivation callback).
-    ///     Posts the full deactivation sequence as the next work item on the grain's scheduler
-    ///     so it runs AFTER the current grain turn completes.  A continuation fires after the
-    ///     processing loop exits to invoke <see cref="_onDeactivated" /> (table cleanup).
-    /// </summary>
-    private void ScheduleDeactivation(DeactivationReason reason)
-    {
-        _ = PostAsync(() => RunDeactivationAsync(reason));
-
-        _ = _processingLoop.ContinueWith(
-            _ => _onDeactivated?.Invoke() ?? Task.CompletedTask,
-            TaskScheduler.Default).Unwrap();
-    }
-
-    private async Task RunDeactivationAsync(DeactivationReason reason)
-    {
-        await Context.DeactivateAsync(Grain, reason).ConfigureAwait(false);
-        // Signal the processing loop to stop accepting new work after this item.
-        _queue.Writer.TryComplete();
-    }
-
-    /// <summary>
-    ///     Posts a unit of work to this grain's sequential scheduler.
-    ///     For non-reentrant grains, the work item will be executed after all previously posted items complete.
-    ///     For reentrant grains, the work item executes immediately without queueing.
+    ///     Posts a unit of work to this grain's sequential mailbox.
+    ///     Reentrant grains bypass the queue and execute immediately.
     /// </summary>
     public async ValueTask PostAsync(Func<Task> workItem)
     {
@@ -143,8 +221,6 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
-        // Capture the caller's execution context so that AsyncLocal values (e.g. transaction IDs)
-        // flow into the grain's execution turn even though it runs on a different thread via the channel.
         var ctx = ExecutionContext.Capture();
         Func<Task> dispatched = ctx is null
             ? workItem
@@ -157,6 +233,44 @@ public sealed class GrainActivation : IAsyncDisposable
         await _queue.Writer.WriteAsync(dispatched, _cts.Token).ConfigureAwait(false);
     }
 
+    private async Task RunDeactivationAsync(DeactivationReason reason)
+    {
+        DisposeTimers();
+        try
+        {
+            await RunLifecycleHookAsync(
+                lifecycle => lifecycle.OnDeactivateAsync(reason, CancellationToken.None)).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Error running OnDeactivateAsync lifecycle hook for {GrainId}", GrainId);
+        }
+        _status = GrainActivationStatus.Inactive;
+        _queue.Writer.TryComplete();
+    }
+
+    internal async Task RunLifecycleHookAsync(Func<IActivationLifecycle, Task> hook)
+    {
+        using IServiceScope scope = _root.CreateScope();
+        IServiceProvider sp = scope.ServiceProvider;
+        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = this;
+        sp.GetRequiredService<ICallContextSetter>().Set(GrainId);
+        IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(GrainType);
+        if (behavior is IActivationLifecycle lifecycle)
+            await hook(lifecycle).ConfigureAwait(false);
+    }
+
+    private void DisposeTimers()
+    {
+        IGrainTimer[] timers;
+        lock (_timersLock)
+        {
+            timers = [.. _timers];
+            _timers.Clear();
+        }
+        foreach (IGrainTimer t in timers) t.Dispose();
+    }
+
     private async Task RunLoopAsync(CancellationToken ct)
     {
         await foreach (Func<Task> work in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
@@ -167,7 +281,7 @@ public sealed class GrainActivation : IAsyncDisposable
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error executing grain method on {GrainId}", Context.GrainId);
+                _logger.LogError(e, "Error executing grain method on {GrainId}", GrainId);
             }
         }
     }

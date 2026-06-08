@@ -7,7 +7,7 @@ namespace Quark.Tests.Fault.Grains;
 internal readonly struct WorkerGrain_DoWorkInvokable : IGrainInvokable<WorkerStatus>
 {
     public uint MethodId => 0u;
-    public ValueTask<WorkerStatus> Invoke(Grain grain) => new(((IWorkerGrain)grain).DoWorkAsync());
+    public ValueTask<WorkerStatus> Invoke(IGrainBehavior behavior) => new(((IWorkerGrain)behavior).DoWorkAsync());
     public void Serialize(ref CodecWriter writer) { }
     public WorkerStatus DeserializeResult(ref CodecReader reader) => throw new NotSupportedException("Local-only invokable.");
 }

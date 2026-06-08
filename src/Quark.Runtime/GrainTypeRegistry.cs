@@ -38,8 +38,8 @@ public sealed class GrainTypeRegistry : IGrainTypeRegistry
     }
 
     /// <summary>Convenience overload: infers the grain type key from the CLR type name.</summary>
-    public void Register<TGrain>() where TGrain : Grain
+    public void Register<TBehavior>() where TBehavior : class, IGrainBehavior
     {
-        Register(new GrainType(typeof(TGrain).Name), typeof(TGrain));
+        Register(new GrainType(typeof(TBehavior).Name), typeof(TBehavior));
     }
 }

@@ -5,6 +5,7 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Reminders;
+using Quark.Persistence.Abstractions;
 using Quark.Reminders.Abstractions;
 using Quark.Reminders.InMemory;
 using Quark.Runtime;
@@ -27,8 +28,15 @@ public sealed class ReminderIntegrationTests
                 services.AddQuarkRuntime();
                 services.AddInMemoryReminders(o =>
                     o.PollInterval = pollInterval ?? TimeSpan.FromMilliseconds(50));
-                services.AddGrain<ReminderTestGrain>();
-                services.AddGrainActivatorFactory<ReminderTestGrainActivatorFactory>();
+
+                services.AddGrainBehavior<IReminderTestGrain, ReminderTestBehavior>();
+
+                // Activation memory for reminder state
+                services.AddScoped<IActivationMemory<ReminderTestState>>(sp =>
+                    new ActivationMemoryAccessor<ReminderTestState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<ReminderTestState>()));
+
                 extraSilo?.Invoke(services);
             };
             options.ConfigureClientServices = services =>
@@ -128,36 +136,58 @@ public sealed class ReminderIntegrationTests
         Task<IReadOnlyList<IGrainReminder>> GetReminderListAsync();
     }
 
-    // ---- Test grain implementation ----
+    // ---- State ----
 
-    private sealed class ReminderTestGrain : Grain, IRemindable, IReminderTestGrain
+    private sealed class ReminderTestState
     {
-        private int _receiveCount;
-        private readonly Dictionary<string, IGrainReminder> _handles = new();
+        public int ReceiveCount { get; set; }
+        public Dictionary<string, IGrainReminder> Handles { get; } = new();
+    }
+
+    // ---- Test grain behavior ----
+
+    private sealed class ReminderTestBehavior : IGrainBehavior, IRemindable, IReminderTestGrain
+    {
+        private readonly IActivationMemory<ReminderTestState> _memory;
+        private readonly ICallContext _ctx;
+        private readonly IReminderService _reminderService;
+
+        public ReminderTestBehavior(
+            IActivationMemory<ReminderTestState> memory,
+            ICallContext ctx,
+            IReminderService reminderService)
+        {
+            _memory = memory;
+            _ctx = ctx;
+            _reminderService = reminderService;
+        }
+
+        private IReminderService ReminderService => _reminderService;
 
         public async Task RegisterReminderAsync(string name, TimeSpan dueTime, TimeSpan period)
         {
-            IGrainReminder handle = await RegisterOrUpdateReminderAsync(name, dueTime, period);
-            _handles[name] = handle;
+            IGrainReminder handle = await ReminderService.RegisterOrUpdateReminderAsync(
+                _ctx.GrainId, name, dueTime, period);
+            _memory.Value.Handles[name] = handle;
         }
 
         public Task UnregisterReminderAsync(string name)
         {
-            if (_handles.Remove(name, out IGrainReminder? handle))
+            if (_memory.Value.Handles.Remove(name, out IGrainReminder? _))
             {
-                return UnregisterReminderAsync(handle);
+                return ReminderService.UnregisterReminderAsync(_ctx.GrainId, name);
             }
             return Task.CompletedTask;
         }
 
-        public Task<int> GetReceiveCountAsync() => Task.FromResult(_receiveCount);
+        public Task<int> GetReceiveCountAsync() => Task.FromResult(_memory.Value.ReceiveCount);
 
         public async Task<IReadOnlyList<IGrainReminder>> GetReminderListAsync()
-            => await GetRemindersAsync();
+            => await ReminderService.GetRemindersAsync(_ctx.GrainId);
 
         public Task ReceiveReminder(string reminderName, TickStatus status)
         {
-            Interlocked.Increment(ref _receiveCount);
+            _memory.Value.ReceiveCount++;
             return Task.CompletedTask;
         }
     }
@@ -176,7 +206,7 @@ public sealed class ReminderIntegrationTests
             _period = period;
         }
         public uint MethodId => 0u;
-        public ValueTask Invoke(Grain grain) => new(((IReminderTestGrain)grain).RegisterReminderAsync(_name, _dueTime, _period));
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IReminderTestGrain)behavior).RegisterReminderAsync(_name, _dueTime, _period));
         public void Serialize(ref CodecWriter writer) { }
     }
 
@@ -185,14 +215,14 @@ public sealed class ReminderIntegrationTests
         private readonly string _name;
         public ReminderTestGrainProxy_UnregisterReminderAsyncInvokable(string name) => _name = name;
         public uint MethodId => 1u;
-        public ValueTask Invoke(Grain grain) => new(((IReminderTestGrain)grain).UnregisterReminderAsync(_name));
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IReminderTestGrain)behavior).UnregisterReminderAsync(_name));
         public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct ReminderTestGrainProxy_GetReceiveCountAsyncInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 2u;
-        public ValueTask<int> Invoke(Grain grain) => new(((IReminderTestGrain)grain).GetReceiveCountAsync());
+        public ValueTask<int> Invoke(IGrainBehavior behavior) => new(((IReminderTestGrain)behavior).GetReceiveCountAsync());
         public void Serialize(ref CodecWriter writer) { }
         public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
@@ -200,8 +230,8 @@ public sealed class ReminderIntegrationTests
     private readonly struct ReminderTestGrainProxy_GetReminderListAsyncInvokable : IGrainInvokable<IReadOnlyList<IGrainReminder>>
     {
         public uint MethodId => 3u;
-        public ValueTask<IReadOnlyList<IGrainReminder>> Invoke(Grain grain)
-            => new(((IReminderTestGrain)grain).GetReminderListAsync());
+        public ValueTask<IReadOnlyList<IGrainReminder>> Invoke(IGrainBehavior behavior)
+            => new(((IReminderTestGrain)behavior).GetReminderListAsync());
         public void Serialize(ref CodecWriter writer) { }
         public IReadOnlyList<IGrainReminder> DeserializeResult(ref CodecReader reader)
             => throw new NotSupportedException("Local-only invokable.");
@@ -231,13 +261,5 @@ public sealed class ReminderIntegrationTests
         public Task<IReadOnlyList<IGrainReminder>> GetReminderListAsync()
             => invoker.InvokeAsync<ReminderTestGrainProxy_GetReminderListAsyncInvokable, IReadOnlyList<IGrainReminder>>(
                 grainId, new ReminderTestGrainProxy_GetReminderListAsyncInvokable());
-    }
-
-    // ---- Hand-written activator factory ----
-
-    private sealed class ReminderTestGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(ReminderTestGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services) => new ReminderTestGrain();
     }
 }

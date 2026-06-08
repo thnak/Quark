@@ -34,15 +34,15 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
     {
         GrainId grainId = new(new GrainType("PersistentCounterGrain"), "counter-1");
 
-        int value = await _fixture.CallInvoker.InvokeAsync<PersistentCounterGrain_IncrementInvokable, int>(
-            grainId, new PersistentCounterGrain_IncrementInvokable());
+        int value = await _fixture.CallInvoker.InvokeAsync<PersistentCounterBehavior_IncrementInvokable, int>(
+            grainId, new PersistentCounterBehavior_IncrementInvokable());
         Assert.Equal(1, value);
 
         await _fixture.ActivationTable.DisposeAsync();
         _fixture.ResetActivationTable();
 
-        int persisted = await _fixture.CallInvoker.InvokeAsync<PersistentCounterGrain_GetValueInvokable, int>(
-            grainId, new PersistentCounterGrain_GetValueInvokable());
+        int persisted = await _fixture.CallInvoker.InvokeAsync<PersistentCounterBehavior_GetValueInvokable, int>(
+            grainId, new PersistentCounterBehavior_GetValueInvokable());
         Assert.Equal(1, persisted);
     }
 
@@ -66,7 +66,18 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
 
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
-            services.AddSingleton<IGrainActivatorFactory>(new PersistentCounterGrainActivatorFactory());
+
+            // Behavior registration
+            services.AddGrainBehavior<IPersistentCounterGrain, PersistentCounterBehavior>();
+
+            // Persistent activation memory
+            services.AddScoped<IPersistentActivationMemory<CounterState>>(sp =>
+                new PersistentActivationMemoryAccessor<CounterState>(
+                    sp.GetRequiredService<IActivationShellAccessor>()
+                      .Shell.GetOrCreateHolder<CounterState>(),
+                    sp.GetRequiredService<IStorage<CounterState>>(),
+                    sp.GetRequiredService<ICallContext>(),
+                    StorageOptions.DefaultStateName));
 
             _serviceProvider = services.BuildServiceProvider();
             ResetActivationTable();
@@ -83,34 +94,40 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
 
         public void ResetActivationTable()
         {
-            GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
-            typeRegistry.Register(new GrainType("PersistentCounterGrain"), typeof(PersistentCounterGrain));
-
             ActivationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
-            CallInvoker = new LocalGrainCallInvoker(
-                ActivationTable,
-                _serviceProvider.GetRequiredService<IGrainActivator>(),
-                typeRegistry,
-                _serviceProvider.GetRequiredService<IGrainDirectory>(),
-                _serviceProvider,
-                _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
-                NullLogger<LocalGrainCallInvoker>.Instance,
-                NullLogger<GrainActivation>.Instance);
+            CallInvoker = _serviceProvider.GetRequiredService<LocalGrainCallInvoker>();
         }
     }
 
-    private sealed class PersistentCounterGrain : Grain<CounterState>
+    private interface IPersistentCounterGrain : IGrainWithStringKey
     {
+        Task<int> IncrementAsync();
+        Task<int> GetValueAsync();
+    }
+
+    private sealed class PersistentCounterBehavior : IGrainBehavior, IPersistentCounterGrain, IActivationLifecycle
+    {
+        private readonly IPersistentActivationMemory<CounterState> _memory;
+
+        public PersistentCounterBehavior(IPersistentActivationMemory<CounterState> memory)
+        {
+            _memory = memory;
+        }
+
+        public Task OnActivateAsync(CancellationToken ct) => _memory.LoadAsync(ct);
+
+        public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct) => Task.CompletedTask;
+
         public async Task<int> IncrementAsync()
         {
-            State.Value++;
-            await WriteStateAsync();
-            return State.Value;
+            _memory.Value.Value++;
+            await _memory.SaveAsync();
+            return _memory.Value.Value;
         }
 
         public Task<int> GetValueAsync()
         {
-            return Task.FromResult(State.Value);
+            return Task.FromResult(_memory.Value.Value);
         }
     }
 
@@ -127,18 +144,18 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         }
     }
 
-    private readonly struct PersistentCounterGrain_IncrementInvokable : IGrainInvokable<int>
+    private readonly struct PersistentCounterBehavior_IncrementInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 0u;
-        public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).IncrementAsync());
+        public ValueTask<int> Invoke(IGrainBehavior behavior) => new(((IPersistentCounterGrain)behavior).IncrementAsync());
         public void Serialize(ref CodecWriter writer) { }
         public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
-    private readonly struct PersistentCounterGrain_GetValueInvokable : IGrainInvokable<int>
+    private readonly struct PersistentCounterBehavior_GetValueInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 1u;
-        public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).GetValueAsync());
+        public ValueTask<int> Invoke(IGrainBehavior behavior) => new(((IPersistentCounterGrain)behavior).GetValueAsync());
         public void Serialize(ref CodecWriter writer) { }
         public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
@@ -184,11 +201,5 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         {
             throw new NotImplementedException();
         }
-    }
-
-    private sealed class PersistentCounterGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(PersistentCounterGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services) => new PersistentCounterGrain();
     }
 }

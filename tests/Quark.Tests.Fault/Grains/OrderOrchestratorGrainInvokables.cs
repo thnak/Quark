@@ -12,8 +12,8 @@ internal readonly struct OrderOrchestratorGrain_ProcessInvokable : IGrainInvokab
 
     public uint MethodId => 0u;
 
-    public ValueTask<OrchestratorStatus> Invoke(Grain grain)
-        => new(((IOrderOrchestratorGrain)grain).ProcessAsync(_workerIds));
+    public ValueTask<OrchestratorStatus> Invoke(IGrainBehavior behavior)
+        => new(((IOrderOrchestratorGrain)behavior).ProcessAsync(_workerIds));
 
     public void Serialize(ref CodecWriter writer) { }
     public OrchestratorStatus DeserializeResult(ref CodecReader reader) => throw new NotSupportedException("Local-only invokable.");

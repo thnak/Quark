@@ -42,7 +42,7 @@ public sealed class SiloHostedService : IHostedService
             _options.ServiceId,
             _options.SiloAddress);
 
-        // Apply deferred grain-type registrations (AddGrain<T> calls).
+        // Apply deferred grain-type registrations (AddGrainBehavior<TInterface, TBehavior> calls).
         ApplyGrainRegistrations();
         // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
         ApplyTransportDispatcherRegistrations();
@@ -97,7 +97,7 @@ public sealed class SiloHostedService : IHostedService
             return;
         }
 
-        foreach (var reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainRegistration>())
+        foreach (var reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainBehaviorRegistration>())
         {
             reg.Apply(typeRegistry);
         }

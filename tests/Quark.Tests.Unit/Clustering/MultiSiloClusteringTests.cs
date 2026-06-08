@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Client;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Testing.Harness;
 using Quark.Tests.Unit.Integration;
@@ -16,8 +18,10 @@ public sealed class MultiSiloClusteringTests
     {
         services.AddLogging();
         services.AddQuarkRuntime();
-        services.AddGrain<CounterGrain>();
-        services.AddGrainActivatorFactory<CounterGrainActivatorFactory>();
+        services.AddGrainBehavior<ICounterGrain, CounterBehavior>();
+        services.AddScoped<IActivationMemory<CounterState>>(sp =>
+            new ActivationMemoryAccessor<CounterState>(
+                sp.GetRequiredService<IActivationShellAccessor>().Shell.GetOrCreateHolder<CounterState>()));
         services.AddLocalClusterClient();
         services.AddGrainProxy<ICounterGrain, CounterGrainProxy>();
     }

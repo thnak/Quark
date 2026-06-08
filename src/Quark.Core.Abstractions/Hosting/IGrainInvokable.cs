@@ -14,8 +14,8 @@ public interface IGrainInvokable<TResult>
     /// <summary>Stable numeric method identifier used for tracing and fault injection.</summary>
     uint MethodId { get; }
 
-    /// <summary>Invokes the grain method on <paramref name="grain" /> and returns the result.</summary>
-    ValueTask<TResult> Invoke(Grain grain);
+    /// <summary>Invokes the grain method on <paramref name="behavior" /> and returns the result.</summary>
+    ValueTask<TResult> Invoke(IGrainBehavior behavior);
 
     /// <summary>Serialises all method arguments into <paramref name="writer" /> for transport.</summary>
     void Serialize(ref CodecWriter writer);
@@ -33,8 +33,8 @@ public interface IGrainVoidInvokable
     /// <summary>Stable numeric method identifier used for tracing and fault injection.</summary>
     uint MethodId { get; }
 
-    /// <summary>Invokes the grain method on <paramref name="grain" />.</summary>
-    ValueTask Invoke(Grain grain);
+    /// <summary>Invokes the grain method on <paramref name="behavior" />.</summary>
+    ValueTask Invoke(IGrainBehavior behavior);
 
     /// <summary>Serialises all method arguments into <paramref name="writer" /> for transport.</summary>
     void Serialize(ref CodecWriter writer);
@@ -42,7 +42,7 @@ public interface IGrainVoidInvokable
 
 /// <summary>
 ///     Carries the arguments for one observer method call and knows how to invoke it on a local
-///     observer object (which is <em>not</em> a <see cref="Grain" /> subclass).
+///     observer object (which is <em>not</em> an <see cref="IGrainBehavior" />).
 ///     One struct is generated per observer method; the observer proxy instantiates it with the
 ///     typed arguments and passes it to
 ///     <see cref="IGrainCallInvoker.InvokeObserverAsync{TInvokable}" />.

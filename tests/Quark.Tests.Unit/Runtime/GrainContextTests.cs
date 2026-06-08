@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -6,142 +7,72 @@ using Xunit;
 
 namespace Quark.Tests.Unit.Runtime;
 
-public sealed class GrainContextTests
+public sealed class GrainActivationLifecycleTests
 {
-    // Minimal stub factory/provider for tests that don't use GrainFactory.
-    private static readonly IGrainFactory NullFactory = new NullGrainFactory();
-    private static readonly IServiceProvider NullServices = new NullServiceProvider();
+    private static GrainActivation MakeActivation(GrainId id)
+        => new(id, id.Type, isReentrant: false,
+            new NullServiceProvider(), NullLogger<GrainActivation>.Instance);
 
-    private static GrainContext MakeContext(GrainId id)
+    [Fact]
+    public async Task Activation_StartsInActivatingState()
     {
-        return new GrainContext(id, NullFactory, NullServices);
+        var id = new GrainId(new GrainType("MyGrain"), "1");
+        await using var activation = MakeActivation(id);
+        Assert.Equal(GrainActivationStatus.Activating, activation.ActivationStatus);
     }
 
     [Fact]
-    public async Task ActivateAsync_SetsStatusActive()
+    public async Task MarkActive_SetsStatusToActive()
     {
-        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
-        var grain = new TestGrain();
-
-        await ctx.ActivateAsync(grain);
-
-        Assert.Equal(GrainActivationStatus.Active, ctx.ActivationStatus);
+        var id = new GrainId(new GrainType("MyGrain"), "1");
+        await using var activation = MakeActivation(id);
+        activation.MarkActive();
+        Assert.Equal(GrainActivationStatus.Active, activation.ActivationStatus);
     }
 
     [Fact]
-    public async Task ActivateAsync_CallsOnActivate()
+    public async Task Deactivate_TransitionsToInactive()
     {
-        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
-        var grain = new TestGrain();
-
-        await ctx.ActivateAsync(grain);
-
-        Assert.True(grain.ActivateCalled);
+        var id = new GrainId(new GrainType("MyGrain"), "1");
+        await using var activation = MakeActivation(id);
+        activation.MarkActive();
+        activation.Deactivate(DeactivationReason.ApplicationRequested);
+        await Task.Delay(200);
+        Assert.Equal(GrainActivationStatus.Inactive, activation.ActivationStatus);
     }
 
     [Fact]
-    public async Task DeactivateAsync_SetsStatusInactive()
+    public async Task DisposeAsync_TransitionsToInactive()
     {
-        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
-        var grain = new TestGrain();
-
-        await ctx.ActivateAsync(grain);
-        await ctx.DeactivateAsync(grain, DeactivationReason.ApplicationRequested);
-
-        Assert.Equal(GrainActivationStatus.Inactive, ctx.ActivationStatus);
-        Assert.True(grain.DeactivateCalled);
+        var id = new GrainId(new GrainType("MyGrain"), "1");
+        var activation = MakeActivation(id);
+        activation.MarkActive();
+        await activation.DisposeAsync();
+        Assert.Equal(GrainActivationStatus.Inactive, activation.ActivationStatus);
     }
 
     [Fact]
-    public async Task Deactivate_Method_TriggersStop()
+    public async Task PostAsync_RunsWorkItemsInOrder()
     {
-        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
-        var grain = new TestGrain();
-
-        await ctx.ActivateAsync(grain);
-        ctx.Deactivate(DeactivationReason.ApplicationRequested);
-
-        await Task.Delay(50);
-
-        Assert.Equal(GrainActivationStatus.Inactive, ctx.ActivationStatus);
-        Assert.True(grain.DeactivateCalled);
+        var id = new GrainId(new GrainType("MyGrain"), "1");
+        await using var activation = MakeActivation(id);
+        var results = new List<int>();
+        await activation.PostAsync(() => { results.Add(1); return Task.CompletedTask; });
+        await activation.PostAsync(() => { results.Add(2); return Task.CompletedTask; });
+        await activation.PostAsync(() => { results.Add(3); return Task.CompletedTask; });
+        Assert.Equal([1, 2, 3], results);
     }
 
     [Fact]
-    public void GrainFactory_ExposedOnContext()
+    public async Task GrainId_MatchesConstructorArgument()
     {
-        GrainContext ctx = MakeContext(new GrainId(new GrainType("MyGrain"), "1"));
-        Assert.Same(NullFactory, ctx.GrainFactory);
-    }
-
-    // -----------------------------------------------------------------------
-
-    private sealed class TestGrain : Grain
-    {
-        public bool ActivateCalled { get; private set; }
-        public bool DeactivateCalled { get; private set; }
-
-        public override Task OnActivateAsync(CancellationToken ct)
-        {
-            ActivateCalled = true;
-            return Task.CompletedTask;
-        }
-
-        public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
-        {
-            DeactivateCalled = true;
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class NullGrainFactory : IGrainFactory
-    {
-        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey
-        {
-            throw new NotImplementedException();
-        }
-
-        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey
-        {
-            throw new NotImplementedException();
-        }
-
-        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey
-        {
-            throw new NotImplementedException();
-        }
-
-        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey
-        {
-            throw new NotImplementedException();
-        }
-
-        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey
-        {
-            throw new NotImplementedException();
-        }
-
-        public IGrain GetGrain(Type t, string key)
-        {
-            throw new NotImplementedException();
-        }
-
-        public IGrain GetGrain(Type t, Guid key)
-        {
-            throw new NotImplementedException();
-        }
-
-        public IGrain GetGrain(Type t, long key)
-        {
-            throw new NotImplementedException();
-        }
+        var id = new GrainId(new GrainType("MyGrain"), "key-42");
+        await using var activation = MakeActivation(id);
+        Assert.Equal(id, activation.GrainId);
     }
 
     private sealed class NullServiceProvider : IServiceProvider
     {
-        public object? GetService(Type serviceType)
-        {
-            return null;
-        }
+        public object? GetService(Type serviceType) => null;
     }
 }

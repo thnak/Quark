@@ -8,6 +8,7 @@ using Quark.Core;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
@@ -47,12 +48,24 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
             .UseQuark(silo =>
             {
                 silo.Services.AddQuarkRuntime();
-                silo.Services.AddGrain<PingGrain>();
-                silo.Services.AddGrain<TrackerGrain>();
-                silo.Services.AddGrain<SourceGrain>();
-                silo.Services.AddGrainActivatorFactory<PingGrainActivatorFactory>();
-                silo.Services.AddGrainActivatorFactory<TrackerGrainActivatorFactory>();
-                silo.Services.AddGrainActivatorFactory<SourceGrainActivatorFactory>();
+                silo.Services.AddGrainBehavior<IPingGrain, PingGrainBehavior>();
+                silo.Services.AddGrainBehavior<ITrackerGrain, TrackerGrainBehavior>();
+                silo.Services.AddGrainBehavior<ISourceGrain, SourceGrainBehavior>();
+
+                // Activation memory for each behavior
+                silo.Services.AddScoped<IActivationMemory<PingGrainState>>(sp =>
+                    new ActivationMemoryAccessor<PingGrainState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<PingGrainState>()));
+                silo.Services.AddScoped<IActivationMemory<TrackerGrainState>>(sp =>
+                    new ActivationMemoryAccessor<TrackerGrainState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<TrackerGrainState>()));
+                silo.Services.AddScoped<IActivationMemory<SourceGrainState>>(sp =>
+                    new ActivationMemoryAccessor<SourceGrainState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<SourceGrainState>()));
+
                 silo.Services.AddGrainTransportDispatcher(
                     new GrainType("PingGrain"), PingGrain_TransportDispatcher.Instance);
                 silo.Services.AddGrainTransportDispatcher(
@@ -62,7 +75,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
                 silo.UseLocalhostClustering(siloPort: SiloPort, gatewayPort: GatewayPort,
                     clusterId: _clusterId);
                 silo.Services.AddTcpTransport();
-                // Silo-side IGrainFactory for GrainContext (grains calling other grains).
+                // Silo-side IGrainFactory for behaviors calling other grains.
                 silo.Services.AddLocalClusterClient();
                 silo.Services.AddGrainProxy<IPingGrain, PingGrainProxy>();
                 silo.Services.AddGrainProxy<ITrackerGrain, TrackerGrainProxy>();
@@ -145,54 +158,58 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
     }
 
     // =========================================================================
-    // Grain implementations
+    // State classes
     // =========================================================================
 
-    public sealed class PingGrain : Grain, IPingGrain
+    private sealed class PingGrainState { }
+
+    private sealed class TrackerGrainState
     {
+        public ISourceGrain? Source { get; set; }
+    }
+
+    private sealed class SourceGrainState { }
+
+    // =========================================================================
+    // Grain behavior implementations
+    // =========================================================================
+
+    private sealed class PingGrainBehavior : IGrainBehavior, IPingGrain
+    {
+        public PingGrainBehavior(IActivationMemory<PingGrainState> _) { }
+
         public Task<string> Ping(string message) => Task.FromResult(message);
     }
 
-    public sealed class TrackerGrain : Grain, ITrackerGrain
+    private sealed class TrackerGrainBehavior : IGrainBehavior, ITrackerGrain
     {
-        private ISourceGrain? _source;
+        private readonly IActivationMemory<TrackerGrainState> _memory;
 
-        public Task SetSource(ISourceGrain source) { _source = source; return Task.CompletedTask; }
+        public TrackerGrainBehavior(IActivationMemory<TrackerGrainState> memory)
+        {
+            _memory = memory;
+        }
+
+        public Task SetSource(ISourceGrain source) { _memory.Value.Source = source; return Task.CompletedTask; }
 
         public Task<string> GetSourceName()
         {
-            if (_source is null) throw new InvalidOperationException("No source set.");
+            if (_memory.Value.Source is null) throw new InvalidOperationException("No source set.");
             // The grain key is the identity — return it without a network hop.
-            return Task.FromResult(((IGrainProxy)_source).GrainId.Key);
+            return Task.FromResult(((IGrainProxy)_memory.Value.Source).GrainId.Key);
         }
     }
 
-    public sealed class SourceGrain : Grain, ISourceGrain
+    private sealed class SourceGrainBehavior : IGrainBehavior, ISourceGrain
     {
-        // GrainId is the protected property on Grain: GrainId.Key is the string key.
-        public Task<string> GetName() => Task.FromResult(GrainId.Key);
-    }
+        private readonly ICallContext _ctx;
 
-    // =========================================================================
-    // Activator factories
-    // =========================================================================
+        public SourceGrainBehavior(ICallContext ctx, IActivationMemory<SourceGrainState> _)
+        {
+            _ctx = ctx;
+        }
 
-    private sealed class PingGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(PingGrain);
-        public Grain Create(GrainId id, IServiceProvider sp) => new PingGrain();
-    }
-
-    private sealed class TrackerGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(TrackerGrain);
-        public Grain Create(GrainId id, IServiceProvider sp) => new TrackerGrain();
-    }
-
-    private sealed class SourceGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(SourceGrain);
-        public Grain Create(GrainId id, IServiceProvider sp) => new SourceGrain();
+        public Task<string> GetName() => Task.FromResult(_ctx.GrainId.Key);
     }
 
     // =========================================================================
@@ -206,7 +223,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
         private readonly string _message;
         public PingGrainProxy_PingInvokable(string message) => _message = message;
         public uint MethodId => 0u;
-        public ValueTask<string> Invoke(Grain grain) => new(((IPingGrain)grain).Ping(_message));
+        public ValueTask<string> Invoke(IGrainBehavior behavior) => new(((IPingGrain)behavior).Ping(_message));
         public void Serialize(ref CodecWriter writer) => writer.WriteString(_message);
         public string DeserializeResult(ref CodecReader reader) => reader.ReadString();
         public static PingGrainProxy_PingInvokable Deserialize(
@@ -221,8 +238,8 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
         private readonly ISourceGrain _source;
         public TrackerGrainProxy_SetSourceInvokable(ISourceGrain source) => _source = source;
         public uint MethodId => 0u;
-        public ValueTask Invoke(Grain grain)
-            => new(((ITrackerGrain)grain).SetSource(_source));
+        public ValueTask Invoke(IGrainBehavior behavior)
+            => new(((ITrackerGrain)behavior).SetSource(_source));
         public void Serialize(ref CodecWriter writer)
             => writer.WriteString(((IGrainProxy)_source).GrainId.Key);
         public static TrackerGrainProxy_SetSourceInvokable Deserialize(
@@ -233,8 +250,8 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
     private readonly struct TrackerGrainProxy_GetSourceNameInvokable : IGrainInvokable<string>
     {
         public uint MethodId => 1u;
-        public ValueTask<string> Invoke(Grain grain)
-            => new(((ITrackerGrain)grain).GetSourceName());
+        public ValueTask<string> Invoke(IGrainBehavior behavior)
+            => new(((ITrackerGrain)behavior).GetSourceName());
         public void Serialize(ref CodecWriter writer) { }
         public string DeserializeResult(ref CodecReader reader) => reader.ReadString();
         public static TrackerGrainProxy_GetSourceNameInvokable Deserialize(
@@ -246,7 +263,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
     private readonly struct SourceGrainProxy_GetNameInvokable : IGrainInvokable<string>
     {
         public uint MethodId => 0u;
-        public ValueTask<string> Invoke(Grain grain) => new(((ISourceGrain)grain).GetName());
+        public ValueTask<string> Invoke(IGrainBehavior behavior) => new(((ISourceGrain)behavior).GetName());
         public void Serialize(ref CodecWriter writer) { }
         public string DeserializeResult(ref CodecReader reader) => reader.ReadString();
         public static SourceGrainProxy_GetNameInvokable Deserialize(

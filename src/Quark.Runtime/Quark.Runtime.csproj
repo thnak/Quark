@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Quark.Core\Quark.Core.csproj"/>
+    <ProjectReference Include="..\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj"/>
     <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj"/>
     <PackageReference Include="Microsoft.Extensions.Hosting"/>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>

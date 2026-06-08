@@ -4,10 +4,10 @@ using Adventure.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quark.Core;
-using Quark.Core.Abstractions.Grains;
-using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
 using Quark.Client;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Transport.Tcp;
 
@@ -18,23 +18,33 @@ var host = Host.CreateDefaultBuilder(args)
         silo.Services.AddTcpTransport();
         silo.UseLocalhostClustering(gatewayPort: 30001);
 
-        silo.Services.AddGrain<PlayerGrain>();
-        silo.Services.AddGrainActivatorFactory<PlayerGrainActivatorFactory>();
+        silo.Services.AddGrainBehavior<IPlayerGrain, PlayerBehavior>();
+        silo.Services.AddGrainBehavior<IRoomGrain, RoomBehavior>();
+        silo.Services.AddGrainBehavior<IMonsterGrain, MonsterBehavior>();
+
         silo.Services.AddGrainTransportDispatcher(
             new GrainType("PlayerGrain"),
             new PlayerGrainProxy_TransportDispatcher());
-
-        silo.Services.AddGrain<RoomGrain>();
-        silo.Services.AddGrainActivatorFactory<RoomGrainActivatorFactory>();
         silo.Services.AddGrainTransportDispatcher(
             new GrainType("RoomGrain"),
             new RoomGrainProxy_TransportDispatcher());
-
-        silo.Services.AddGrain<MonsterGrain>();
-        silo.Services.AddGrainActivatorFactory<MonsterGrainActivatorFactory>();
         silo.Services.AddGrainTransportDispatcher(
             new GrainType("MonsterGrain"),
             new MonsterGrainProxy_TransportDispatcher());
+
+        // Scoped IActivationMemory<T> registrations — one per distinct TState
+        silo.Services.AddScoped<IActivationMemory<PlayerState>>(sp =>
+            new ActivationMemoryAccessor<PlayerState>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateHolder<PlayerState>()));
+        silo.Services.AddScoped<IActivationMemory<RoomState>>(sp =>
+            new ActivationMemoryAccessor<RoomState>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateHolder<RoomState>()));
+        silo.Services.AddScoped<IActivationMemory<MonsterState>>(sp =>
+            new ActivationMemoryAccessor<MonsterState>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateHolder<MonsterState>()));
     })
     .UseQuarkClient(client =>
     {

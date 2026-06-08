@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="../Adventure.GrainInterfaces/Adventure.GrainInterfaces.csproj"/>
     <ProjectReference Include="../../../src/Quark.Core.Abstractions/Quark.Core.Abstractions.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Runtime/Quark.Runtime.csproj"/>
     <ProjectReference Include="../../../src/Quark.CodeGenerator/Quark.CodeGenerator.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
   </ItemGroup>

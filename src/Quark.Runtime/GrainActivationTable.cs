@@ -88,7 +88,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
                 continue;
 
             GrainActivation activation = lazy.Value.Result;
-            if (activation.Context.ActivationStatus == GrainActivationStatus.Active)
+            if (activation.ActivationStatus == GrainActivationStatus.Active)
                 result.Add((grainId, activation));
         }
         return result;

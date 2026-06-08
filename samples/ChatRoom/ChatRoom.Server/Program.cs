@@ -4,7 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quark.Client;
 using Quark.Core;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Streaming.InMemory;
@@ -19,11 +21,16 @@ var host = Host.CreateDefaultBuilder(args)
         silo.Services.AddMemoryStreams("chat");
         silo.Services.AddStreamableCodec<ChatMsg, ChatMsgCodec>();
 
-        silo.Services.AddGrain<ChannelGrain>();
-        silo.Services.AddGrainActivatorFactory<ChannelGrainActivatorFactory>();
+        silo.Services.AddGrainBehavior<IChannelGrain, ChannelBehavior>();
         silo.Services.AddGrainTransportDispatcher(
             new GrainType("ChannelGrain"),
             new ChannelGrainProxy_TransportDispatcher());
+
+        // Scoped IActivationMemory<T> registration
+        silo.Services.AddScoped<IActivationMemory<ChannelState>>(sp =>
+            new ActivationMemoryAccessor<ChannelState>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateHolder<ChannelState>()));
     })
     .UseQuarkClient(client =>
     {
