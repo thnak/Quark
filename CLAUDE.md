@@ -146,14 +146,27 @@ Declare on the **behavior class**; `AttributePlacementStrategyResolver` picks th
 
 ## Persistence
 
-Four patterns, from ephemeral to fully event-sourced:
+Five patterns, from ephemeral to fully event-sourced:
 
 | Pattern | Interface | Use when |
 |---|---|---|
 | In-memory activation state | `IActivationMemory<T>` | State survives across calls but not deactivation |
+| Managed in-memory resource | `IManagedActivationMemory<T>` | Async-init resource (buffer, pool) with cleanup on deactivation |
 | Persistent activation state | `IPersistentActivationMemory<T>` | Durable, explicit `WriteStateAsync()` |
 | Named state injection | `[PersistentState("name","provider")] IPersistentState<T>` | Orleans-compatible named storage |
 | Event sourcing | Inherit `JournaledGrain<TState,TEvent>` | Append-only event log, replay on activation |
+
+`IManagedActivationMemory<T>` example:
+```csharp
+public MyBehavior(IManagedActivationMemory<RingBuffer> buffer)
+{
+    _buffer = buffer
+        .Init(() => Task.FromResult(new RingBuffer(1024)))
+        .Destroy(b => b.FlushAsync());
+}
+// Register: services.AddManagedActivationMemory<RingBuffer>();
+// Or let BehaviorRegistrationGenerator emit it automatically.
+```
 
 Storage providers:
 ```csharp

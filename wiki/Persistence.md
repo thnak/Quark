@@ -1,6 +1,14 @@
 # Persistence
 
-Quark offers four persistence patterns, from ephemeral in-memory state to full event sourcing.
+Quark offers five persistence patterns, from ephemeral in-memory state to full event sourcing.
+
+| Pattern | Interface | State lifetime | Storage |
+|---|---|---|---|
+| In-memory | `IActivationMemory<T>` | Activation | None |
+| Managed in-memory | `IManagedActivationMemory<T>` | Activation | None (async init/destroy) |
+| Persistent activation | `IPersistentActivationMemory<T>` | Durable | `IGrainStorage` |
+| Named state injection | `[PersistentState] IPersistentState<T>` | Durable | Named `IGrainStorage` |
+| Event sourcing | `JournaledGrain<TState,TEvent>` | Durable | `ILogStorage` |
 
 ## 1. In-memory activation state (`IActivationMemory<T>`)
 
@@ -32,7 +40,46 @@ silo.Services.AddScoped<IActivationMemory<CounterState>>(sp =>
 
 The `StateHolder<TState>` lives on the `GrainActivation` shell and is shared across all per-call scopes for the same activation.
 
-## 2. Persistent activation state (`IPersistentActivationMemory<T>`)
+## 2. Managed in-memory resource (`IManagedActivationMemory<T>`)
+
+For resources that require **async initialization** and **explicit cleanup** but should not be persisted — in-memory circular buffers, pooled channels, pre-computed projections, or anything with an async factory.
+
+```csharp
+public sealed class MetricsBehavior : IGrainBehavior, IMetricsGrain
+{
+    private readonly IManagedActivationMemory<RingBuffer> _buffer;
+
+    public MetricsBehavior(IManagedActivationMemory<RingBuffer> buffer)
+    {
+        _buffer = buffer
+            .Init(() => Task.FromResult(new RingBuffer(capacity: 1024)))
+            .Destroy(b => b.FlushAsync());
+    }
+
+    public async Task RecordAsync(double value)
+    {
+        RingBuffer buf = await _buffer.GetAsync();
+        buf.Write(value);
+    }
+}
+```
+
+- `Init(Func<Task<T>>)` — factory invoked on first `GetAsync()` call; result is cached for the activation lifetime.
+- `Destroy(Func<T, Task>)` — cleanup called **after** `OnDeactivateAsync` completes, so the grain can still read the resource during its own teardown.
+- `IsInitialized` — `false` until the first `GetAsync()` succeeds; `Destroy` is a no-op if the resource was never initialized.
+
+Register in silo startup:
+
+```csharp
+// Manual:
+silo.Services.AddManagedActivationMemory<RingBuffer>();
+
+// Via BehaviorRegistrationGenerator (emitted automatically when the behavior
+// has an IManagedActivationMemory<T> constructor parameter):
+silo.Services.AddMyAssemblyBehaviors();
+```
+
+## 3. Persistent activation state (`IPersistentActivationMemory<T>`)
 
 Drop-in for `IActivationMemory<T>` with automatic load-on-first-access and explicit `WriteAsync()`:
 
@@ -71,7 +118,7 @@ silo.Services.AddScoped<IPersistentActivationMemory<AccountState>>(sp =>
         "accounts")); // storage provider name
 ```
 
-## 3. `[PersistentState]` attribute injection (Orleans-compatible)
+## 4. `[PersistentState]` attribute injection (Orleans-compatible)
 
 Grains that want Orleans-style named state injection use `IPersistentState<T>` with the `[PersistentState]` attribute:
 
@@ -104,7 +151,7 @@ services.AddRedisGrainStorage("profileStore", opt => opt.ConnectionString = "loc
 
 The `[PersistentState("name","provider")]` attribute is resolved at construction time — no reflection at call time.
 
-## 4. Event sourcing (`JournaledGrain<TState, TEvent>`)
+## 5. Event sourcing (`JournaledGrain<TState, TEvent>`)
 
 For grains whose history of decisions matters. Inherit from `JournaledGrain<TState,TEvent>`:
 
