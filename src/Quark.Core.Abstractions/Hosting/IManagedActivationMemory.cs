@@ -20,14 +20,14 @@ public interface IManagedActivationMemory<T> where T : class
     ///     Configures the async factory used to create the resource on first access.
     ///     Must be called before <see cref="GetAsync"/> is first invoked.
     /// </summary>
-    IManagedActivationMemory<T> Init(Func<Task<T>> factory);
+    IManagedActivationMemory<T> Init(Func<ValueTask<T>> factory);
 
     /// <summary>
     ///     Configures the async callback invoked to clean up the resource on grain deactivation.
     ///     Called after the grain's <c>OnDeactivateAsync</c> completes.
     ///     Optional: omit if the resource requires no explicit cleanup.
     /// </summary>
-    IManagedActivationMemory<T> Destroy(Func<T, Task> cleanup);
+    IManagedActivationMemory<T> Destroy(Func<T, ValueTask> cleanup);
 
     /// <summary>
     ///     Returns the resource value, initializing it on first access via the factory

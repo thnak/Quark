@@ -12,13 +12,13 @@ public sealed class ManagedActivationMemoryAccessor<T>(ManagedActivationMemoryHo
     : IManagedActivationMemory<T>
     where T : class
 {
-    public IManagedActivationMemory<T> Init(Func<Task<T>> factory)
+    public IManagedActivationMemory<T> Init(Func<ValueTask<T>> factory)
     {
         holder.Init(factory);
         return this;
     }
 
-    public IManagedActivationMemory<T> Destroy(Func<T, Task> cleanup)
+    public IManagedActivationMemory<T> Destroy(Func<T, ValueTask> cleanup)
     {
         holder.Destroy(cleanup);
         return this;
