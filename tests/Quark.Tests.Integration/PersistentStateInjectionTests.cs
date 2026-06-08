@@ -107,6 +107,10 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
                     "counterB"));
 
             _serviceProvider = services.BuildServiceProvider();
+
+            var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
+            typeRegistry.Register(new GrainType("TwoSlotGrain"), typeof(TwoSlotBehavior));
+
             ResetActivationTable();
         }
 

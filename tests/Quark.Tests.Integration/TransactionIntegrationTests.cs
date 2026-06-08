@@ -29,19 +29,25 @@ public sealed class TransactionIntegrationTests
             services.AddTransactions();
             services.AddGrainBehavior<IAccountGrain, AccountGrainBehavior>();
 
-            // AccountGrainBehavior needs a TransactionalState<Balance> per activation.
-            // Wire it as scoped so each call scope sees the same instance as the grain.
+            // TransactionalState<Balance> must be shared across all per-call scopes for the
+            // same activation so that multiple DepositAsync calls within one transaction
+            // accumulate into the same _pending buffer. Use GrainActivation.GetOrCreate so
+            // the instance is constructed once per activation and reused by every scope.
             services.AddScoped<ITransactionalState<Balance>>(sp =>
             {
-                var ctx = sp.GetRequiredService<ICallContext>();
-                var storage = sp.GetRequiredService<IGrainStorage>();
-                var coordinator = sp.GetRequiredService<TransactionCoordinator>();
-                return new TransactionalState<Balance>(
-                    "balance",
-                    ctx.GrainId,
-                    storage,
-                    coordinator,
-                    src => new Balance { Value = src.Value });
+                var shell = sp.GetRequiredService<IActivationShellAccessor>().Shell;
+                return shell.GetOrCreate(() =>
+                {
+                    var ctx = sp.GetRequiredService<ICallContext>();
+                    var storage = sp.GetRequiredService<IGrainStorage>();
+                    var coordinator = sp.GetRequiredService<TransactionCoordinator>();
+                    return new TransactionalState<Balance>(
+                        "balance",
+                        ctx.GrainId,
+                        storage,
+                        coordinator,
+                        src => new Balance { Value = src.Value });
+                });
             });
         };
         options.ConfigureClientServices = services =>

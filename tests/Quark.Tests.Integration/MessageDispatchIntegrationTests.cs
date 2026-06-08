@@ -239,6 +239,9 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
             _serviceProvider = services.BuildServiceProvider();
 
+            var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
+            typeRegistry.Register(new GrainType("DispatchCounterGrain"), typeof(DispatchCounterBehavior));
+
             _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
 
             var dispatcherRegistry = _serviceProvider.GetRequiredService<TransportGrainDispatcherRegistry>();

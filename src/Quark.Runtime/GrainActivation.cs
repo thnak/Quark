@@ -91,6 +91,14 @@ public sealed class GrainActivation : IAsyncDisposable
         => (StateHolder<TState>)_memoryBag.GetOrAdd(typeof(TState), static _ => new StateHolder<TState>());
 
     /// <summary>
+    ///     Gets or creates an activation-scoped singleton of type <typeparamref name="T" />.
+    ///     The factory is invoked at most once per activation lifetime.
+    ///     Use for services that must be shared across all per-call scopes of the same activation.
+    /// </summary>
+    public T GetOrCreate<T>(Func<T> factory) where T : class
+        => (T)_memoryBag.GetOrAdd(typeof(T), _ => factory());
+
+    /// <summary>
     ///     Registers a grain-scoped timer. The timer posts callbacks through this grain's mailbox.
     ///     Automatically disposed when the activation deactivates.
     /// </summary>
@@ -116,7 +124,7 @@ public sealed class GrainActivation : IAsyncDisposable
             return;
 
         _status = GrainActivationStatus.Deactivating;
-        _ = PostAsync(() => RunDeactivationAsync(reason));
+        _queue.Writer.TryWrite(() => RunDeactivationAsync(reason));
 
         _ = _processingLoop.ContinueWith(
             _ => _onDeactivated?.Invoke() ?? Task.CompletedTask,
@@ -207,7 +215,7 @@ public sealed class GrainActivation : IAsyncDisposable
     // -----------------------------------------------------------------------
 
     /// <summary>
-    ///     Posts a unit of work to this grain's sequential mailbox.
+    ///     Posts a unit of work to this grain's sequential mailbox and awaits its completion.
     ///     Reentrant grains bypass the queue and execute immediately.
     /// </summary>
     public async ValueTask PostAsync(Func<Task> workItem)
@@ -221,16 +229,35 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var ctx = ExecutionContext.Capture();
-        Func<Task> dispatched = ctx is null
-            ? workItem
-            : () =>
+
+        Func<Task> dispatched;
+        if (ctx is null)
+        {
+            dispatched = async () =>
             {
-                Task? task = null;
-                ExecutionContext.Run(ctx, _ => task = workItem(), null);
-                return task!;
+                try { await workItem().ConfigureAwait(false); tcs.TrySetResult(); }
+                catch (Exception ex) { tcs.TrySetException(ex); }
             };
+        }
+        else
+        {
+            dispatched = async () =>
+            {
+                try
+                {
+                    Task? task = null;
+                    ExecutionContext.Run(ctx, _ => task = workItem(), null);
+                    await task!.ConfigureAwait(false);
+                    tcs.TrySetResult();
+                }
+                catch (Exception ex) { tcs.TrySetException(ex); }
+            };
+        }
+
         await _queue.Writer.WriteAsync(dispatched, _cts.Token).ConfigureAwait(false);
+        await tcs.Task.ConfigureAwait(false);
     }
 
     private async Task RunDeactivationAsync(DeactivationReason reason)

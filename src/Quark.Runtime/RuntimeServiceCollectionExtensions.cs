@@ -112,7 +112,7 @@ public static class RuntimeServiceCollectionExtensions
         string key = typeof(TBehavior).GetCustomAttributes(typeof(GrainBehaviorAttribute), false)
             is GrainBehaviorAttribute[] { Length: > 0 } attrs
             ? attrs[0].BehaviorId
-            : typeof(TInterface).Name.TrimStart('I');
+            : typeof(TInterface).Name.StartsWith('I') ? typeof(TInterface).Name[1..] : typeof(TInterface).Name;
 
         services.AddSingleton<IGrainBehaviorRegistration>(
             new GrainBehaviorRegistration(new GrainType(key), typeof(TBehavior)));

@@ -33,7 +33,10 @@ public sealed class FaultInjectingBehaviorResolver : IBehaviorResolver
             throw new InvalidOperationException(
                 $"No behavior registered for grain type '{grainType.Value}'.");
 
-        _plan.Check(behaviorType);
+        // Only count activation attempts, not regular per-call resolutions
+        var shellAccessor = _sp.GetRequiredService<IActivationShellAccessor>();
+        if (shellAccessor.Shell.ActivationStatus == GrainActivationStatus.Activating)
+            _plan.Check(behaviorType);
 
         return (IGrainBehavior)ActivatorUtilities.CreateInstance(_sp, behaviorType);
     }

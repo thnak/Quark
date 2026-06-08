@@ -240,6 +240,10 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
 
             services.AddQuarkRuntime();
 
+            // Lazy IGrainFactory — EventSourceGrainBehavior needs it; set after BuildServiceProvider()
+            LocalGrainFactory? grainFactoryRef = null;
+            services.AddSingleton<IGrainFactory>(_ => grainFactoryRef!);
+
             // Behavior + memory registrations
             services.AddGrainBehavior<IEventSourceGrain, EventSourceGrainBehavior>();
             services.AddScoped<IActivationMemory<EventSourceState>>(sp =>
@@ -278,7 +282,9 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
                 proxyRegistry, interfaceRegistry, deferredInvoker,
                 observerProxyRegistry, observerRegistry);
 
-            // Wire IGrainFactory into the DI container so behaviors can resolve it
+            // Fulfill the lazy IGrainFactory singleton so behavior DI can resolve it
+            grainFactoryRef = localFactory;
+
             var realInvoker = new LocalGrainCallInvoker(
                 _activationTable,
                 _serviceProvider.GetRequiredService<IGrainTypeRegistry>(),

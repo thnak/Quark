@@ -80,6 +80,10 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
                     StorageOptions.DefaultStateName));
 
             _serviceProvider = services.BuildServiceProvider();
+
+            var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
+            typeRegistry.Register(new GrainType("PersistentCounterGrain"), typeof(PersistentCounterBehavior));
+
             ResetActivationTable();
         }
 
