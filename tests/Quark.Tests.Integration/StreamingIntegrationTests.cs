@@ -20,7 +20,7 @@ public sealed class StreamingIntegrationTests
     [Fact]
     public async Task ExplicitSubscription_ReceivesPublishedItems()
     {
-        var provider = new InMemoryStreamProvider("chat");
+        var provider = new InMemoryStreamProvider("chat", new StreamSubscriptionRegistry());
         var stream = provider.GetStream<string>(StreamId.Create("room", "general"));
 
         var received = new List<string>();
@@ -35,7 +35,7 @@ public sealed class StreamingIntegrationTests
     [Fact]
     public async Task UnsubscribeHandle_StopsDelivery()
     {
-        var provider = new InMemoryStreamProvider("chat");
+        var provider = new InMemoryStreamProvider("chat", new StreamSubscriptionRegistry());
         var stream = provider.GetStream<string>(StreamId.Create("room", "unsub"));
 
         var received = new List<string>();
@@ -51,7 +51,7 @@ public sealed class StreamingIntegrationTests
     [Fact]
     public async Task MultipleSubscribers_AllReceiveMessages()
     {
-        var provider = new InMemoryStreamProvider("chat");
+        var provider = new InMemoryStreamProvider("chat", new StreamSubscriptionRegistry());
         var stream = provider.GetStream<int>(StreamId.Create("nums", "test"));
 
         var a = new List<int>();
