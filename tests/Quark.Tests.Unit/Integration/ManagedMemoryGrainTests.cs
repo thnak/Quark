@@ -46,9 +46,9 @@ public sealed class ManagedBufferBehavior : IGrainBehavior, IManagedBufferGrain,
             {
                 var buf = new ManagedBuffer();
                 buf.InitCount++;
-                return Task.FromResult(buf);
+                return ValueTask.FromResult(buf);
             })
-            .Destroy(b => { b.DestroyCount++; return Task.CompletedTask; });
+            .Destroy(b => { b.DestroyCount++; return ValueTask.CompletedTask; });
     }
 
     public async Task<long> GetInitCountAsync()

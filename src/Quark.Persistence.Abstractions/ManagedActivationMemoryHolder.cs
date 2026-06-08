@@ -12,16 +12,16 @@ public sealed class ManagedActivationMemoryHolder<T> : IManagedActivationMemory<
 {
     private T? _value;
     private bool _initialized;
-    private Func<Task<T>>? _factory;
-    private Func<T, Task>? _cleanup;
+    private Func<ValueTask<T>>? _factory;
+    private Func<T, ValueTask>? _cleanup;
 
-    public IManagedActivationMemory<T> Init(Func<Task<T>> factory)
+    public IManagedActivationMemory<T> Init(Func<ValueTask<T>> factory)
     {
         _factory = factory;
         return this;
     }
 
-    public IManagedActivationMemory<T> Destroy(Func<T, Task> cleanup)
+    public IManagedActivationMemory<T> Destroy(Func<T, ValueTask> cleanup)
     {
         _cleanup = cleanup;
         return this;

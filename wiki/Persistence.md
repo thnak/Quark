@@ -52,7 +52,7 @@ public sealed class MetricsBehavior : IGrainBehavior, IMetricsGrain
     public MetricsBehavior(IManagedActivationMemory<RingBuffer> buffer)
     {
         _buffer = buffer
-            .Init(() => Task.FromResult(new RingBuffer(capacity: 1024)))
+            .Init(() => ValueTask.FromResult(new RingBuffer(capacity: 1024)))
             .Destroy(b => b.FlushAsync());
     }
 
@@ -64,8 +64,8 @@ public sealed class MetricsBehavior : IGrainBehavior, IMetricsGrain
 }
 ```
 
-- `Init(Func<Task<T>>)` — factory invoked on first `GetAsync()` call; result is cached for the activation lifetime.
-- `Destroy(Func<T, Task>)` — cleanup called **after** `OnDeactivateAsync` completes, so the grain can still read the resource during its own teardown.
+- `Init(Func<ValueTask<T>>)` — factory invoked on first `GetAsync()` call; result is cached for the activation lifetime.
+- `Destroy(Func<T, ValueTask>)` — cleanup called **after** `OnDeactivateAsync` completes, so the grain can still read the resource during its own teardown.
 - `IsInitialized` — `false` until the first `GetAsync()` succeeds; `Destroy` is a no-op if the resource was never initialized.
 
 Register in silo startup:

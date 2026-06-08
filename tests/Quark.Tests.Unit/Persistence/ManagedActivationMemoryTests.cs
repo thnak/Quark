@@ -1,4 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Persistence.Abstractions;
+using Quark.Runtime;
 using Xunit;
 
 namespace Quark.Tests.Unit.Persistence;
@@ -10,7 +13,7 @@ public sealed class ManagedActivationMemoryTests
     {
         int callCount = 0;
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => { callCount++; return Task.FromResult(new MyResource()); });
+        holder.Init(() => { callCount++; return ValueTask.FromResult(new MyResource()); });
 
         await holder.GetAsync();
 
@@ -22,7 +25,7 @@ public sealed class ManagedActivationMemoryTests
     {
         var resource = new MyResource();
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(resource));
+        holder.Init(() => ValueTask.FromResult(resource));
 
         MyResource r1 = await holder.GetAsync();
         MyResource r2 = await holder.GetAsync();
@@ -38,7 +41,7 @@ public sealed class ManagedActivationMemoryTests
     {
         int callCount = 0;
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => { callCount++; return Task.FromResult(new MyResource()); });
+        holder.Init(() => { callCount++; return ValueTask.FromResult(new MyResource()); });
 
         await holder.GetAsync();
         await holder.GetAsync();
@@ -59,7 +62,7 @@ public sealed class ManagedActivationMemoryTests
     public void IsInitialized_Returns_False_Before_GetAsync()
     {
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(new MyResource()));
+        holder.Init(() => ValueTask.FromResult(new MyResource()));
 
         Assert.False(holder.IsInitialized);
     }
@@ -68,7 +71,7 @@ public sealed class ManagedActivationMemoryTests
     public async Task IsInitialized_Returns_True_After_GetAsync()
     {
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(new MyResource()));
+        holder.Init(() => ValueTask.FromResult(new MyResource()));
 
         await holder.GetAsync();
 
@@ -80,8 +83,8 @@ public sealed class ManagedActivationMemoryTests
     {
         bool cleanupCalled = false;
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(new MyResource()))
-              .Destroy(_ => { cleanupCalled = true; return Task.CompletedTask; });
+        holder.Init(() => ValueTask.FromResult(new MyResource()))
+              .Destroy(_ => { cleanupCalled = true; return ValueTask.CompletedTask; });
 
         await holder.GetAsync();
         await holder.DisposeAsync();
@@ -95,8 +98,8 @@ public sealed class ManagedActivationMemoryTests
         var resource = new MyResource();
         MyResource? received = null;
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(resource))
-              .Destroy(r => { received = r; return Task.CompletedTask; });
+        holder.Init(() => ValueTask.FromResult(resource))
+              .Destroy(r => { received = r; return ValueTask.CompletedTask; });
 
         await holder.GetAsync();
         await holder.DisposeAsync();
@@ -109,8 +112,8 @@ public sealed class ManagedActivationMemoryTests
     {
         bool cleanupCalled = false;
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(new MyResource()))
-              .Destroy(_ => { cleanupCalled = true; return Task.CompletedTask; });
+        holder.Init(() => ValueTask.FromResult(new MyResource()))
+              .Destroy(_ => { cleanupCalled = true; return ValueTask.CompletedTask; });
 
         await holder.DisposeAsync();
 
@@ -121,7 +124,7 @@ public sealed class ManagedActivationMemoryTests
     public async Task DisposeAsync_Skips_Cleanup_When_Destroy_Not_Configured()
     {
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        holder.Init(() => Task.FromResult(new MyResource()));
+        holder.Init(() => ValueTask.FromResult(new MyResource()));
 
         await holder.GetAsync();
         // Should not throw even without Destroy configured.
@@ -132,7 +135,7 @@ public sealed class ManagedActivationMemoryTests
     public void Init_Returns_Same_Interface_For_Fluent_Chaining()
     {
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        var returned = holder.Init(() => Task.FromResult(new MyResource()));
+        var returned = holder.Init(() => ValueTask.FromResult(new MyResource()));
 
         Assert.Same(holder, returned);
     }
@@ -141,9 +144,46 @@ public sealed class ManagedActivationMemoryTests
     public void Destroy_Returns_Same_Interface_For_Fluent_Chaining()
     {
         var holder = new ManagedActivationMemoryHolder<MyResource>();
-        var returned = holder.Destroy(_ => Task.CompletedTask);
+        var returned = holder.Destroy(_ => ValueTask.CompletedTask);
 
         Assert.Same(holder, returned);
+    }
+
+    // -------------------------------------------------------------------------
+    // Scoped DI registration
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void AddManagedActivationMemory_Is_Registered_As_Scoped()
+    {
+        // IManagedActivationMemory<T> must be scoped so each per-call IServiceScope
+        // gets its own ManagedActivationMemoryAccessor (not a shared singleton).
+        var services = new ServiceCollection();
+        services.AddManagedActivationMemory<MyResource>();
+
+        ServiceDescriptor descriptor = services.Single(d =>
+            d.ServiceType == typeof(IManagedActivationMemory<MyResource>));
+
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public async Task Multiple_Accessors_For_Same_Holder_Share_State()
+    {
+        // Each per-call scope gets a distinct ManagedActivationMemoryAccessor wrapping
+        // the same shell-owned ManagedActivationMemoryHolder. Verify that both accessors
+        // observe the same initialized value (resource is created exactly once).
+        var holder = new ManagedActivationMemoryHolder<MyResource>();
+        var accessor1 = new ManagedActivationMemoryAccessor<MyResource>(holder);
+        var accessor2 = new ManagedActivationMemoryAccessor<MyResource>(holder);
+
+        accessor1.Init(() => ValueTask.FromResult(new MyResource()));
+
+        MyResource r1 = await accessor1.GetAsync();
+        MyResource r2 = await accessor2.GetAsync();
+
+        Assert.Same(r1, r2);
+        Assert.True(accessor2.IsInitialized);
     }
 
     private sealed class MyResource { }
