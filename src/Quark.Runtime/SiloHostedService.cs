@@ -84,6 +84,13 @@ public sealed class SiloHostedService : IHostedService
 
         await _lifecycle.StopAsync(cancellationToken).ConfigureAwait(false);
 
+        // Drain all grain activations while the DI root is still live.
+        // GrainActivationTable is disposed again by the container after StopAsync returns, but
+        // by then _activations is empty so that second call is a no-op.
+        var table = _services.GetService(typeof(GrainActivationTable)) as GrainActivationTable;
+        if (table is not null)
+            await table.DisposeAsync().ConfigureAwait(false);
+
         _logger.LogInformation("Quark silo '{SiloName}' stopped.", _options.SiloName);
     }
 
