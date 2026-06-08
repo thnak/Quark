@@ -932,7 +932,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         string dispatcherName = $"{m.ProxyClassName}_TransportDispatcher";
 
         sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
-        sb.AppendLine($"internal sealed class {dispatcherName}");
+        sb.AppendLine($"public sealed class {dispatcherName}");
         sb.AppendLine("    : global::Quark.Core.Abstractions.Hosting.ITransportGrainDispatcher");
         sb.AppendLine("{");
         sb.AppendLine($"    public static readonly {dispatcherName} Instance = new();");

@@ -10,7 +10,7 @@ namespace Quark.Tests.CodeGenerator;
 
 internal static class GeneratorTestDriver
 {
-    public static GeneratorTestResult Run(string source, IIncrementalGenerator generator)
+    public static GeneratorTestResult Run(string source, params IIncrementalGenerator[] generators)
     {
         SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(
             source,
@@ -23,21 +23,21 @@ internal static class GeneratorTestDriver
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            [generator.AsSourceGenerator()],
+            generators.Select(g => g.AsSourceGenerator()).ToArray(),
             parseOptions: (CSharpParseOptions)syntaxTree.Options);
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation,
             out ImmutableArray<Diagnostic> generatorDiagnostics);
 
         GeneratorDriverRunResult runResult = driver.GetRunResult();
-        var generatedSources = runResult.Results
+        var namedSources = runResult.Results
             .SelectMany(static result => result.GeneratedSources)
-            .Select(static sourceResult => sourceResult.SourceText.ToString())
+            .Select(static s => (s.HintName, Text: s.SourceText.ToString()))
             .ToImmutableArray();
 
         ImmutableArray<Diagnostic> diagnostics = generatorDiagnostics
             .AddRange(outputCompilation.GetDiagnostics());
 
-        return new GeneratorTestResult(outputCompilation, generatedSources, diagnostics);
+        return new GeneratorTestResult(outputCompilation, namedSources, diagnostics);
     }
 
     internal static ImmutableArray<MetadataReference> GetMetadataReferences()
