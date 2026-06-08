@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
 
@@ -117,6 +118,23 @@ public static class RuntimeServiceCollectionExtensions
         services.AddSingleton<IGrainBehaviorRegistration>(
             new GrainBehaviorRegistration(new GrainType(key), typeof(TBehavior)));
 
+        return services;
+    }
+
+    /// <summary>
+    ///     Registers a scoped <see cref="IManagedActivationMemory{T}" /> backed by the activation shell.
+    ///     The resource is lazily initialized on first <c>GetAsync()</c> call and cleaned up after
+    ///     <c>OnDeactivateAsync</c> runs. Configure init/destroy delegates on the injected instance
+    ///     (typically in the behavior constructor).
+    /// </summary>
+    public static IServiceCollection AddManagedActivationMemory<T>(
+        this IServiceCollection services)
+        where T : class
+    {
+        services.AddScoped<IManagedActivationMemory<T>>(static sp =>
+            new ManagedActivationMemoryAccessor<T>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateManagedHolder<T>()));
         return services;
     }
 

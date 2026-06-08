@@ -233,6 +233,77 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
+    public void Generates_IManagedActivationMemory_Scoped_Registration()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public sealed class CircularBuffer { }
+
+                              public interface IWorkerGrain : IGrainWithStringKey
+                              {
+                                  Task RunAsync();
+                              }
+
+                              public sealed class WorkerBehavior : IGrainBehavior, IWorkerGrain
+                              {
+                                  public WorkerBehavior(IManagedActivationMemory<CircularBuffer> buffer) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("IManagedActivationMemory<global::Demo.CircularBuffer>", generated);
+        Assert.Contains("ManagedActivationMemoryAccessor<global::Demo.CircularBuffer>", generated);
+        Assert.Contains("GetOrCreateManagedHolder<global::Demo.CircularBuffer>()", generated);
+    }
+
+    [Fact]
+    public void Deduplicates_Managed_State_Registrations_Across_Behaviors()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public sealed class SharedBuffer { }
+
+                              public interface IAlpha2Grain : IGrainWithStringKey { Task RunAsync(); }
+                              public interface IBeta2Grain  : IGrainWithStringKey { Task RunAsync(); }
+
+                              public sealed class Alpha2Behavior : IGrainBehavior, IAlpha2Grain
+                              {
+                                  public Alpha2Behavior(IManagedActivationMemory<SharedBuffer> m) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+
+                              public sealed class Beta2Behavior : IGrainBehavior, IBeta2Grain
+                              {
+                                  public Beta2Behavior(IManagedActivationMemory<SharedBuffer> m) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        int count = CountOccurrences(generated, "GetOrCreateManagedHolder<global::Demo.SharedBuffer>()");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
     public void Sanitizes_Assembly_Name_With_Dots()
     {
         // The test driver always uses "GeneratorTests" as assembly name.

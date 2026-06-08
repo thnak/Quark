@@ -1,0 +1,159 @@
+# Timers and Reminders
+
+Quark provides two time-based mechanisms for grains:
+
+| | Grain Timer | Grain Reminder |
+|---|---|---|
+| Persistence | In-memory, lost on silo restart | Durable, survives restarts |
+| Precision | Millisecond | Seconds–minutes |
+| Use case | Periodic polling, caching, retry | Scheduled business logic |
+
+## Grain timers
+
+Timers fire in-process and post their callbacks through the grain's mailbox, preserving single-threaded semantics.
+
+### Registration
+
+Inject `IGrainContext` (or use `ICallContext` to get the grain ID and register through the activation shell) and call `RegisterGrainTimer`:
+
+```csharp
+public sealed class CacheBehavior : IGrainBehavior, ICacheGrain, IActivationLifecycle
+{
+    private readonly IActivationMemory<CacheState> _memory;
+    private readonly IGrainContext _ctx;
+    private IGrainTimer? _refreshTimer;
+
+    public CacheBehavior(IActivationMemory<CacheState> memory, IGrainContext ctx)
+    {
+        _memory = memory;
+        _ctx = ctx;
+    }
+
+    public Task OnActivateAsync(CancellationToken ct)
+    {
+        _refreshTimer = _ctx.RegisterGrainTimer<object?>(
+            static (_, _) => Task.CompletedTask, // callback
+            null,                                 // state
+            new GrainTimerCreationOptions
+            {
+                DueTime  = TimeSpan.FromSeconds(5),
+                Period   = TimeSpan.FromSeconds(30),
+                Interleave = false
+            });
+        return Task.CompletedTask;
+    }
+
+    public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
+    {
+        _refreshTimer?.Dispose();
+        return Task.CompletedTask;
+    }
+}
+```
+
+The timer is automatically disposed when the activation is deactivated, but calling `Dispose()` manually cancels it earlier.
+
+### Options
+
+```csharp
+new GrainTimerCreationOptions
+{
+    DueTime    = TimeSpan.Zero,             // delay before first fire
+    Period     = TimeSpan.FromSeconds(10),  // interval; Timeout.InfiniteTimeSpan = one-shot
+    Interleave = false                      // true = overlapping fires allowed
+}
+```
+
+When `Interleave = false` (default), a timer tick that arrives while the previous callback is still running is silently dropped. This prevents unbounded queue growth for slow callbacks.
+
+### Changing a running timer
+
+```csharp
+_refreshTimer.Change(
+    dueTime: TimeSpan.FromSeconds(1),
+    period:  TimeSpan.FromSeconds(60));
+```
+
+## Grain reminders
+
+Reminders are durable — they survive silo restarts and are stored in a backing store (in-memory or Redis). When a silo starts, it reloads all reminders for grains it owns and resumes firing them.
+
+### Prerequisites
+
+1. Implement `IRemindable` on your behavior
+2. Register a reminder storage provider
+
+```csharp
+// In-memory (single-silo / test scenarios)
+services.AddInMemoryReminderService();
+
+// Redis (production, multi-silo)
+services.AddRedisReminderService(opts =>
+{
+    opts.ConnectionString = "localhost:6379";
+    opts.KeyPrefix = "quark:reminders:";
+    opts.PollInterval = TimeSpan.FromSeconds(1);
+});
+```
+
+### Writing a remindable grain
+
+```csharp
+public sealed class SubscriptionBehavior
+    : IGrainBehavior, ISubscriptionGrain, IRemindable, IActivationLifecycle
+{
+    private readonly IGrainContext _ctx;
+    private readonly IActivationMemory<SubscriptionState> _memory;
+
+    public SubscriptionBehavior(IGrainContext ctx, IActivationMemory<SubscriptionState> memory)
+    {
+        _ctx = ctx;
+        _memory = memory;
+    }
+
+    public async Task StartRenewalReminder()
+    {
+        // Register a reminder to fire every day
+        await _ctx.ReminderService.RegisterOrUpdateReminderAsync(
+            _ctx.GrainId,
+            reminderName: "renewal",
+            dueTime:       TimeSpan.FromDays(1),
+            period:        TimeSpan.FromDays(1));
+    }
+
+    public async Task StopRenewalReminder()
+    {
+        await _ctx.ReminderService.UnregisterReminderAsync(_ctx.GrainId, "renewal");
+    }
+
+    // Called by the runtime each time the reminder fires
+    public Task ReceiveReminder(string reminderName, TickStatus status)
+    {
+        if (reminderName == "renewal")
+            return ProcessRenewalAsync();
+        return Task.CompletedTask;
+    }
+
+    private Task ProcessRenewalAsync() { /* ... */ return Task.CompletedTask; }
+}
+```
+
+### `TickStatus`
+
+```csharp
+status.CurrentTickTime   // when this tick fired
+status.FirstTickTime     // when the reminder was first registered
+status.Period            // configured period
+```
+
+### Listing active reminders
+
+```csharp
+var reminders = await _ctx.ReminderService.GetRemindersAsync(_ctx.GrainId);
+foreach (var r in reminders)
+    Console.WriteLine($"{r.ReminderName} ({(r.IsValid ? "active" : "cancelled")})");
+```
+
+### Minimum period
+
+The minimum reliable reminder period is determined by the `PollInterval` (default 1 second). Reminders with periods shorter than `PollInterval` fire at the poll cadence, not the requested cadence.
