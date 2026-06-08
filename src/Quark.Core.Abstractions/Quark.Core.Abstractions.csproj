@@ -12,5 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj"/>
+    <ProjectReference Include="..\Quark.Streaming.Abstractions\Quark.Streaming.Abstractions.csproj"/>
   </ItemGroup>
 </Project>

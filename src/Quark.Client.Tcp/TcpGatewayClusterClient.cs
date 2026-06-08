@@ -1,7 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Streaming.Abstractions;
 
 namespace Quark.Client.Tcp;
 
@@ -13,15 +15,18 @@ public sealed class TcpGatewayClusterClient : IClusterClient
     private readonly TcpGatewayConnection _connection;
     private readonly TcpGatewayGrainFactory _factory;
     private readonly TcpGatewayClientOptions _options;
+    private readonly IServiceProvider _services;
 
     public TcpGatewayClusterClient(
         TcpGatewayConnection connection,
         TcpGatewayGrainFactory factory,
-        IOptions<TcpGatewayClientOptions> options)
+        IOptions<TcpGatewayClientOptions> options,
+        IServiceProvider services)
     {
         _connection = connection;
         _factory = factory;
         _options = options.Value;
+        _services = services;
     }
 
     public bool IsInitialized { get; private set; }
@@ -72,4 +77,7 @@ public sealed class TcpGatewayClusterClient : IClusterClient
 
     public IGrain GetGrain(Type grainInterfaceType, long key)
         => _factory.GetGrain(grainInterfaceType, key);
+
+    public IStreamProvider GetStreamProvider(string name)
+        => _services.GetRequiredKeyedService<IStreamProvider>(name);
 }

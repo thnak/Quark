@@ -1,3 +1,5 @@
+using Quark.Streaming.Abstractions;
+
 namespace Quark.Core.Abstractions.Hosting;
 
 /// <summary>
@@ -14,4 +16,7 @@ public interface IClusterClient : IGrainFactory, IAsyncDisposable
 
     /// <summary>Disconnects gracefully from the cluster.</summary>
     Task Close();
+
+    /// <summary>Returns the named stream provider.</summary>
+    IStreamProvider GetStreamProvider(string name);
 }
