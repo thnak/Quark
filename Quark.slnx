@@ -38,5 +38,10 @@
         <Project Path="samples/ChatRoom/ChatRoom.Common/ChatRoom.Common.csproj"/>
         <Project Path="samples/ChatRoom/ChatRoom.Server/ChatRoom.Server.csproj"/>
         <Project Path="samples/ChatRoom/ChatRoom.Client/ChatRoom.Client.csproj"/>
+        <Project Path="samples/Streaming/Streaming.Common/Streaming.Common.csproj"/>
+        <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.GrainInterfaces/Streaming.Simple.GrainInterfaces.csproj"/>
+        <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.Grains/Streaming.Simple.Grains.csproj"/>
+        <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.SiloHost/Streaming.Simple.SiloHost.csproj"/>
+        <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.Client/Streaming.Simple.Client.csproj"/>
     </Folder>
 </Solution>
