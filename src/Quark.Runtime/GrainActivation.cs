@@ -91,6 +91,20 @@ public sealed class GrainActivation : IAsyncDisposable
         => (StateHolder<TState>)_memoryBag.GetOrAdd(typeof(TState), static _ => new StateHolder<TState>());
 
     /// <summary>
+    ///     Returns or creates the <see cref="ManagedActivationMemoryHolder{T}" /> for the given resource type.
+    ///     One holder per (activation, T). Automatically disposed after <c>OnDeactivateAsync</c> completes.
+    ///     Use <see cref="ManagedActivationMemoryHolder{T}.Init" /> and
+    ///     <see cref="ManagedActivationMemoryHolder{T}.Destroy" /> to configure lifecycle delegates.
+    /// </summary>
+    public ManagedActivationMemoryHolder<T> GetOrCreateManagedHolder<T>() where T : class
+        => (ManagedActivationMemoryHolder<T>)_memoryBag.GetOrAdd(
+            typeof(ManagedKey<T>),
+            static _ => new ManagedActivationMemoryHolder<T>());
+
+    // Discriminator type so managed holders and state holders never share a key.
+    private sealed class ManagedKey<T> { }
+
+    /// <summary>
     ///     Gets or creates an activation-scoped singleton of type <typeparamref name="T" />.
     ///     The factory is invoked at most once per activation lifetime.
     ///     Use for services that must be shared across all per-call scopes of the same activation.
@@ -272,8 +286,25 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             _logger.LogWarning(e, "Error running OnDeactivateAsync lifecycle hook for {GrainId}", GrainId);
         }
+        await DisposeManagedHoldersAsync().ConfigureAwait(false);
         _status = GrainActivationStatus.Inactive;
         _queue.Writer.TryComplete();
+    }
+
+    private async Task DisposeManagedHoldersAsync()
+    {
+        foreach (object obj in _memoryBag.Values)
+        {
+            if (obj is not IAsyncDisposable disposable) continue;
+            try
+            {
+                await disposable.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "Error disposing managed activation memory holder for {GrainId}", GrainId);
+            }
+        }
     }
 
     internal async Task RunLifecycleHookAsync(Func<IActivationLifecycle, Task> hook)
