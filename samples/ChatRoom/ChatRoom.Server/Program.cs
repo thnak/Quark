@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quark.Client;
 using Quark.Core;
+using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Streaming.InMemory;
