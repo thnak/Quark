@@ -53,7 +53,7 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains(
             "return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, new CounterGrainProxy_ResetAsyncInvokable().Clone()));",
             generated);
-        Assert.Contains("internal sealed class CounterGrainProxy_TransportDispatcher", generated);
+        Assert.Contains("public sealed class CounterGrainProxy_TransportDispatcher", generated);
         Assert.Contains(": global::Quark.Core.Abstractions.Hosting.ITransportGrainDispatcher", generated);
         Assert.Contains("DispatchAsync(", generated);
         // Transport dispatcher uses Deserialize instead of boxed ReadArg.
@@ -94,7 +94,7 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("internal readonly struct MyObserverProxy_OnEventAsyncInvokable", generated);
         Assert.Contains(": global::Quark.Core.Abstractions.Hosting.IObserverVoidInvokable", generated);
         Assert.Contains("InvokeObserverAsync(_grainId, new MyObserverProxy_OnEventAsyncInvokable(", generated);
-        Assert.Contains("internal sealed class MyObserverProxy_TransportDispatcher", generated);
+        Assert.Contains("public sealed class MyObserverProxy_TransportDispatcher", generated);
         Assert.Contains("invoker.InvokeObserverAsync<MyObserverProxy_OnEventAsyncInvokable>(", generated);
         // Observer proxy must NOT implement IGrainProxy.
         Assert.DoesNotContain("IGrainProxy", generated);
