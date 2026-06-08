@@ -16,7 +16,7 @@ using var host = Host.CreateDefaultBuilder(args)
         client.UseLocalhostGateway(30002);
         client.AddTcpClientStreams("chat");
         client.Services.AddStreamableCodec<ChatMsg, ChatMsgCodec>();
-        client.Services.AddGrainProxy<IChannelGrain, ChannelGrainProxy>();
+        client.Services.AddChatRoomCommonGrainProxies();
     })
     .Build();
 

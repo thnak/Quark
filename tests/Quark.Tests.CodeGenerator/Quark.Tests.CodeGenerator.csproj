@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Quark.Analyzers\Quark.Analyzers.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Client\Quark.Client.csproj"/>
     <ProjectReference Include="..\..\src\Quark.CodeGenerator\Quark.CodeGenerator.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj"/>

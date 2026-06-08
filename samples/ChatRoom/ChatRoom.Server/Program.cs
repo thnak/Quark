@@ -1,12 +1,7 @@
 using ChatRoom.Common;
-using ChatRoom.Server;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Quark.Client;
 using Quark.Core;
-using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Identity;
-using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Streaming.InMemory;
@@ -21,21 +16,12 @@ var host = Host.CreateDefaultBuilder(args)
         silo.Services.AddMemoryStreams("chat");
         silo.Services.AddStreamableCodec<ChatMsg, ChatMsgCodec>();
 
-        silo.Services.AddGrainBehavior<IChannelGrain, ChannelBehavior>();
-        silo.Services.AddGrainTransportDispatcher(
-            new GrainType("ChannelGrain"),
-            new ChannelGrainProxy_TransportDispatcher());
-
-        // Scoped IActivationMemory<T> registration
-        silo.Services.AddScoped<IActivationMemory<ChannelState>>(sp =>
-            new ActivationMemoryAccessor<ChannelState>(
-                sp.GetRequiredService<IActivationShellAccessor>()
-                  .Shell.GetOrCreateHolder<ChannelState>()));
+        silo.Services.AddChatRoomServerBehaviors();
     })
     .UseQuarkClient(client =>
     {
         client.Services.AddLocalClusterClient();
-        client.Services.AddGrainProxy<IChannelGrain, ChannelGrainProxy>();
+        client.Services.AddChatRoomCommonGrainProxies();
     })
     .Build();
 

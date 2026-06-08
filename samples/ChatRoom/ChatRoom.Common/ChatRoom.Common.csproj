@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../src/Quark.Client/Quark.Client.csproj"/>
     <ProjectReference Include="../../../src/Quark.Core.Abstractions/Quark.Core.Abstractions.csproj"/>
     <ProjectReference Include="../../../src/Quark.Serialization.Abstractions/Quark.Serialization.Abstractions.csproj"/>
     <ProjectReference Include="../../../src/Quark.Streaming.Abstractions/Quark.Streaming.Abstractions.csproj"/>

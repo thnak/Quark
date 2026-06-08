@@ -348,6 +348,158 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     // -----------------------------------------------------------------------
+    // [PersistentState] IPersistentState<T> injection
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Generates_IPersistentState_Scoped_Registration_With_Default_Provider()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Persistence.Abstractions;
+
+                              namespace Demo;
+
+                              public sealed class BalanceState { public decimal Amount { get; set; } }
+
+                              public interface IWalletGrain : IGrainWithStringKey
+                              {
+                                  Task<decimal> GetBalanceAsync();
+                              }
+
+                              public sealed class WalletBehavior : IGrainBehavior, IWalletGrain
+                              {
+                                  public WalletBehavior([PersistentState("balance")] IPersistentState<BalanceState> state) { }
+                                  public Task<decimal> GetBalanceAsync() => Task.FromResult(0m);
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("IPersistentState<global::Demo.BalanceState>", generated);
+        Assert.Contains("PersistentState<global::Demo.BalanceState>", generated);
+        Assert.Contains(".Shell.GrainId", generated);
+        Assert.Contains("\"balance\"", generated);
+        Assert.Contains("GetRequiredService<global::Quark.Persistence.Abstractions.IGrainStorage>()", generated);
+        Assert.DoesNotContain("GetRequiredKeyedService", generated);
+    }
+
+    [Fact]
+    public void Generates_IPersistentState_With_Named_Provider()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Persistence.Abstractions;
+
+                              namespace Demo;
+
+                              public sealed class ProfileState { public string Name { get; set; } = ""; }
+
+                              public interface IProfileGrain : IGrainWithStringKey
+                              {
+                                  Task SaveAsync();
+                              }
+
+                              public sealed class ProfileBehavior : IGrainBehavior, IProfileGrain
+                              {
+                                  public ProfileBehavior([PersistentState("profile", "redis")] IPersistentState<ProfileState> state) { }
+                                  public Task SaveAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("IPersistentState<global::Demo.ProfileState>", generated);
+        Assert.Contains("GetRequiredKeyedService<global::Quark.Persistence.Abstractions.IGrainStorage>(\"redis\")", generated);
+        Assert.Contains("\"profile\"", generated);
+    }
+
+    [Fact]
+    public void Deduplicates_IPersistentState_Registrations_Across_Behaviors()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Persistence.Abstractions;
+
+                              namespace Demo;
+
+                              public sealed class CounterState { public int Value { get; set; } }
+
+                              public interface IAlphaGrain : IGrainWithStringKey { Task RunAsync(); }
+                              public interface IBetaGrain  : IGrainWithStringKey { Task RunAsync(); }
+
+                              public sealed class AlphaBehavior : IGrainBehavior, IAlphaGrain
+                              {
+                                  public AlphaBehavior([PersistentState("counter")] IPersistentState<CounterState> s) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+
+                              public sealed class BetaBehavior : IGrainBehavior, IBetaGrain
+                              {
+                                  public BetaBehavior([PersistentState("counter")] IPersistentState<CounterState> s) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        int count = CountOccurrences(generated, "new global::Quark.Persistence.Abstractions.PersistentState<global::Demo.CounterState>(");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public void Emits_QRK0022_For_Same_T_Different_State_Names()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Persistence.Abstractions;
+
+                              namespace Demo;
+
+                              public sealed class SharedState { }
+
+                              public interface IAlphaGrain : IGrainWithStringKey { Task RunAsync(); }
+                              public interface IBetaGrain  : IGrainWithStringKey { Task RunAsync(); }
+
+                              public sealed class AlphaBehavior : IGrainBehavior, IAlphaGrain
+                              {
+                                  public AlphaBehavior([PersistentState("slotA")] IPersistentState<SharedState> s) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+
+                              public sealed class BetaBehavior : IGrainBehavior, IBetaGrain
+                              {
+                                  public BetaBehavior([PersistentState("slotB")] IPersistentState<SharedState> s) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        Assert.Contains(result.Diagnostics, d =>
+            d.Id == "QRK0022" &&
+            d.Severity == DiagnosticSeverity.Error &&
+            d.GetMessage().Contains("global::Demo.SharedState"));
+
+        // Conflicting T should be omitted from the generated registration
+        string generated = GetRegistrations(result);
+        Assert.DoesNotContain("SharedState", generated);
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 

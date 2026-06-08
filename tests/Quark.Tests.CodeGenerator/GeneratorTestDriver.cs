@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Quark.Client;
 using Quark.Core.Abstractions.Grains;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime;
@@ -51,6 +52,7 @@ internal static class GeneratorTestDriver
             .Append(MetadataReference.CreateFromFile(typeof(LocalGrainCallInvoker).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(IGrainStorage).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(GenerateSerializerAttribute).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(ClientServiceCollectionExtensions).Assembly.Location))
             .GroupBy(static reference => reference.Display, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
             .ToImmutableArray();

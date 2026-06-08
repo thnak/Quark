@@ -15,6 +15,7 @@ namespace Quark.CodeGenerator;
 ///         <item><c>AddGrainTransportDispatcher(grainType, Proxy_TransportDispatcher.Instance)</c></item>
 ///         <item>Scoped <c>IActivationMemory&lt;T&gt;</c> accessor per distinct TState</item>
 ///         <item>Scoped <c>IPersistentActivationMemory&lt;T&gt;</c> accessor per distinct TState</item>
+///         <item>Scoped <c>IPersistentState&lt;T&gt;</c> via <c>[PersistentState("name","provider")]</c></item>
 ///     </list>
 /// </summary>
 [Generator(LanguageNames.CSharp)]
@@ -29,6 +30,10 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
     private const string IPersistentActivationMemoryName = "IPersistentActivationMemory";
     private const string IManagedActivationMemoryNs = "Quark.Core.Abstractions.Hosting";
     private const string IManagedActivationMemoryName = "IManagedActivationMemory";
+    private const string IPersistentStateNs = "Quark.Persistence.Abstractions";
+    private const string IPersistentStateName = "IPersistentState";
+    private const string PersistentStateAttributeFqn = "Quark.Persistence.Abstractions.PersistentStateAttribute";
+    private const string DefaultStorageName = "Default";
 
     internal static readonly DiagnosticDescriptor MissingGrainInterface = new(
         id: "QRK0020",
@@ -44,6 +49,14 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         messageFormat: "'{0}' implements multiple IGrain-derived interfaces. The first ('{1}') is used. Add a single grain interface to silence.",
         category: "Quark.CodeGenerator",
         defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    internal static readonly DiagnosticDescriptor ConflictingPersistentStateSlots = new(
+        id: "QRK0022",
+        title: "Conflicting IPersistentState<T> state names",
+        messageFormat: "'{0}' is used as IPersistentState<T> with different (stateName, providerName) combinations in this assembly. Use distinct state types for each logical slot.",
+        category: "Quark.CodeGenerator",
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     /// <inheritdoc />
@@ -132,6 +145,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         var inMemory = new List<string>();
         var persistent = new List<string>();
         var managed = new List<string>();
+        var persistentSlots = new List<PersistentStateSlot>();
 
         foreach (IMethodSymbol ctor in type.Constructors)
         {
@@ -152,6 +166,21 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
                     persistent.Add(tArgFqn);
                 else if (paramNs == IManagedActivationMemoryNs && named.Name == IManagedActivationMemoryName)
                     managed.Add(tArgFqn);
+                else if (paramNs == IPersistentStateNs && named.Name == IPersistentStateName)
+                {
+                    foreach (AttributeData attr in param.GetAttributes())
+                    {
+                        if (attr.AttributeClass?.ToDisplayString() != PersistentStateAttributeFqn) continue;
+                        string stateName = attr.ConstructorArguments.Length > 0
+                            ? (string?)attr.ConstructorArguments[0].Value ?? string.Empty
+                            : string.Empty;
+                        string providerName = attr.ConstructorArguments.Length > 1
+                            ? (string?)attr.ConstructorArguments[1].Value ?? DefaultStorageName
+                            : DefaultStorageName;
+                        persistentSlots.Add(new PersistentStateSlot(tArgFqn, stateName, providerName));
+                        break;
+                    }
+                }
             }
         }
 
@@ -163,6 +192,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             inMemoryStateTypes: inMemory.Distinct().ToImmutableArray(),
             persistentStateTypes: persistent.Distinct().ToImmutableArray(),
             managedStateTypes: managed.Distinct().ToImmutableArray(),
+            persistentStateSlots: persistentSlots.Distinct().ToImmutableArray(),
             diagnostics: diagnostics);
     }
 
@@ -224,6 +254,25 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             .OrderBy(static s => s)
             .ToList();
 
+        // Collect [PersistentState] IPersistentState<T> slots; detect conflicts (same T, different name/provider).
+        List<PersistentStateSlot> persistentSlots = new();
+        foreach (IGrouping<string, PersistentStateSlot> group in valid
+                     .SelectMany(static m => m.PersistentStateSlots)
+                     .Distinct()
+                     .GroupBy(static s => s.TArgFqn)
+                     .OrderBy(static g => g.Key))
+        {
+            List<PersistentStateSlot> distinct = group.Distinct().ToList();
+            if (distinct.Count > 1)
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(ConflictingPersistentStateSlots, Location.None, group.Key));
+            }
+            else
+            {
+                persistentSlots.Add(distinct[0]);
+            }
+        }
+
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated/>");
         sb.AppendLine("// Generated by Quark.CodeGenerator — do not edit manually.");
@@ -275,6 +324,20 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"                  .Shell.GetOrCreateManagedHolder<{tArg}>()));");
         }
 
+        if (persistentSlots.Count > 0) sb.AppendLine();
+        foreach (PersistentStateSlot slot in persistentSlots)
+        {
+            string storageResolution = slot.ProviderName == DefaultStorageName
+                ? "sp.GetRequiredService<global::Quark.Persistence.Abstractions.IGrainStorage>()"
+                : $"sp.GetRequiredKeyedService<global::Quark.Persistence.Abstractions.IGrainStorage>(\"{slot.ProviderName}\")";
+
+            sb.AppendLine($"        services.AddScoped<global::Quark.Persistence.Abstractions.IPersistentState<{slot.TArgFqn}>>(static sp =>");
+            sb.AppendLine($"            new global::Quark.Persistence.Abstractions.PersistentState<{slot.TArgFqn}>(");
+            sb.AppendLine($"                sp.GetRequiredService<global::Quark.Runtime.IActivationShellAccessor>().Shell.GrainId,");
+            sb.AppendLine($"                \"{slot.StateName}\",");
+            sb.AppendLine($"                {storageResolution}));");
+        }
+
         sb.AppendLine();
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
@@ -308,9 +371,39 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
     // Model
     // -----------------------------------------------------------------------
 
+    private readonly struct PersistentStateSlot : IEquatable<PersistentStateSlot>
+    {
+        public PersistentStateSlot(string tArgFqn, string stateName, string providerName)
+        {
+            TArgFqn = tArgFqn;
+            StateName = stateName;
+            ProviderName = providerName;
+        }
+
+        public string TArgFqn { get; }
+        public string StateName { get; }
+        public string ProviderName { get; }
+
+        public bool Equals(PersistentStateSlot other) =>
+            TArgFqn == other.TArgFqn && StateName == other.StateName && ProviderName == other.ProviderName;
+
+        public override bool Equals(object? obj) => obj is PersistentStateSlot other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = TArgFqn.GetHashCode();
+                hash = hash * 397 ^ StateName.GetHashCode();
+                hash = hash * 397 ^ ProviderName.GetHashCode();
+                return hash;
+            }
+        }
+    }
+
     private sealed class BehaviorModel
     {
-        // Error-only model (QRK0010): only diagnostics are populated.
+        // Error-only model (QRK0020): only diagnostics are populated.
         public BehaviorModel(ImmutableArray<Diagnostic> diagnostics)
         {
             Diagnostics = diagnostics;
@@ -321,6 +414,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             InMemoryStateTypes = ImmutableArray<string>.Empty;
             PersistentStateTypes = ImmutableArray<string>.Empty;
             ManagedStateTypes = ImmutableArray<string>.Empty;
+            PersistentStateSlots = ImmutableArray<PersistentStateSlot>.Empty;
         }
 
         public BehaviorModel(
@@ -331,6 +425,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             ImmutableArray<string> inMemoryStateTypes,
             ImmutableArray<string> persistentStateTypes,
             ImmutableArray<string> managedStateTypes,
+            ImmutableArray<PersistentStateSlot> persistentStateSlots,
             ImmutableArray<Diagnostic> diagnostics)
         {
             BehaviorFqn = behaviorFqn;
@@ -340,6 +435,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             InMemoryStateTypes = inMemoryStateTypes;
             PersistentStateTypes = persistentStateTypes;
             ManagedStateTypes = managedStateTypes;
+            PersistentStateSlots = persistentStateSlots;
             Diagnostics = diagnostics;
         }
 
@@ -351,6 +447,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         public ImmutableArray<string> InMemoryStateTypes { get; }
         public ImmutableArray<string> PersistentStateTypes { get; }
         public ImmutableArray<string> ManagedStateTypes { get; }
+        public ImmutableArray<PersistentStateSlot> PersistentStateSlots { get; }
         public ImmutableArray<Diagnostic> Diagnostics { get; }
     }
 }
