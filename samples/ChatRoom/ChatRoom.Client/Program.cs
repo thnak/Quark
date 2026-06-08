@@ -10,7 +10,7 @@ using Quark.Serialization;
 using Quark.Streaming.Abstractions;
 using Spectre.Console;
 
-var host = Host.CreateDefaultBuilder(args)
+using var host = Host.CreateDefaultBuilder(args)
     .UseQuarkClient(client =>
     {
         client.UseLocalhostGateway(30002);
@@ -23,8 +23,6 @@ var host = Host.CreateDefaultBuilder(args)
 await host.StartAsync();
 
 var clusterClient = host.Services.GetRequiredService<IClusterClient>();
-await ((TcpGatewayClusterClient)clusterClient).Connect();
-
 var streamProvider = clusterClient.GetStreamProvider("chat");
 
 var username = AnsiConsole.Ask<string>("Enter your [green]username[/]:");
