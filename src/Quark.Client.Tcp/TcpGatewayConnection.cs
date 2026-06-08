@@ -14,6 +14,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
 {
     private readonly TcpTransport _transport;
     private readonly MessageSerializer _serializer;
+    private readonly TcpStreamPushDispatcher? _pushDispatcher;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<MessageEnvelope>> _pending = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private ITransportConnection? _connection;
@@ -21,10 +22,12 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
     private Task? _readLoop;
     private Task? _executeLoop;
 
-    public TcpGatewayConnection(TcpTransport transport, MessageSerializer serializer)
+    public TcpGatewayConnection(TcpTransport transport, MessageSerializer serializer,
+        TcpStreamPushDispatcher? pushDispatcher = null)
     {
         _transport = transport;
         _serializer = serializer;
+        _pushDispatcher = pushDispatcher;
     }
 
     public async Task ConnectAsync(EndPoint endpoint, CancellationToken ct = default)
@@ -122,6 +125,13 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
                 MessageEnvelope? response = await _serializer.ReadAsync(_connection!.Transport.Input, ct)
                     .ConfigureAwait(false);
                 if (response is null) break;
+
+                if (response.MessageType == MessageType.StreamPush || response.CorrelationId == -1)
+                {
+                    if (_pushDispatcher is not null)
+                        await _pushDispatcher.DispatchAsync(response).ConfigureAwait(false);
+                    continue;
+                }
 
                 if (_pending.TryRemove(response.CorrelationId, out TaskCompletionSource<MessageEnvelope>? tcs))
                     tcs.TrySetResult(response);
