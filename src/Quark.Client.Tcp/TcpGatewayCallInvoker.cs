@@ -40,7 +40,8 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         GrainInvocationResponse result = _grainSerializer.DeserializeResponse(response.Payload);
         if (!result.Success)
             throw new InvalidOperationException(result.Error ?? "Remote grain invocation failed.");
-        return (TResult)result.Result!;
+        var resultReader = new CodecReader(result.ResultPayload);
+        return invokable.DeserializeResult(ref resultReader);
     }
 
     public async Task InvokeVoidAsync<TInvokable>(

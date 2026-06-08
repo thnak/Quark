@@ -11,7 +11,7 @@ namespace Quark.Core.Abstractions.Hosting;
 /// </summary>
 public interface ITransportGrainDispatcher
 {
-    Task<object?> DispatchAsync(
+    Task<ReadOnlyMemory<byte>> DispatchAsync(
         GrainId grainId,
         uint methodId,
         ReadOnlyMemory<byte> argumentPayload,

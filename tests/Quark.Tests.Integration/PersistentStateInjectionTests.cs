@@ -205,6 +205,7 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
         public uint MethodId => 2u;
         public ValueTask<int> Invoke(Grain grain) => new(((TwoSlotGrain)grain).GetAAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private readonly struct TwoSlotGrain_GetBInvokable : IGrainInvokable<int>
@@ -212,6 +213,7 @@ public sealed class PersistentStateInjectionTests : IAsyncLifetime
         public uint MethodId => 3u;
         public ValueTask<int> Invoke(Grain grain) => new(((TwoSlotGrain)grain).GetBAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private sealed class NullGrainFactory : IGrainFactory

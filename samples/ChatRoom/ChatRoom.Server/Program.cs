@@ -15,7 +15,7 @@ var host = Host.CreateDefaultBuilder(args)
     {
         silo.Services.AddQuarkRuntime();
         silo.Services.AddTcpTransport();
-        silo.UseLocalhostClustering(gatewayPort: 30002);
+        silo.UseLocalhostClustering(siloPort: 11112, gatewayPort: 30002);
         silo.Services.AddMemoryStreams("chat");
         silo.Services.AddStreamableCodec<ChatMsg, ChatMsgCodec>();
 

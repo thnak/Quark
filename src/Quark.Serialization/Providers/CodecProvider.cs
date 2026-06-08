@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Exceptions;
 
@@ -9,14 +10,15 @@ namespace Quark.Serialization.Providers;
 /// </summary>
 public sealed class CodecProvider : ICodecProvider
 {
-    private readonly List<IGeneralizedCodec> _generalizedCodecs;
+    // Resolved lazily on first use to break the circular dependency:
+    //   ICodecProvider → IEnumerable<IGeneralizedCodec> → *UserCodec → ICodecProvider
+    private List<IGeneralizedCodec>? _generalizedCodecs;
     private readonly IServiceProvider _services;
 
     /// <summary>Initialises the provider from the DI container.</summary>
-    public CodecProvider(IServiceProvider services, IEnumerable<IGeneralizedCodec> generalizedCodecs)
+    public CodecProvider(IServiceProvider services)
     {
         _services = services;
-        _generalizedCodecs = new List<IGeneralizedCodec>(generalizedCodecs);
     }
 
     /// <inheritdoc />
@@ -35,6 +37,7 @@ public sealed class CodecProvider : ICodecProvider
     /// <inheritdoc />
     public IGeneralizedCodec? TryGetGeneralizedCodec(Type type)
     {
+        _generalizedCodecs ??= new List<IGeneralizedCodec>(_services.GetServices<IGeneralizedCodec>());
         foreach (IGeneralizedCodec codec in _generalizedCodecs)
         {
             if (codec.IsSupportedType(type))

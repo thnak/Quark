@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -207,6 +208,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
         public uint MethodId => 0u;
         public ValueTask<string> Invoke(Grain grain) => new(((IPingGrain)grain).Ping(_message));
         public void Serialize(ref CodecWriter writer) => writer.WriteString(_message);
+        public string DeserializeResult(ref CodecReader reader) => reader.ReadString();
         public static PingGrainProxy_PingInvokable Deserialize(
             ref CodecReader reader, IGrainFactory? factory = null)
             => new(reader.ReadString());
@@ -234,6 +236,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
         public ValueTask<string> Invoke(Grain grain)
             => new(((ITrackerGrain)grain).GetSourceName());
         public void Serialize(ref CodecWriter writer) { }
+        public string DeserializeResult(ref CodecReader reader) => reader.ReadString();
         public static TrackerGrainProxy_GetSourceNameInvokable Deserialize(
             ref CodecReader reader, IGrainFactory? factory = null) => new();
     }
@@ -245,6 +248,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
         public uint MethodId => 0u;
         public ValueTask<string> Invoke(Grain grain) => new(((ISourceGrain)grain).GetName());
         public void Serialize(ref CodecWriter writer) { }
+        public string DeserializeResult(ref CodecReader reader) => reader.ReadString();
         public static SourceGrainProxy_GetNameInvokable Deserialize(
             ref CodecReader reader, IGrainFactory? factory = null) => new();
     }
@@ -317,7 +321,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
     {
         public static readonly PingGrain_TransportDispatcher Instance = new();
 
-        public async Task<object?> DispatchAsync(
+        public async Task<ReadOnlyMemory<byte>> DispatchAsync(
             GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
             IGrainCallInvoker invoker, IGrainFactory? factory,
             CancellationToken ct = default)
@@ -328,8 +332,11 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
                 {
                     var reader = new CodecReader(argumentPayload);
                     var inv = PingGrainProxy_PingInvokable.Deserialize(ref reader, factory);
-                    return await invoker.InvokeAsync<PingGrainProxy_PingInvokable, string>(
-                        grainId, inv, ct);
+                    string result = await invoker.InvokeAsync<PingGrainProxy_PingInvokable, string>(grainId, inv, ct);
+                    var buf = new ArrayBufferWriter<byte>();
+                    var writer = new CodecWriter(buf);
+                    writer.WriteString(result);
+                    return buf.WrittenMemory.ToArray();
                 }
             }
             throw new InvalidOperationException($"Unknown method {methodId} for PingGrain.");
@@ -340,7 +347,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
     {
         public static readonly TrackerGrain_TransportDispatcher Instance = new();
 
-        public async Task<object?> DispatchAsync(
+        public async Task<ReadOnlyMemory<byte>> DispatchAsync(
             GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
             IGrainCallInvoker invoker, IGrainFactory? factory,
             CancellationToken ct = default)
@@ -351,14 +358,16 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
                 {
                     var reader = new CodecReader(argumentPayload);
                     var inv = TrackerGrainProxy_SetSourceInvokable.Deserialize(ref reader, factory);
-                    await invoker.InvokeVoidAsync<TrackerGrainProxy_SetSourceInvokable>(
-                        grainId, inv, ct);
-                    return null;
+                    await invoker.InvokeVoidAsync<TrackerGrainProxy_SetSourceInvokable>(grainId, inv, ct);
+                    return ReadOnlyMemory<byte>.Empty;
                 }
                 case 1u:
                 {
-                    return await invoker.InvokeAsync<TrackerGrainProxy_GetSourceNameInvokable, string>(
-                        grainId, new(), ct);
+                    string result = await invoker.InvokeAsync<TrackerGrainProxy_GetSourceNameInvokable, string>(grainId, new(), ct);
+                    var buf = new ArrayBufferWriter<byte>();
+                    var writer = new CodecWriter(buf);
+                    writer.WriteString(result);
+                    return buf.WrittenMemory.ToArray();
                 }
             }
             throw new InvalidOperationException($"Unknown method {methodId} for TrackerGrain.");
@@ -369,7 +378,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
     {
         public static readonly SourceGrain_TransportDispatcher Instance = new();
 
-        public async Task<object?> DispatchAsync(
+        public async Task<ReadOnlyMemory<byte>> DispatchAsync(
             GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
             IGrainCallInvoker invoker, IGrainFactory? factory,
             CancellationToken ct = default)
@@ -377,8 +386,13 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
             switch (methodId)
             {
                 case 0u:
-                    return await invoker.InvokeAsync<SourceGrainProxy_GetNameInvokable, string>(
-                        grainId, new(), ct);
+                {
+                    string result = await invoker.InvokeAsync<SourceGrainProxy_GetNameInvokable, string>(grainId, new(), ct);
+                    var buf = new ArrayBufferWriter<byte>();
+                    var writer = new CodecWriter(buf);
+                    writer.WriteString(result);
+                    return buf.WrittenMemory.ToArray();
+                }
             }
             throw new InvalidOperationException($"Unknown method {methodId} for SourceGrain.");
         }

@@ -145,6 +145,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         public uint MethodId => 0u;
         public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).IncrementViaSelfRefAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private readonly struct EventSourceGrainProxy_PublishAsyncInvokable : IGrainVoidInvokable
@@ -166,6 +167,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         public uint MethodId => 2u;
         public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).GetCountAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private sealed class EventSourceGrainProxy

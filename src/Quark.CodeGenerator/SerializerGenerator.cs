@@ -148,6 +148,10 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         if (type.ToDisplayString() == "System.Guid")
             return (MemberSerializeKind.Guid, null);
 
+        // DateTimeOffset
+        if (type.ToDisplayString() == "System.DateTimeOffset")
+            return (MemberSerializeKind.DateTimeOffset, null);
+
         // [GenerateSerializer] — emit {TypeName}Copier.WriteStatic / ReadStatic
         if (type is INamedTypeSymbol named)
         {
@@ -422,6 +426,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             MemberSerializeKind.Double  => $"writer.WriteFixed64(unchecked((ulong)global::System.BitConverter.DoubleToInt64Bits({val})));",
             MemberSerializeKind.String  => $"writer.WriteString({val});",
             MemberSerializeKind.Guid    => $"writer.WriteRaw({val}.ToByteArray());",
+            MemberSerializeKind.DateTimeOffset => $"writer.WriteInt64({val}.Ticks); writer.WriteInt64({val}.Offset.Ticks);",
             MemberSerializeKind.GeneratedCodec => $"{member.CopierFqTypeName}.WriteStatic(ref writer, {val});",
             _ => $"global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, {val});"
         };
@@ -445,6 +450,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             MemberSerializeKind.Double  => "global::System.BitConverter.Int64BitsToDouble(unchecked((long)reader.ReadFixed64()))",
             MemberSerializeKind.String  => "reader.ReadString()",
             MemberSerializeKind.Guid    => "new global::System.Guid(reader.ReadRaw(16))",
+            MemberSerializeKind.DateTimeOffset => "new global::System.DateTimeOffset(reader.ReadInt64(), global::System.TimeSpan.FromTicks(reader.ReadInt64()))",
             MemberSerializeKind.GeneratedCodec => $"{member.CopierFqTypeName}.ReadStatic(ref reader)!",
             _ => $"({member.FqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
         };
@@ -475,7 +481,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         Int8, Int16, Int32, Int64,
         UInt8, UInt16, UInt32, UInt64,
         Float, Double,
-        String, Guid,
+        String, Guid, DateTimeOffset,
         GeneratedCodec,
         Fallback
     }

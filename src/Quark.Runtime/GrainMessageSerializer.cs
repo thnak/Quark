@@ -2,6 +2,7 @@
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Reminders;
 using Quark.Serialization.Abstractions.Buffers;
+using Quark.Streaming.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -46,7 +47,8 @@ public sealed class GrainMessageSerializer
         ArrayBufferWriter<byte> buffer = new();
         CodecWriter writer = new(buffer);
         writer.WriteByte(response.Success ? (byte)1 : (byte)0);
-        WriteValue(writer, response.Result);
+        writer.WriteVarUInt32((uint)response.ResultPayload.Length);
+        writer.WriteRaw(response.ResultPayload.Span);
         WriteValue(writer, response.Error);
         return buffer.WrittenMemory.ToArray();
     }
@@ -56,9 +58,14 @@ public sealed class GrainMessageSerializer
     {
         CodecReader reader = new(buffer);
         bool success = reader.ReadByte() == 1;
-        object? result = ReadValue(reader);
+        uint resultLen = reader.ReadVarUInt32();
+        ReadOnlyMemory<byte> resultPayload = resultLen > 0
+            ? buffer.Slice(reader.Position, (int)resultLen)
+            : ReadOnlyMemory<byte>.Empty;
+        if (resultLen > 0)
+            reader.ReadRaw((int)resultLen);
         string? error = ReadValue(reader) as string;
-        return new GrainInvocationResponse(success, result, error);
+        return new GrainInvocationResponse(success, resultPayload, error);
     }
 
     /// <summary>
@@ -139,6 +146,16 @@ public sealed class GrainMessageSerializer
                 writer.WriteInt64(ts.Period.Ticks);
                 writer.WriteInt64(ts.CurrentTickTime.UtcTicks);
                 break;
+            case DateTimeOffset dto:
+                writer.WriteByte((byte)ValueKind.DateTimeOffset);
+                writer.WriteInt64(dto.Ticks);
+                writer.WriteInt64(dto.Offset.Ticks);
+                break;
+            case StreamId sid:
+                writer.WriteByte((byte)ValueKind.StreamId);
+                writer.WriteString(sid.Namespace);
+                writer.WriteString(sid.Key);
+                break;
             default:
                 throw new NotSupportedException(
                     $"The transport message serializer does not support values of type '{value.GetType().FullName}'.");
@@ -171,6 +188,10 @@ public sealed class GrainMessageSerializer
                 new DateTimeOffset(reader.ReadInt64(), TimeSpan.Zero),
                 TimeSpan.FromTicks(reader.ReadInt64()),
                 new DateTimeOffset(reader.ReadInt64(), TimeSpan.Zero)),
+            ValueKind.DateTimeOffset => new DateTimeOffset(
+                reader.ReadInt64(),
+                TimeSpan.FromTicks(reader.ReadInt64())),
+            ValueKind.StreamId => StreamId.Create(reader.ReadString(), reader.ReadString()),
             _ => throw new NotSupportedException($"Unsupported serialized value kind '{kind}'.")
         };
     }
@@ -189,6 +210,8 @@ public sealed class GrainMessageSerializer
         Double = 9,
         Single = 10,
         Decimal = 11,
-        TickStatus = 12
+        TickStatus = 12,
+        DateTimeOffset = 13,
+        StreamId = 14
     }
 }

@@ -1,3 +1,4 @@
+using System.Buffers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -55,7 +56,8 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
         GrainInvocationResponse response = _fixture.Serializer.DeserializeResponse(responseEnvelope.Payload.ToArray());
         Assert.True(response.Success);
-        Assert.Equal(1L, response.Result);
+        var reader1 = new CodecReader(response.ResultPayload);
+        Assert.Equal(1L, reader1.ReadInt64());
     }
 
     [Fact]
@@ -103,7 +105,8 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             _fixture.Serializer.DeserializeResponse(valueResponseEnvelope!.Payload.ToArray());
 
         Assert.True(valueResponse.Success);
-        Assert.Equal(0L, valueResponse.Result);
+        var reader2 = new CodecReader(valueResponse.ResultPayload);
+        Assert.Equal(0L, reader2.ReadInt64());
     }
 
     public interface IDispatchCounterGrain : IGrainWithStringKey
@@ -140,6 +143,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         public uint MethodId => 0u;
         public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).IncrementAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public long DeserializeResult(ref CodecReader reader) => reader.ReadInt64();
     }
 
     private readonly struct DispatchCounterGrainProxy_GetValueAsyncInvokable : IGrainInvokable<long>
@@ -147,6 +151,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         public uint MethodId => 1u;
         public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).GetValueAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public long DeserializeResult(ref CodecReader reader) => reader.ReadInt64();
     }
 
     private readonly struct DispatchCounterGrainProxy_ResetAsyncInvokable : IGrainVoidInvokable
@@ -161,22 +166,31 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
     {
         public static readonly DispatchCounterGrainProxy_TransportDispatcher Instance = new();
 
-        public async Task<object?> DispatchAsync(
+        public async Task<ReadOnlyMemory<byte>> DispatchAsync(
             GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
             IGrainCallInvoker invoker, IGrainFactory? factory, CancellationToken ct = default)
         {
             switch (methodId)
             {
                 case 0u:
-                    return await invoker.InvokeAsync<DispatchCounterGrainProxy_IncrementAsyncInvokable, long>(
-                        grainId, new(), ct);
+                {
+                    long result = await invoker.InvokeAsync<DispatchCounterGrainProxy_IncrementAsyncInvokable, long>(grainId, new(), ct);
+                    var buf = new ArrayBufferWriter<byte>();
+                    var w = new CodecWriter(buf);
+                    w.WriteInt64(result);
+                    return buf.WrittenMemory.ToArray();
+                }
                 case 1u:
-                    return await invoker.InvokeAsync<DispatchCounterGrainProxy_GetValueAsyncInvokable, long>(
-                        grainId, new(), ct);
+                {
+                    long result = await invoker.InvokeAsync<DispatchCounterGrainProxy_GetValueAsyncInvokable, long>(grainId, new(), ct);
+                    var buf = new ArrayBufferWriter<byte>();
+                    var w = new CodecWriter(buf);
+                    w.WriteInt64(result);
+                    return buf.WrittenMemory.ToArray();
+                }
                 case 2u:
-                    await invoker.InvokeVoidAsync<DispatchCounterGrainProxy_ResetAsyncInvokable>(
-                        grainId, new(), ct);
-                    return null;
+                    await invoker.InvokeVoidAsync<DispatchCounterGrainProxy_ResetAsyncInvokable>(grainId, new(), ct);
+                    return ReadOnlyMemory<byte>.Empty;
             }
             throw new NotSupportedException($"Unknown method id {methodId}");
         }

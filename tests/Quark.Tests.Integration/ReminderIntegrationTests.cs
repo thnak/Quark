@@ -194,6 +194,7 @@ public sealed class ReminderIntegrationTests
         public uint MethodId => 2u;
         public ValueTask<int> Invoke(Grain grain) => new(((IReminderTestGrain)grain).GetReceiveCountAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private readonly struct ReminderTestGrainProxy_GetReminderListAsyncInvokable : IGrainInvokable<IReadOnlyList<IGrainReminder>>
@@ -202,6 +203,8 @@ public sealed class ReminderIntegrationTests
         public ValueTask<IReadOnlyList<IGrainReminder>> Invoke(Grain grain)
             => new(((IReminderTestGrain)grain).GetReminderListAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public IReadOnlyList<IGrainReminder> DeserializeResult(ref CodecReader reader)
+            => throw new NotSupportedException("Local-only invokable.");
     }
 
     // ---- Hand-written proxy (client side) ----

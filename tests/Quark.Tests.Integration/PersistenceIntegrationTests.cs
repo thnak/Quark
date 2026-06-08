@@ -132,6 +132,7 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         public uint MethodId => 0u;
         public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).IncrementAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private readonly struct PersistentCounterGrain_GetValueInvokable : IGrainInvokable<int>
@@ -139,6 +140,7 @@ public sealed class PersistenceIntegrationTests : IAsyncLifetime
         public uint MethodId => 1u;
         public ValueTask<int> Invoke(Grain grain) => new(((PersistentCounterGrain)grain).GetValueAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private sealed class NullGrainFactory : IGrainFactory

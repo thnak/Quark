@@ -26,10 +26,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     private readonly MessageSerializer _serializer;
     private readonly IServiceProvider _services;
 
-    // Optional streaming dependencies — null when stream providers are not registered.
-    private readonly IUntypedStreamSubscriptionRegistry? _streamRegistry;
-    private readonly GatewayClientSubscriptionTable? _subTable;
-    private readonly ICodecProvider? _codecs;
+    // Optional streaming dependencies — resolved lazily in StartAsync.
+    private IUntypedStreamSubscriptionRegistry? _streamRegistry;
+    private GatewayClientSubscriptionTable? _subTable;
+    private ICodecProvider? _codecs;
 
     private Task? _acceptLoop;
     private CancellationTokenSource? _cts;
@@ -47,19 +47,18 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         _dispatcher = dispatcher;
         _options = options.Value;
         _logger = logger;
-
-        _streamRegistry = services.GetService<IUntypedStreamSubscriptionRegistry>();
-        _subTable = services.GetService<GatewayClientSubscriptionTable>();
-        _codecs = services.GetService<ICodecProvider>();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (_acceptLoop is not null)
-        {
             return;
-        }
 
+        // Resolve optional streaming dependencies lazily at start time, outside DI singleton
+        // construction context, to avoid a re-entrancy deadlock on the DI root scope lock.
+        _streamRegistry = _services.GetService<IUntypedStreamSubscriptionRegistry>();
+        _subTable = _services.GetService<GatewayClientSubscriptionTable>();
+        _codecs = _services.GetService<ICodecProvider>();
         var transport = _services.GetService(typeof(ITransport)) as ITransport;
         if (transport is null)
         {

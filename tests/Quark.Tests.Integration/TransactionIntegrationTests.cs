@@ -152,6 +152,7 @@ public sealed class TransactionIntegrationTests
         public uint MethodId => 1u;
         public ValueTask<decimal> Invoke(Grain grain) => new(((IAccountGrain)grain).GetBalanceAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public decimal DeserializeResult(ref CodecReader reader) => throw new NotSupportedException("Local-only invokable.");
     }
 
     // Proxy

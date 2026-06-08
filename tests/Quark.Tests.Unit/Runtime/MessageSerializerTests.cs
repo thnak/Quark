@@ -1,5 +1,7 @@
+using System.Buffers;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 using Xunit;
 
@@ -51,12 +53,16 @@ public sealed class MessageSerializerTests
         Assert.Equal(request.MethodId, decodedRequest.MethodId);
         Assert.Equal(request.ArgumentPayload.ToArray(), decodedRequest.ArgumentPayload.ToArray());
 
-        GrainInvocationResponse response = new(true, 99L, null);
+        var resultBuf = new ArrayBufferWriter<byte>();
+        var resultWriter = new CodecWriter(resultBuf);
+        resultWriter.WriteInt64(99L);
+        GrainInvocationResponse response = new(true, resultBuf.WrittenMemory.ToArray(), null);
         byte[] responseBytes = serializer.SerializeResponse(response);
         GrainInvocationResponse decodedResponse = serializer.DeserializeResponse(responseBytes);
 
         Assert.True(decodedResponse.Success);
-        Assert.Equal(99L, decodedResponse.Result);
+        var resultReader = new CodecReader(decodedResponse.ResultPayload);
+        Assert.Equal(99L, resultReader.ReadInt64());
         Assert.Null(decodedResponse.Error);
     }
 }

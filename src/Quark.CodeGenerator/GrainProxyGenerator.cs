@@ -104,6 +104,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             string taskResultType = "void";
 
             string retName = method.ReturnType.ToDisplayString();
+            ParameterModel? returnModel = null;
             if (retName == "System.Threading.Tasks.Task")
             {
                 isTask = true;
@@ -112,8 +113,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                      nts.ConstructedFrom.ToDisplayString() == "System.Threading.Tasks.Task<TResult>")
             {
                 isTaskOfT = true;
-                taskResultType = nts.TypeArguments[0]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                ITypeSymbol retArgType = nts.TypeArguments[0];
+                taskResultType = retArgType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                returnModel = BuildReturnModel(retArgType);
             }
             else if (retName == "System.Threading.Tasks.ValueTask")
             {
@@ -123,8 +125,9 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                      nvts.ConstructedFrom.ToDisplayString() == "System.Threading.Tasks.ValueTask<TResult>")
             {
                 isValueTaskOfT = true;
-                taskResultType = nvts.TypeArguments[0]
-                    .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                ITypeSymbol retArgType = nvts.TypeArguments[0];
+                taskResultType = retArgType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                returnModel = BuildReturnModel(retArgType);
             }
 
             var parameters = method.Parameters
@@ -136,7 +139,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 method.Name,
                 retType,
                 isTask, isTaskOfT, isValueTask, isValueTaskOfT, taskResultType,
-                parameters));
+                parameters,
+                returnModel));
         }
 
         if (methods.Count == 0)
@@ -242,6 +246,44 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             valueCopierFqTypeName: serInfo.ValueCopierFq);
     }
 
+    private static ParameterModel BuildReturnModel(ITypeSymbol retType)
+    {
+        string fqTypeName = retType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var serInfo = DetermineSerializeKind(retType);
+
+        string? elementFqTypeName = null;
+        string? valueFqTypeName = null;
+
+        if (retType is IArrayTypeSymbol arrType)
+        {
+            elementFqTypeName = arrType.ElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        }
+        else if (retType is INamedTypeSymbol nts && nts.IsGenericType)
+        {
+            string def = nts.ConstructedFrom.ToDisplayString();
+            if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
+                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            else if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
+            {
+                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                valueFqTypeName = nts.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            }
+        }
+
+        return new ParameterModel(
+            "ret",
+            fqTypeName,
+            CloneKind.None,
+            elementFqTypeName: elementFqTypeName,
+            valueFqTypeName: valueFqTypeName,
+            copierFqTypeName: serInfo.CopierFq,
+            serializeKind: serInfo.Kind,
+            elementSerializeKind: serInfo.ElementKind,
+            valueSerializeKind: serInfo.ValueKind,
+            elementCopierFqTypeName: serInfo.ElementCopierFq,
+            valueCopierFqTypeName: serInfo.ValueCopierFq);
+    }
+
     private static SerializeInfo DetermineSerializeKind(ITypeSymbol type)
     {
         // Well-known primitive types
@@ -267,6 +309,14 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         // Guid
         if (type.ToDisplayString() == "System.Guid")
             return new SerializeInfo(SerializeKind.Guid);
+
+        // StreamId
+        if (type.ToDisplayString() == "Quark.Streaming.Abstractions.StreamId")
+            return new SerializeInfo(SerializeKind.StreamId);
+
+        // DateTimeOffset
+        if (type.ToDisplayString() == "System.DateTimeOffset")
+            return new SerializeInfo(SerializeKind.DateTimeOffset);
 
         // byte[] — array of System.Byte
         if (type is IArrayTypeSymbol byteArr && byteArr.ElementType.SpecialType == SpecialType.System_Byte)
@@ -359,6 +409,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.String  => $"writer.WriteString({valueExpr});",
             SerializeKind.Bytes   => $"writer.WriteBytes({valueExpr} ?? global::System.Array.Empty<byte>());",
             SerializeKind.Guid    => $"writer.WriteRaw({valueExpr}.ToByteArray());",
+            SerializeKind.StreamId => $"writer.WriteString({valueExpr}.Namespace); writer.WriteString({valueExpr}.Key);",
+            SerializeKind.DateTimeOffset => $"writer.WriteInt64({valueExpr}.Ticks); writer.WriteInt64({valueExpr}.Offset.Ticks);",
             SerializeKind.GeneratedCodec => $"{copierFq}.WriteStatic(ref writer, {valueExpr});",
             SerializeKind.GrainRefString
                 or SerializeKind.GrainRefGuid
@@ -386,6 +438,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.String  => "reader.ReadString()",
             SerializeKind.Bytes   => "reader.ReadBytes()",
             SerializeKind.Guid    => "new global::System.Guid(reader.ReadRaw(16))",
+            SerializeKind.StreamId => "global::Quark.Streaming.Abstractions.StreamId.Create(reader.ReadString(), reader.ReadString())",
+            SerializeKind.DateTimeOffset => "new global::System.DateTimeOffset(reader.ReadInt64(), global::System.TimeSpan.FromTicks(reader.ReadInt64()))",
             SerializeKind.GeneratedCodec => $"{copierFq}.ReadStatic(ref reader)!",
             SerializeKind.GrainRefString   => $"factory!.GetGrain<{fqTypeName}>(reader.ReadString())",
             SerializeKind.GrainRefGuid     => $"factory!.GetGrain<{fqTypeName}>(global::System.Guid.ParseExact(reader.ReadString(), \"N\"))",
@@ -589,6 +643,19 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         // Serialize(ref CodecWriter) / static Deserialize(ref CodecReader) —
         // type-specific wire encoding for the transport path (no boxing).
         EmitSerializeMethods(sb, structName, method);
+
+        // DeserializeResult — used by TcpGatewayCallInvoker to decode the response payload.
+        if (!isVoid && !m.IsObserver && method.ReturnModel is not null)
+        {
+            ParameterModel ret = method.ReturnModel;
+            sb.AppendLine();
+            sb.AppendLine($"    public {method.TaskResultType} DeserializeResult(");
+            sb.AppendLine("        ref global::Quark.Serialization.Abstractions.Buffers.CodecReader reader)");
+            sb.AppendLine("    {");
+            EmitParameterRead(sb, ret, "        ");
+            sb.AppendLine($"        return _{ret.Name}!;");
+            sb.AppendLine("    }");
+        }
 
         sb.AppendLine("}");
         sb.AppendLine();
@@ -870,7 +937,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         sb.AppendLine("{");
         sb.AppendLine($"    public static readonly {dispatcherName} Instance = new();");
         sb.AppendLine();
-        sb.AppendLine("    public async global::System.Threading.Tasks.Task<object?> DispatchAsync(");
+        sb.AppendLine("    public async global::System.Threading.Tasks.Task<global::System.ReadOnlyMemory<byte>> DispatchAsync(");
         sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
         sb.AppendLine("        uint methodId,");
         sb.AppendLine("        global::System.ReadOnlyMemory<byte> argumentPayload,");
@@ -901,16 +968,28 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             if (m.IsObserver)
             {
                 sb.AppendLine($"                await invoker.InvokeObserverAsync<{structName}>(grainId, invokable, ct).ConfigureAwait(false);");
-                sb.AppendLine("                return null;");
+                sb.AppendLine("                return global::System.ReadOnlyMemory<byte>.Empty;");
             }
             else if (method.IsTask || method.IsValueTask)
             {
                 sb.AppendLine($"                await invoker.InvokeVoidAsync<{structName}>(grainId, invokable, ct).ConfigureAwait(false);");
-                sb.AppendLine("                return null;");
+                sb.AppendLine("                return global::System.ReadOnlyMemory<byte>.Empty;");
             }
             else
             {
-                sb.AppendLine($"                return await invoker.InvokeAsync<{structName}, {method.TaskResultType}>(grainId, invokable, ct).ConfigureAwait(false);");
+                sb.AppendLine($"                var __result = await invoker.InvokeAsync<{structName}, {method.TaskResultType}>(grainId, invokable, ct).ConfigureAwait(false);");
+                sb.AppendLine("                var __buf = new global::System.Buffers.ArrayBufferWriter<byte>();");
+                sb.AppendLine("                var writer = new global::Quark.Serialization.Abstractions.Buffers.CodecWriter(__buf);");
+                if (method.ReturnModel is not null)
+                {
+                    sb.AppendLine($"                {method.TaskResultType} _ret = __result;");
+                    EmitParameterWrite(sb, method.ReturnModel, "                ");
+                }
+                else
+                {
+                    sb.AppendLine("                global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, __result);");
+                }
+                sb.AppendLine("                return __buf.WrittenMemory.ToArray();");
             }
 
             sb.AppendLine("            }");
@@ -950,7 +1029,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         bool isValueTask,
         bool isValueTaskOfT,
         string taskResultType,
-        IReadOnlyList<ParameterModel> parameters)
+        IReadOnlyList<ParameterModel> parameters,
+        ParameterModel? returnModel = null)
     {
         public uint MethodId { get; } = methodId;
         public string Name { get; } = name;
@@ -961,6 +1041,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         public bool IsValueTaskOfT { get; } = isValueTaskOfT;
         public string TaskResultType { get; } = taskResultType;
         public IReadOnlyList<ParameterModel> Parameters { get; } = parameters;
+        // null for void methods; non-null for Task<T>/ValueTask<T> methods
+        public ParameterModel? ReturnModel { get; } = returnModel;
     }
 
     private enum CloneKind
@@ -978,7 +1060,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         Int8, Int16, Int32, Int64,
         UInt8, UInt16, UInt32, UInt64,
         Float, Double,
-        String, Bytes, Guid,
+        String, Bytes, Guid, StreamId, DateTimeOffset,
         List, Array, Dictionary,
         GeneratedCodec,
         GrainRefString,

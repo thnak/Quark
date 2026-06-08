@@ -57,7 +57,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
 
         try
         {
-            object? result;
+            ReadOnlyMemory<byte> resultPayload;
 
             // Well-known reminder delivery uses a typed invokable directly — no registered
             // transport dispatcher needed per grain type.
@@ -69,13 +69,13 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 var invokable = new ReceiveReminderInvokable(reminderName, tickStatus);
                 await _invoker.InvokeVoidAsync(request.GrainId, invokable, cancellationToken)
                     .ConfigureAwait(false);
-                result = null;
+                resultPayload = ReadOnlyMemory<byte>.Empty;
             }
             else
             {
                 ITransportGrainDispatcher dispatcher =
                     _dispatcherRegistry.GetDispatcher(request.GrainId.Type);
-                result = await dispatcher
+                resultPayload = await dispatcher
                     .DispatchAsync(request.GrainId, request.MethodId, request.ArgumentPayload,
                         _invoker, _grainFactory, cancellationToken)
                     .ConfigureAwait(false);
@@ -84,7 +84,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
             if (!expectResponse)
                 return null;
 
-            GrainInvocationResponse response = new(true, result, null);
+            GrainInvocationResponse response = new(true, resultPayload, null);
             return new MessageEnvelope
             {
                 CorrelationId = envelope.CorrelationId,
@@ -95,7 +95,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
         }
         catch (Exception ex) when (expectResponse)
         {
-            GrainInvocationResponse response = new(false, null, ex.ToString());
+            GrainInvocationResponse response = new(false, ReadOnlyMemory<byte>.Empty, ex.ToString());
             return new MessageEnvelope
             {
                 CorrelationId = envelope.CorrelationId,

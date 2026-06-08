@@ -139,6 +139,7 @@ public sealed class StreamingIntegrationTests
         public uint MethodId => 0u;
         public ValueTask<int> Invoke(Grain grain) => new(((IStreamListenerGrain)grain).GetLastValueAsync());
         public void Serialize(ref CodecWriter writer) { }
+        public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
 
     private sealed class StreamListenerGrainProxy : IStreamListenerGrain, IGrainProxyActivator<StreamListenerGrainProxy>

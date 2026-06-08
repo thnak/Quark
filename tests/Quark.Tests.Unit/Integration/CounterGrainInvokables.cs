@@ -9,6 +9,7 @@ internal readonly struct CounterGrain_IncrementInvokable : IGrainInvokable<long>
     public uint MethodId => 0u;
     public ValueTask<long> Invoke(Grain grain) => new(((ICounterGrain)grain).IncrementAsync());
     public void Serialize(ref CodecWriter writer) { }
+    public long DeserializeResult(ref CodecReader reader) => reader.ReadInt64();
 }
 
 internal readonly struct CounterGrain_GetValueInvokable : IGrainInvokable<long>
@@ -16,6 +17,7 @@ internal readonly struct CounterGrain_GetValueInvokable : IGrainInvokable<long>
     public uint MethodId => 1u;
     public ValueTask<long> Invoke(Grain grain) => new(((ICounterGrain)grain).GetValueAsync());
     public void Serialize(ref CodecWriter writer) { }
+    public long DeserializeResult(ref CodecReader reader) => reader.ReadInt64();
 }
 
 internal readonly struct CounterGrain_ResetInvokable : IGrainVoidInvokable

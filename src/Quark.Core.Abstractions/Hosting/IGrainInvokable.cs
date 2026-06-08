@@ -19,6 +19,9 @@ public interface IGrainInvokable<TResult>
 
     /// <summary>Serialises all method arguments into <paramref name="writer" /> for transport.</summary>
     void Serialize(ref CodecWriter writer);
+
+    /// <summary>Deserialises the return value from the transport response payload.</summary>
+    TResult DeserializeResult(ref CodecReader reader);
 }
 
 /// <summary>
