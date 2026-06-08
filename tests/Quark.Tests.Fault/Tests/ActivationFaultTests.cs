@@ -21,8 +21,8 @@ public sealed class ActivationFaultTests : IAsyncDisposable
     {
         _fixture = new FaultFixture(s =>
         {
-            s.Activations.ThrowOnNthActivation<WorkerGrain>(1);
-            s.Activations.ThrowOnNthActivation<WorkerGrain>(2);
+            s.Activations.ThrowOnNthActivation<WorkerBehavior>(1);
+            s.Activations.ThrowOnNthActivation<WorkerBehavior>(2);
         });
 
         var orchestrator = _fixture.Client.GetGrain<IOrderOrchestratorGrain>("order-activation-crash");

@@ -25,9 +25,9 @@ public sealed class CascadingFaultTests : IAsyncDisposable
             // 1st activation attempt: storage read throws during OnActivateAsync → activation fails
             s.WorkerStorage.ThrowOnNthRead<InvalidOperationException>(1);
             // 2nd activation attempt: activator crashes
-            s.Activations.ThrowOnNthActivation<WorkerGrain>(2);
+            s.Activations.ThrowOnNthActivation<WorkerBehavior>(2);
             // 3rd activation attempt: activator crashes — all retries exhausted
-            s.Activations.ThrowOnNthActivation<WorkerGrain>(3);
+            s.Activations.ThrowOnNthActivation<WorkerBehavior>(3);
         });
 
         var orchestrator = _fixture.Client.GetGrain<IOrderOrchestratorGrain>("order-cascade-1");

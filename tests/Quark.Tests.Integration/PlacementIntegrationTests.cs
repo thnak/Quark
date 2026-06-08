@@ -21,11 +21,11 @@ public sealed class PlacementIntegrationTests
 
         var local = SiloAddress.Loopback(11111);
         var remote = SiloAddress.Loopback(11112);
-        GrainId grainId = new(new GrainType(nameof(PreferLocalCounterGrain)), "counter-1");
+        GrainId grainId = new(new GrainType(nameof(PreferLocalCounterBehavior)), "counter-1");
 
         SiloAddress selected = director.SelectActivationSilo(
             grainId,
-            typeof(PreferLocalCounterGrain),
+            typeof(PreferLocalCounterBehavior),
             local,
             [local, remote]);
 
@@ -44,12 +44,12 @@ public sealed class PlacementIntegrationTests
         var local = SiloAddress.Loopback(11111);
         var remote1 = SiloAddress.Loopback(11112);
         var remote2 = SiloAddress.Loopback(11113);
-        GrainId grainId = new(new GrainType(nameof(HashPlacedCounterGrain)), "shopping-cart-42");
+        GrainId grainId = new(new GrainType(nameof(HashPlacedCounterBehavior)), "shopping-cart-42");
 
         SiloAddress first =
-            director.SelectActivationSilo(grainId, typeof(HashPlacedCounterGrain), local, [local, remote1, remote2]);
+            director.SelectActivationSilo(grainId, typeof(HashPlacedCounterBehavior), local, [local, remote1, remote2]);
         SiloAddress second =
-            director.SelectActivationSilo(grainId, typeof(HashPlacedCounterGrain), local, [remote2, local, remote1]);
+            director.SelectActivationSilo(grainId, typeof(HashPlacedCounterBehavior), local, [remote2, local, remote1]);
 
         Assert.Equal(first, second);
     }
@@ -67,11 +67,11 @@ public sealed class PlacementIntegrationTests
 
         var local = SiloAddress.Loopback(cluster.Silos[0].SiloPort);
         var remote = SiloAddress.Loopback(cluster.Silos[1].SiloPort);
-        GrainId grainId = new(new GrainType(nameof(RandomPlacedCounterGrain)), "counter-2");
+        GrainId grainId = new(new GrainType(nameof(RandomPlacedCounterBehavior)), "counter-2");
 
         SiloAddress selected = director.SelectActivationSilo(
             grainId,
-            typeof(RandomPlacedCounterGrain),
+            typeof(RandomPlacedCounterBehavior),
             local,
             [local, remote]);
 
@@ -79,11 +79,11 @@ public sealed class PlacementIntegrationTests
     }
 
     [PreferLocalPlacement]
-    private sealed class PreferLocalCounterGrain : Grain;
+    private sealed class PreferLocalCounterBehavior : IGrainBehavior;
 
     [HashBasedPlacement]
-    private sealed class HashPlacedCounterGrain : Grain;
+    private sealed class HashPlacedCounterBehavior : IGrainBehavior;
 
     [RandomPlacement]
-    private sealed class RandomPlacedCounterGrain : Grain;
+    private sealed class RandomPlacedCounterBehavior : IGrainBehavior;
 }

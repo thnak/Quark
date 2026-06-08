@@ -1,34 +1,31 @@
-using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Persistence.Abstractions.Journaling;
 using Quark.Persistence.InMemory;
-using Quark.Runtime;
 using Xunit;
 
 namespace Quark.Tests.Unit.Journaling;
 
 public sealed class JournaledGrainTests
 {
-    private static async Task<(TodoGrain grain, GrainContext ctx)> ActivateAsync(
+    private static async Task<TodoGrain> ActivateAsync(
         InMemoryLogStorage? storage = null, GrainId? id = null)
     {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        var provider = services.BuildServiceProvider();
-
-        var grain = new TodoGrain(storage ?? new InMemoryLogStorage());
         var grainId = id ?? new GrainId(new GrainType("TodoGrain"), "1");
-        var ctx = new GrainContext(grainId, new NullGrainFactory(), provider);
-        await ctx.ActivateAsync(grain);
-        return (grain, ctx);
+        var holder = new StateHolder<JournaledGrainState<TodoState, TodoEvent>>();
+        var ctx = new FixedCallContext(grainId);
+        var memory = new ActivationMemoryAccessor<JournaledGrainState<TodoState, TodoEvent>>(holder);
+        var grain = new TodoGrain(memory, ctx, storage);
+        await grain.OnActivateAsync(CancellationToken.None);
+        return grain;
     }
 
     [Fact]
     public async Task RaiseEvent_UpdatesInMemoryState()
     {
-        var (grain, _) = await ActivateAsync();
+        TodoGrain grain = await ActivateAsync();
         grain.Add("buy milk");
         Assert.Contains("buy milk", grain.State.Items);
     }
@@ -36,7 +33,7 @@ public sealed class JournaledGrainTests
     [Fact]
     public async Task ConfirmEventsAsync_PersistsToLog()
     {
-        var (grain, _) = await ActivateAsync();
+        TodoGrain grain = await ActivateAsync(new InMemoryLogStorage());
         grain.Add("task A");
         await grain.SaveAsync();
         Assert.Equal(1, grain.Version);
@@ -45,7 +42,7 @@ public sealed class JournaledGrainTests
     [Fact]
     public async Task RetrieveConfirmedEvents_ReturnsHistory()
     {
-        var (grain, _) = await ActivateAsync();
+        TodoGrain grain = await ActivateAsync(new InMemoryLogStorage());
         grain.Add("A");
         grain.Add("B");
         await grain.SaveAsync();
@@ -62,14 +59,12 @@ public sealed class JournaledGrainTests
         var storage = new InMemoryLogStorage();
         var grainId = new GrainId(new GrainType("TodoGrain"), "reload-test");
 
-        // First activation: write some events and confirm them
-        var (grain1, _) = await ActivateAsync(storage, grainId);
+        TodoGrain grain1 = await ActivateAsync(storage, grainId);
         grain1.Add("first");
         grain1.Add("second");
         await grain1.SaveAsync();
 
-        // Second activation on the same ID and storage: should reload state
-        var (grain2, _) = await ActivateAsync(storage, grainId);
+        TodoGrain grain2 = await ActivateAsync(storage, grainId);
         Assert.Equal(2, grain2.Version);
         Assert.Contains("first", grain2.State.Items);
         Assert.Contains("second", grain2.State.Items);
@@ -78,9 +73,8 @@ public sealed class JournaledGrainTests
     [Fact]
     public async Task StagedEvents_NotVisibleInRetrieveConfirmedEvents()
     {
-        var (grain, _) = await ActivateAsync();
+        TodoGrain grain = await ActivateAsync(new InMemoryLogStorage());
         grain.Add("staged");
-        // Not confirmed yet — Version is still 0
         Assert.Equal(0, grain.Version);
         IReadOnlyList<TodoEvent> history = await grain.GetHistoryAsync();
         Assert.Empty(history);
@@ -92,37 +86,17 @@ public sealed class JournaledGrainTests
         var storage = new InMemoryLogStorage();
         var grainId = new GrainId(new GrainType("TodoGrain"), "conflict-test");
 
-        var (grain1, _) = await ActivateAsync(storage, grainId);
-        var (grain2, _) = await ActivateAsync(storage, grainId);
+        TodoGrain grain1 = await ActivateAsync(storage, grainId);
+        TodoGrain grain2 = await ActivateAsync(storage, grainId);
 
         grain1.Add("from grain1");
-        await grain1.SaveAsync();   // succeeds — appends at version 0
+        await grain1.SaveAsync();
 
         grain2.Add("from grain2");
-        // grain2 also believes it is at version 0 → conflict
         await Assert.ThrowsAsync<InvalidOperationException>(() => grain2.SaveAsync());
     }
 
-    // ---- Infrastructure fakes ----
-
-    private sealed class NullGrainFactory : IGrainFactory
-    {
-        public TGI GetGrain<TGI>(string key) where TGI : IGrainWithStringKey
-            => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key) where TGI : IGrainWithIntegerKey
-            => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key) where TGI : IGrainWithGuidKey
-            => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(long key, string? ext) where TGI : IGrainWithIntegerCompoundKey
-            => throw new NotImplementedException();
-        public TGI GetGrain<TGI>(Guid key, string? ext) where TGI : IGrainWithGuidCompoundKey
-            => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, string key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, Guid key) => throw new NotImplementedException();
-        public IGrain GetGrain(Type t, long key) => throw new NotImplementedException();
-    }
-
-    // ---- Test grain types ----
+    // ---- Test grain helpers ----
 
     public sealed class TodoState
     {
@@ -135,7 +109,11 @@ public sealed class JournaledGrainTests
 
     public sealed class TodoGrain : JournaledGrain<TodoState, TodoEvent>
     {
-        public TodoGrain(InMemoryLogStorage storage) => InjectLogStorage(storage);
+        public TodoGrain(
+            IActivationMemory<JournaledGrainState<TodoState, TodoEvent>> memory,
+            ICallContext ctx,
+            ILogStorage? storage = null)
+            : base(memory, ctx, storage) { }
 
         public new TodoState State => base.State;
         public new int Version => base.Version;
@@ -149,9 +127,14 @@ public sealed class JournaledGrainTests
         {
             switch (@event)
             {
-                case ItemAdded added:   state.Items.Add(added.Item); break;
+                case ItemAdded added: state.Items.Add(added.Item); break;
                 case ItemRemoved removed: state.Items.Remove(removed.Item); break;
             }
         }
+    }
+
+    private sealed class FixedCallContext(GrainId grainId) : ICallContext
+    {
+        public GrainId GrainId => grainId;
     }
 }

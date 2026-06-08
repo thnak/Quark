@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Identity;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
 
@@ -16,54 +17,48 @@ namespace Quark.Runtime;
 public static class RuntimeServiceCollectionExtensions
 {
     /// <summary>
-    ///     Registers all core Quark runtime services:
-    ///     <list type="bullet">
-    ///         <item><see cref="LifecycleSubject" /> — silo lifecycle manager</item>
-    ///         <item><see cref="GrainTypeRegistry" /> — grain type resolution</item>
-    ///         <item><see cref="InMemoryGrainDirectory" /> — single-node grain directory</item>
-    ///         <item><see cref="DefaultGrainActivator" /> — DI-backed grain creation</item>
-    ///         <item><see cref="GrainActivationTable" /> — per-silo activation tracker</item>
-    ///         <item><see cref="TransportGrainDispatcherRegistry" /> — per-grain-type transport dispatchers</item>
-    ///         <item><see cref="LocalGrainCallInvoker" /> — in-process call router</item>
-    ///         <item><see cref="SiloHostedService" /> — silo host lifecycle integration</item>
-    ///     </list>
+    ///     Registers all core Quark runtime services.
     /// </summary>
     public static IServiceCollection AddQuarkRuntime(this IServiceCollection services)
     {
-        // Silo lifecycle — singleton so everything shares the same ordered start/stop.
+        // Silo lifecycle
         services.TryAddSingleton<LifecycleSubject>();
 
-        // Grain type registry — populated via AddGrain<T>() calls.
+        // Grain type registry
         services.TryAddSingleton<GrainTypeRegistry>();
         services.TryAddSingleton<IGrainTypeRegistry>(sp => sp.GetRequiredService<GrainTypeRegistry>());
 
-        // Silo identity — readable by grains and services via ILocalSiloDetails.
+        // Silo identity
         services.TryAddSingleton<ILocalSiloDetails, LocalSiloDetails>();
 
-        // Grain directory — in-memory for single-node / testing; swap for clustered.
+        // Grain directory
         services.TryAddSingleton<InMemoryGrainDirectory>();
         services.TryAddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
 
-        // Grain activator.
-        services.TryAddSingleton<IGrainActivator, DefaultGrainActivator>();
-
-        // Placement services — strategy resolution and target-silo selection.
+        // Placement services
         services.TryAddSingleton<IPlacementStrategyResolver, AttributePlacementStrategyResolver>();
         services.TryAddSingleton<IPlacementDirector, PlacementDirector>();
 
-        // Activation table — live activations on this silo.
+        // Activation table
         services.TryAddSingleton<GrainActivationTable>();
 
-        // Transport dispatcher registry — populated via AddGrainTransportDispatcher().
+        // Per-call scope services — one instance per IServiceScope created per grain call
+        services.TryAddScoped<ActivationShellAccessor>();
+        services.TryAddScoped<IActivationShellAccessor>(sp => sp.GetRequiredService<ActivationShellAccessor>());
+        services.TryAddScoped<CallContext>();
+        services.TryAddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
+        services.TryAddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
+        services.TryAddScoped<IBehaviorResolver, BehaviorResolver>();
+
+        // Transport dispatcher registry
         services.TryAddSingleton<TransportGrainDispatcherRegistry>();
 
-        // Observer registry — populated via CreateObjectReference<T>().
+        // Observer registry
         services.TryAddSingleton<ObserverRegistry>();
 
-        // Local in-process call invoker.
+        // Local in-process call invoker
         services.TryAddSingleton<LocalGrainCallInvoker>(sp => new LocalGrainCallInvoker(
             sp.GetRequiredService<GrainActivationTable>(),
-            sp.GetRequiredService<IGrainActivator>(),
             sp.GetRequiredService<IGrainTypeRegistry>(),
             sp.GetRequiredService<IGrainDirectory>(),
             sp,
@@ -75,7 +70,7 @@ public static class RuntimeServiceCollectionExtensions
             siloRouter: sp.GetService<ISiloRouter>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
-        // Message dispatch / pump services for transport-routed grain calls.
+        // Message dispatch / pump services
         services.TryAddSingleton<MessageSerializer>();
         services.TryAddSingleton<GrainMessageSerializer>();
         services.TryAddSingleton<IMessageDispatcher>(sp => new MessageDispatcher(
@@ -85,59 +80,48 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetService<IGrainFactory>()));
         services.TryAddSingleton<SiloMessagePump>();
 
-        // Gateway client subscription table — tracks per-connection subscriptions for cleanup.
+        // Gateway client subscription table
         services.TryAddSingleton<GatewayClientSubscriptionTable>();
 
-        // Idle-timeout grain collector.
+        // Idle-timeout grain collector
         services.AddHostedService<GrainIdleCollector>();
 
-        // Hosted service drives the silo lifecycle.
+        // Startup DI validator — fails the silo if any behavior has missing dependencies
+        services.AddHostedService<BehaviorStartupValidator>();
+
+        // Silo lifecycle hosted service
         services.AddHostedService<SiloHostedService>();
 
         return services;
     }
 
     /// <summary>
-    ///     Registers <typeparamref name="TGrain" /> so it can be resolved from the DI container
-    ///     and activated by the runtime.
+    ///     Registers a grain behavior implementation and maps it to its grain type key.
+    ///     The behavior type is registered as <c>Transient</c> so
+    ///     <c>ActivatorUtilities.CreateInstance</c> can construct it per call.
     /// </summary>
-    public static IServiceCollection AddGrain<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TGrain>(
+    public static IServiceCollection AddGrainBehavior<TInterface, [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
         this IServiceCollection services)
-        where TGrain : Grain
+        where TInterface : IGrain
+        where TBehavior : class, IGrainBehavior, TInterface
     {
-        // Register as transient — the runtime creates one instance per activation.
-        services.AddTransient<TGrain>();
+        services.AddTransient<TBehavior>();
 
-        // Also register by base type so DefaultGrainActivator can GetRequiredService(grainClass).
-        services.TryAddTransient<Grain>(sp => sp.GetRequiredService<TGrain>());
+        // Determine grain type key from [GrainBehavior] attribute or interface name
+        string key = typeof(TBehavior).GetCustomAttributes(typeof(GrainBehaviorAttribute), false)
+            is GrainBehaviorAttribute[] { Length: > 0 } attrs
+            ? attrs[0].BehaviorId
+            : typeof(TInterface).Name.StartsWith('I') ? typeof(TInterface).Name[1..] : typeof(TInterface).Name;
 
-        // Post-startup: register in the type registry.
-        services.AddSingleton<IGrainRegistration>(
-            new GrainRegistration(new GrainType(typeof(TGrain).Name), typeof(TGrain)));
+        services.AddSingleton<IGrainBehaviorRegistration>(
+            new GrainBehaviorRegistration(new GrainType(key), typeof(TBehavior)));
 
         return services;
     }
 
     /// <summary>
-    ///     Registers a generated or hand-written <see cref="IGrainActivatorFactory" />.
-    ///     This provides an AOT-safe activation path which avoids reflection-based construction.
-    /// </summary>
-    public static IServiceCollection AddGrainActivatorFactory<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-        TFactory>(
-        this IServiceCollection services)
-        where TFactory : class, IGrainActivatorFactory
-    {
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IGrainActivatorFactory, TFactory>());
-        return services;
-    }
-
-    /// <summary>
-    ///     Registers a generated or hand-written <see cref="ITransportGrainDispatcher" /> for
-    ///     the specified <paramref name="grainType" />.
-    ///     The dispatcher maps incoming transport method IDs to strongly-typed invokable structs,
-    ///     enabling AOT-safe cross-silo dispatch without <c>object?[]</c> boxing.
+    ///     Registers a transport dispatcher for the specified grain type.
     /// </summary>
     public static IServiceCollection AddGrainTransportDispatcher(
         this IServiceCollection services,
@@ -149,20 +133,17 @@ public static class RuntimeServiceCollectionExtensions
         return services;
     }
 
-    // ----- internal helpers ------------------------------------------------
+    // ----- internal deferred-registration markers --------------------------
 
-    internal interface IGrainRegistration
+    internal interface IGrainBehaviorRegistration
     {
         void Apply(GrainTypeRegistry registry);
     }
 
-    private sealed class GrainRegistration(GrainType grainType, Type grainClass)
-        : IGrainRegistration
+    private sealed class GrainBehaviorRegistration(GrainType grainType, Type behaviorType)
+        : IGrainBehaviorRegistration
     {
-        public void Apply(GrainTypeRegistry registry)
-        {
-            registry.Register(grainType, grainClass);
-        }
+        public void Apply(GrainTypeRegistry registry) => registry.Register(grainType, behaviorType);
     }
 
     internal interface IGrainTransportDispatcherRegistration

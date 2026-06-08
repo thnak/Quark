@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Serialization.Abstractions.Buffers;
@@ -116,32 +117,43 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
         Task ResetAsync();
     }
 
-    public sealed class DispatchCounterGrain : Grain, IDispatchCounterGrain
+    public sealed class DispatchCounterBehavior : IGrainBehavior, IDispatchCounterGrain
     {
-        private long _value;
+        private readonly IActivationMemory<DispatchCounterState> _memory;
+
+        public DispatchCounterBehavior(IActivationMemory<DispatchCounterState> memory)
+        {
+            _memory = memory;
+        }
 
         public Task<long> IncrementAsync()
         {
-            return Task.FromResult(++_value);
+            _memory.Value.Value++;
+            return Task.FromResult(_memory.Value.Value);
         }
 
         public Task<long> GetValueAsync()
         {
-            return Task.FromResult(_value);
+            return Task.FromResult(_memory.Value.Value);
         }
 
         public Task ResetAsync()
         {
-            _value = 0;
+            _memory.Value.Value = 0;
             return Task.CompletedTask;
         }
+    }
+
+    public sealed class DispatchCounterState
+    {
+        public long Value { get; set; }
     }
 
     // Hand-written invokables (mirror what GrainProxyGenerator would emit)
     private readonly struct DispatchCounterGrainProxy_IncrementAsyncInvokable : IGrainInvokable<long>
     {
         public uint MethodId => 0u;
-        public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).IncrementAsync());
+        public ValueTask<long> Invoke(IGrainBehavior behavior) => new(((IDispatchCounterGrain)behavior).IncrementAsync());
         public void Serialize(ref CodecWriter writer) { }
         public long DeserializeResult(ref CodecReader reader) => reader.ReadInt64();
     }
@@ -149,7 +161,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
     private readonly struct DispatchCounterGrainProxy_GetValueAsyncInvokable : IGrainInvokable<long>
     {
         public uint MethodId => 1u;
-        public ValueTask<long> Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).GetValueAsync());
+        public ValueTask<long> Invoke(IGrainBehavior behavior) => new(((IDispatchCounterGrain)behavior).GetValueAsync());
         public void Serialize(ref CodecWriter writer) { }
         public long DeserializeResult(ref CodecReader reader) => reader.ReadInt64();
     }
@@ -157,7 +169,7 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
     private readonly struct DispatchCounterGrainProxy_ResetAsyncInvokable : IGrainVoidInvokable
     {
         public uint MethodId => 2u;
-        public ValueTask Invoke(Grain grain) => new(((IDispatchCounterGrain)grain).ResetAsync());
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IDispatchCounterGrain)behavior).ResetAsync());
         public void Serialize(ref CodecWriter writer) { }
     }
 
@@ -215,36 +227,30 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
 
             services.AddSingleton<IGrainFactory, NullGrainFactory>();
             services.AddQuarkRuntime();
-            services.AddSingleton<IGrainActivatorFactory>(new DispatchCounterGrainActivatorFactory());
+
+            // Behavior registration (replaces IGrainActivatorFactory)
+            services.AddGrainBehavior<IDispatchCounterGrain, DispatchCounterBehavior>();
+
+            // Scoped activation memory for the behavior
+            services.AddScoped<IActivationMemory<DispatchCounterState>>(sp =>
+                new ActivationMemoryAccessor<DispatchCounterState>(
+                    sp.GetRequiredService<IActivationShellAccessor>()
+                      .Shell.GetOrCreateHolder<DispatchCounterState>()));
 
             _serviceProvider = services.BuildServiceProvider();
 
-            GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
-            typeRegistry.Register(new GrainType("DispatchCounterGrain"), typeof(DispatchCounterGrain));
+            var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
+            typeRegistry.Register(new GrainType("DispatchCounterGrain"), typeof(DispatchCounterBehavior));
 
             _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
-            IGrainActivator activator = _serviceProvider.GetRequiredService<IGrainActivator>();
-            IGrainDirectory directory = _serviceProvider.GetRequiredService<IGrainDirectory>();
-            IOptions<SiloRuntimeOptions> siloOptions =
-                _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>();
 
-            LocalGrainCallInvoker callInvoker = new(
-                _activationTable,
-                activator,
-                typeRegistry,
-                directory,
-                _serviceProvider,
-                siloOptions,
-                NullLogger<LocalGrainCallInvoker>.Instance,
-                NullLogger<GrainActivation>.Instance);
-
-            var dispatcherRegistry = new TransportGrainDispatcherRegistry();
+            var dispatcherRegistry = _serviceProvider.GetRequiredService<TransportGrainDispatcherRegistry>();
             dispatcherRegistry.Register(
                 new GrainType("DispatchCounterGrain"),
                 DispatchCounterGrainProxy_TransportDispatcher.Instance);
 
             Serializer = new GrainMessageSerializer();
-            Dispatcher = new MessageDispatcher(dispatcherRegistry, callInvoker, Serializer);
+            Dispatcher = _serviceProvider.GetRequiredService<IMessageDispatcher>();
         }
 
         public IMessageDispatcher Dispatcher { get; }
@@ -255,12 +261,6 @@ public sealed class MessageDispatchIntegrationTests : IAsyncLifetime
             await _activationTable.DisposeAsync();
             await _serviceProvider.DisposeAsync();
         }
-    }
-
-    private sealed class DispatchCounterGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(DispatchCounterGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services) => new DispatchCounterGrain();
     }
 
     private sealed class NullGrainFactory : IGrainFactory

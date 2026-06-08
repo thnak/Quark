@@ -5,6 +5,7 @@ using Quark.Client;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Serialization.Abstractions.Buffers;
@@ -15,7 +16,7 @@ namespace Quark.Tests.Integration;
 /// <summary>
 ///     Verifies F-05:
 ///     <list type="bullet">
-///         <item><c>AsReference&lt;T&gt;()</c> — grain gets proxy for its own identity</item>
+///         <item><c>GetGrain&lt;T&gt;(key)</c> — grain gets proxy for its own identity</item>
 ///         <item><c>CreateObjectReference&lt;T&gt;()</c> — wraps a local CLR object as an observer,
 ///             calls route to the local object via GrainId-based dispatch</item>
 ///     </list>
@@ -37,8 +38,8 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
     {
         IEventSourceGrain grain = _fixture.Client.GetGrain<IEventSourceGrain>("self-ref-test");
 
-        // Grain calls IncrementViaSelfRefAsync which internally uses AsReference<IEventSourceGrain>()
-        // to get a proxy to itself, then calls GetCountAsync() through that proxy.
+        // Grain calls IncrementViaSelfRefAsync which internally uses IGrainFactory to
+        // get a proxy to itself, then calls GetCountAsync() through that proxy.
         int result = await grain.IncrementViaSelfRefAsync();
         Assert.Equal(1, result);
     }
@@ -114,26 +115,45 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         Task<int> GetCountAsync();
     }
 
-    [Reentrant]
-    private sealed class EventSourceGrain : Grain, IEventSourceGrain
+    // State stored in activation memory
+    private sealed class EventSourceState
     {
-        private int _count;
+        public int Count { get; set; }
+    }
+
+    [Reentrant]
+    private sealed class EventSourceGrainBehavior : IGrainBehavior, IEventSourceGrain
+    {
+        private readonly IActivationMemory<EventSourceState> _memory;
+        private readonly ICallContext _ctx;
+        private readonly IGrainFactory _grainFactory;
+
+        public EventSourceGrainBehavior(
+            IActivationMemory<EventSourceState> memory,
+            ICallContext ctx,
+            IGrainFactory grainFactory)
+        {
+            _memory = memory;
+            _ctx = ctx;
+            _grainFactory = grainFactory;
+        }
 
         public async Task<int> IncrementViaSelfRefAsync()
         {
-            IEventSourceGrain self = AsReference<IEventSourceGrain>();
-            _count++;
+            // Get a proxy to ourselves via GrainFactory using our own key
+            IEventSourceGrain self = _grainFactory.GetGrain<IEventSourceGrain>(_ctx.GrainId.Key);
+            _memory.Value.Count++;
             // Verify the self-ref proxy routes back to this grain
             return await self.GetCountAsync();
         }
 
         public async Task PublishAsync(string message, IEventObserver observer)
         {
-            _count++;
+            _memory.Value.Count++;
             await observer.OnEventAsync(message);
         }
 
-        public Task<int> GetCountAsync() => Task.FromResult(_count);
+        public Task<int> GetCountAsync() => Task.FromResult(_memory.Value.Count);
     }
 
     // -----------------------------------------------------------------------
@@ -143,7 +163,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
     private readonly struct EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 0u;
-        public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).IncrementViaSelfRefAsync());
+        public ValueTask<int> Invoke(IGrainBehavior behavior) => new(((IEventSourceGrain)behavior).IncrementViaSelfRefAsync());
         public void Serialize(ref CodecWriter writer) { }
         public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
@@ -158,14 +178,14 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             _observer = observer;
         }
         public uint MethodId => 1u;
-        public ValueTask Invoke(Grain grain) => new(((IEventSourceGrain)grain).PublishAsync(_message, _observer));
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IEventSourceGrain)behavior).PublishAsync(_message, _observer));
         public void Serialize(ref CodecWriter writer) { }
     }
 
     private readonly struct EventSourceGrainProxy_GetCountAsyncInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 2u;
-        public ValueTask<int> Invoke(Grain grain) => new(((IEventSourceGrain)grain).GetCountAsync());
+        public ValueTask<int> Invoke(IGrainBehavior behavior) => new(((IEventSourceGrain)behavior).GetCountAsync());
         public void Serialize(ref CodecWriter writer) { }
         public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }
@@ -197,12 +217,6 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
                 _grainId, new EventSourceGrainProxy_GetCountAsyncInvokable());
     }
 
-    private sealed class EventSourceGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(EventSourceGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services) => new EventSourceGrain();
-    }
-
     // -----------------------------------------------------------------------
     // Fixture
     // -----------------------------------------------------------------------
@@ -225,7 +239,17 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             });
 
             services.AddQuarkRuntime();
-            services.AddSingleton<IGrainActivatorFactory>(new EventSourceGrainActivatorFactory());
+
+            // Lazy IGrainFactory — EventSourceGrainBehavior needs it; set after BuildServiceProvider()
+            LocalGrainFactory? grainFactoryRef = null;
+            services.AddSingleton<IGrainFactory>(_ => grainFactoryRef!);
+
+            // Behavior + memory registrations
+            services.AddGrainBehavior<IEventSourceGrain, EventSourceGrainBehavior>();
+            services.AddScoped<IActivationMemory<EventSourceState>>(sp =>
+                new ActivationMemoryAccessor<EventSourceState>(
+                    sp.GetRequiredService<IActivationShellAccessor>()
+                      .Shell.GetOrCreateHolder<EventSourceState>()));
 
             // Client registries
             services.AddSingleton<GrainProxyFactoryRegistry>();
@@ -236,7 +260,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
 
             // Manual deferred registrations
             var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
-            typeRegistry.Register(new GrainType("EventSourceGrain"), typeof(EventSourceGrain));
+            typeRegistry.Register(new GrainType("EventSourceGrain"), typeof(EventSourceGrainBehavior));
 
             var proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
             var interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
@@ -258,10 +282,12 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
                 proxyRegistry, interfaceRegistry, deferredInvoker,
                 observerProxyRegistry, observerRegistry);
 
+            // Fulfill the lazy IGrainFactory singleton so behavior DI can resolve it
+            grainFactoryRef = localFactory;
+
             var realInvoker = new LocalGrainCallInvoker(
                 _activationTable,
-                _serviceProvider.GetRequiredService<IGrainActivator>(),
-                typeRegistry,
+                _serviceProvider.GetRequiredService<IGrainTypeRegistry>(),
                 _serviceProvider.GetRequiredService<IGrainDirectory>(),
                 _serviceProvider,
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),

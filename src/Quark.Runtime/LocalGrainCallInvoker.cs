@@ -13,35 +13,27 @@ namespace Quark.Runtime;
 /// <summary>
 ///     In-process <see cref="IGrainCallInvoker" /> that activates grains locally and routes
 ///     method calls through each grain's sequential scheduler.
+///     Creates a fresh <see cref="IServiceScope" /> per call; scoped DI services are disposed
+///     when the call returns.
 /// </summary>
 public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 {
     private static readonly ActivitySource QuarkActivity = new("Quark.Runtime", "1.0.0");
 
-    private readonly ILogger<GrainActivation> _activationLogger;
     private readonly GrainActivationTable _activationTable;
-    private readonly IGrainActivator _activator;
     private readonly ICopierProvider? _copierProvider;
     private readonly IGrainDirectory _directory;
-    // Resolved lazily to break the IGrainCallInvoker ↔ IGrainFactory circular dependency.
     private readonly Lazy<IGrainFactory> _grainFactory;
     private readonly ILogger<LocalGrainCallInvoker> _logger;
+    private readonly ILogger<GrainActivation> _activationLogger;
     private readonly ObserverRegistry? _observerRegistry;
     private readonly IServiceProvider _services;
     private readonly SiloAddress _siloAddress;
     private readonly ISiloRouter? _siloRouter;
     private readonly IGrainTypeRegistry _typeRegistry;
 
-    /// <summary>Initialises the local grain invoker.</summary>
-    /// <param name="grainFactory">
-    ///     Optional explicit grain factory.  When <see langword="null" /> (the normal DI path) the
-    ///     factory is resolved lazily from <paramref name="services" /> on first grain activation,
-    ///     which avoids a circular <c>IGrainCallInvoker ↔ IGrainFactory</c> dependency at
-    ///     construction time.  Test fixtures that wire the graph manually may supply a value.
-    /// </param>
     public LocalGrainCallInvoker(
         GrainActivationTable activationTable,
-        IGrainActivator activator,
         IGrainTypeRegistry typeRegistry,
         IGrainDirectory directory,
         IServiceProvider services,
@@ -54,7 +46,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         ISiloRouter? siloRouter = null)
     {
         _activationTable = activationTable;
-        _activator = activator;
         _typeRegistry = typeRegistry;
         _directory = directory;
         _services = services;
@@ -92,16 +83,15 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
         await activation.PostAsync(async () =>
         {
+            using IServiceScope scope = _services.CreateScope();
+            IServiceProvider sp = scope.ServiceProvider;
             try
             {
-                TResult result = await invokable.Invoke(activation.Grain).ConfigureAwait(false);
-                // Deep-copy the result to isolate the caller from the grain's internal state.
-                if (_copierProvider is not null)
-                {
-                    IDeepCopier<TResult>? copier = _copierProvider.TryGetCopier<TResult>();
-                    if (copier is not null)
-                        result = copier.DeepCopy(result, new CopyContext());
-                }
+                BindScope(sp, activation);
+                IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType);
+                TResult result = await invokable.Invoke(behavior).ConfigureAwait(false);
+                if (_copierProvider?.TryGetCopier<TResult>() is { } copier)
+                    result = copier.DeepCopy(result, new CopyContext());
                 tcs.TrySetResult(result);
             }
             catch (Exception ex)
@@ -146,9 +136,13 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
         await activation.PostAsync(async () =>
         {
+            using IServiceScope scope = _services.CreateScope();
+            IServiceProvider sp = scope.ServiceProvider;
             try
             {
-                await invokable.Invoke(activation.Grain).ConfigureAwait(false);
+                BindScope(sp, activation);
+                IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType);
+                await invokable.Invoke(behavior).ConfigureAwait(false);
                 tcs.TrySetResult(null);
             }
             catch (Exception ex)
@@ -197,18 +191,18 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     // -----------------------------------------------------------------------
 
-    /// <summary>
-    ///     Returns the remote invoker for <paramref name="grainId" /> if the grain is owned by another silo,
-    ///     or <see langword="null" /> if the grain should be activated locally.
-    ///     Also removes stale directory entries for silos no longer in the router.
-    /// </summary>
+    private static void BindScope(IServiceProvider sp, GrainActivation activation)
+    {
+        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = activation;
+        sp.GetRequiredService<ICallContextSetter>().Set(activation.GrainId);
+    }
+
     private IGrainCallInvoker? TryRouteRemote(GrainId grainId)
     {
         if (_siloRouter is null) return null;
         if (!_directory.TryLookup(grainId, out SiloAddress owner)) return null;
         if (owner == _siloAddress) return null;
         if (_siloRouter.TryGetInvoker(owner, out IGrainCallInvoker? remote)) return remote;
-        // Directory points to a silo that is no longer in the router — remove stale entry
         _directory.TryUnregister(grainId, owner);
         return null;
     }
@@ -222,7 +216,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         }
         catch
         {
-            // Evict the faulted entry so the next call can attempt a fresh activation.
             _activationTable.RemoveIfFaulted(grainId);
             throw;
         }
@@ -230,20 +223,32 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     private async Task<GrainActivation> CreateActivationAsync(GrainId grainId, CancellationToken ct)
     {
-        if (!_typeRegistry.TryGetGrainClass(grainId.Type, out Type? grainClass) || grainClass is null)
+        if (!_typeRegistry.TryGetGrainClass(grainId.Type, out Type? behaviorType) || behaviorType is null)
         {
             throw new InvalidOperationException(
-                $"No grain class registered for grain type '{grainId.Type.Value}'. " +
-                "Ensure the grain is registered with AddGrain<TGrain>().");
+                $"No behavior registered for grain type '{grainId.Type.Value}'. " +
+                "Ensure the grain is registered with AddGrainBehavior<TInterface, TBehavior>().");
         }
 
-        Grain grain = _activator.CreateInstance(grainId);
-        var context = new GrainContext(grainId, _grainFactory.Value, _services);
-        var activation = new GrainActivation(grain, context, _activationLogger);
+        bool isReentrant = behaviorType.IsDefined(typeof(ReentrantAttribute), inherit: true);
+        var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger);
 
-        await context.ActivateAsync(grain, ct).ConfigureAwait(false);
+        // Run OnActivateAsync lifecycle hook if the behavior implements IActivationLifecycle.
+        await activation.PostAsync(async () =>
+        {
+            try
+            {
+                await activation.RunLifecycleHookAsync(
+                    lifecycle => lifecycle.OnActivateAsync(ct)).ConfigureAwait(false);
+                activation.MarkActive();
+            }
+            catch
+            {
+                activation.MarkActive(); // still mark active so DisposeAsync can deactivate it
+                throw;
+            }
+        }).ConfigureAwait(false);
 
-        // After application-requested deactivation (DeactivateOnIdle) completes, remove from table.
         activation.SetOnDeactivated(() =>
         {
             _activationTable.Remove(grainId);
@@ -251,8 +256,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         });
 
         _directory.TryRegister(grainId, _siloAddress, out _);
-
-        _logger.LogDebug("Activated grain {GrainId} as {GrainClass}", grainId, grainClass.Name);
+        _logger.LogDebug("Activated grain {GrainId} as {BehaviorType}", grainId, behaviorType.Name);
 
         return activation;
     }

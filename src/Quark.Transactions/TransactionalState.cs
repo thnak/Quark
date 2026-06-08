@@ -14,6 +14,7 @@ public sealed class TransactionalState<TState> : ITransactionalState<TState> whe
     private TState _committed = new();
     private TState? _pending;
     private Guid _registeredForTxId;
+    private bool _isLoaded;
 
     public TransactionalState(
         string stateName,
@@ -29,28 +30,33 @@ public sealed class TransactionalState<TState> : ITransactionalState<TState> whe
         _copyState = copyState;
     }
 
-    /// <summary>Loads committed state from storage. Call from <c>OnActivateAsync</c>.</summary>
+    /// <summary>Loads committed state from storage. Call from <c>OnActivateAsync</c> or lazily on first use.</summary>
     public async Task LoadAsync()
     {
         var wrapper = new GrainState<TState>();
         await _storage.ReadStateAsync(_stateName, _grainId, wrapper).ConfigureAwait(false);
         _committed = wrapper.State;
+        _isLoaded = true;
     }
 
-    public Task<TResult> PerformRead<TResult>(Func<TState, TResult> readFunction)
-        => Task.FromResult(readFunction(_pending ?? _committed));
-
-    public Task PerformUpdate(Action<TState> updateFunction)
+    public async Task<TResult> PerformRead<TResult>(Func<TState, TResult> readFunction)
     {
+        if (!_isLoaded) await LoadAsync().ConfigureAwait(false);
+        return readFunction(_pending ?? _committed);
+    }
+
+    public async Task PerformUpdate(Action<TState> updateFunction)
+    {
+        if (!_isLoaded) await LoadAsync().ConfigureAwait(false);
         EnsurePending();
         updateFunction(_pending!);
-        return Task.CompletedTask;
     }
 
-    public Task<TResult> PerformUpdate<TResult>(Func<TState, TResult> updateFunction)
+    public async Task<TResult> PerformUpdate<TResult>(Func<TState, TResult> updateFunction)
     {
+        if (!_isLoaded) await LoadAsync().ConfigureAwait(false);
         EnsurePending();
-        return Task.FromResult(updateFunction(_pending!));
+        return updateFunction(_pending!);
     }
 
     private void EnsurePending()

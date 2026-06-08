@@ -3,6 +3,7 @@ using Quark.Client;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Buffers;
 using Quark.Testing.Harness;
@@ -33,8 +34,12 @@ public sealed class IdleTimeoutIntegrationTests
                     o.GrainCollectionInterval = TimeSpan.FromMilliseconds(30);
                 });
                 services.AddSingleton(counter);
-                services.AddGrain<IdleGrain>();
-                services.AddGrainActivatorFactory<IdleGrainActivatorFactory>();
+
+                services.AddGrainBehavior<IIdleGrain, IdleGrainBehavior>();
+                services.AddScoped<IActivationMemory<IdleGrainState>>(sp =>
+                    new ActivationMemoryAccessor<IdleGrainState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<IdleGrainState>()));
             };
             options.ConfigureClientServices = services =>
             {
@@ -74,8 +79,12 @@ public sealed class IdleTimeoutIntegrationTests
                     o.GrainCollectionInterval = TimeSpan.FromMilliseconds(30);
                 });
                 services.AddSingleton(counter);
-                services.AddGrain<DelayGrain>();
-                services.AddGrainActivatorFactory<DelayGrainActivatorFactory>();
+
+                services.AddGrainBehavior<IDelayGrain, DelayGrainBehavior>();
+                services.AddScoped<IActivationMemory<DelayGrainState>>(sp =>
+                    new ActivationMemoryAccessor<DelayGrainState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<DelayGrainState>()));
             };
             options.ConfigureClientServices = services =>
             {
@@ -112,31 +121,33 @@ public sealed class IdleTimeoutIntegrationTests
         Task PingAsync();
     }
 
-    private sealed class IdleGrain : Grain, IIdleGrain
+    private sealed class IdleGrainState { }
+
+    private sealed class IdleGrainBehavior : IGrainBehavior, IIdleGrain, IActivationLifecycle
     {
         private readonly DeactivationCounter _counter;
-        public IdleGrain(DeactivationCounter counter) => _counter = counter;
+
+        public IdleGrainBehavior(DeactivationCounter counter,
+            IActivationMemory<IdleGrainState> _) // injected to satisfy DI validation
+        {
+            _counter = counter;
+        }
 
         public Task PingAsync() => Task.CompletedTask;
 
-        public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
+        public Task OnActivateAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
         {
             System.Threading.Interlocked.Increment(ref _counter.Count);
             return Task.CompletedTask;
         }
     }
 
-    private sealed class IdleGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(IdleGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services)
-            => new IdleGrain(services.GetRequiredService<DeactivationCounter>());
-    }
-
     private readonly struct IdleGrain_PingInvokable : IGrainVoidInvokable
     {
         public uint MethodId => 0u;
-        public ValueTask Invoke(Grain grain) => new(((IIdleGrain)grain).PingAsync());
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IIdleGrain)behavior).PingAsync());
         public void Serialize(ref CodecWriter writer) { }
     }
 
@@ -162,37 +173,41 @@ public sealed class IdleTimeoutIntegrationTests
         Task PingAndDelayAsync();
     }
 
-    private sealed class DelayGrain : Grain, IDelayGrain
+    private sealed class DelayGrainState { }
+
+    private sealed class DelayGrainBehavior : IGrainBehavior, IDelayGrain, IActivationLifecycle
     {
         private readonly DeactivationCounter _counter;
-        public DelayGrain(DeactivationCounter counter) => _counter = counter;
+        private readonly IActivationShellAccessor _shellAccessor;
+
+        public DelayGrainBehavior(DeactivationCounter counter, IActivationShellAccessor shellAccessor,
+            IActivationMemory<DelayGrainState> _) // injected to satisfy DI validation
+        {
+            _counter = counter;
+            _shellAccessor = shellAccessor;
+        }
 
         public Task PingAndDelayAsync()
         {
             // Push the deactivation deadline 30 seconds into the future —
             // well beyond the 100ms GrainCollectionAge used in the test.
-            DelayDeactivation(TimeSpan.FromSeconds(30));
+            _shellAccessor.Shell.DelayDeactivation(TimeSpan.FromSeconds(30));
             return Task.CompletedTask;
         }
 
-        public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
+        public Task OnActivateAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
         {
             System.Threading.Interlocked.Increment(ref _counter.Count);
             return Task.CompletedTask;
         }
     }
 
-    private sealed class DelayGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(DelayGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services)
-            => new DelayGrain(services.GetRequiredService<DeactivationCounter>());
-    }
-
     private readonly struct DelayGrain_PingInvokable : IGrainVoidInvokable
     {
         public uint MethodId => 0u;
-        public ValueTask Invoke(Grain grain) => new(((IDelayGrain)grain).PingAndDelayAsync());
+        public ValueTask Invoke(IGrainBehavior behavior) => new(((IDelayGrain)behavior).PingAndDelayAsync());
         public void Serialize(ref CodecWriter writer) { }
     }
 

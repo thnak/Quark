@@ -3,6 +3,7 @@ using Quark.Client;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Buffers;
 using Quark.Streaming.Abstractions;
@@ -77,8 +78,11 @@ public sealed class StreamingIntegrationTests
             {
                 services.AddQuarkRuntime();
                 services.AddMemoryStreams("events");
-                services.AddGrain<StreamListenerGrain>();
-                services.AddGrainActivatorFactory<StreamListenerGrainActivatorFactory>();
+                services.AddGrainBehavior<IStreamListenerGrain, StreamListenerGrainBehavior>();
+                services.AddScoped<IActivationMemory<StreamListenerState>>(sp =>
+                    new ActivationMemoryAccessor<StreamListenerState>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<StreamListenerState>()));
             };
             options.ConfigureClientServices = services =>
             {
@@ -110,34 +114,48 @@ public sealed class StreamingIntegrationTests
         Task<int> GetLastValueAsync();
     }
 
-    [ImplicitStreamSubscription("readings")]
-    private sealed class StreamListenerGrain : Grain, IStreamListenerGrain, IAsyncObserver<int>
+    private sealed class StreamListenerState
     {
-        private int _last;
+        public int Last { get; set; }
+    }
 
-        public override async Task OnActivateAsync(CancellationToken cancellationToken)
+    [ImplicitStreamSubscription("readings")]
+    private sealed class StreamListenerGrainBehavior : IGrainBehavior, IStreamListenerGrain,
+        IAsyncObserver<int>, IActivationLifecycle
+    {
+        private readonly IActivationMemory<StreamListenerState> _memory;
+        private readonly ICallContext _ctx;
+        private readonly IServiceProvider _serviceProvider;
+
+        public StreamListenerGrainBehavior(
+            IActivationMemory<StreamListenerState> memory,
+            ICallContext ctx,
+            IServiceProvider serviceProvider)
         {
-            var provider = ServiceProvider.GetRequiredKeyedService<IStreamProvider>("events");
-            var streamId = StreamId.Create("readings", GetPrimaryKeyString());
+            _memory = memory;
+            _ctx = ctx;
+            _serviceProvider = serviceProvider;
+        }
+
+        public async Task OnActivateAsync(CancellationToken cancellationToken)
+        {
+            var provider = _serviceProvider.GetRequiredKeyedService<IStreamProvider>("events");
+            var streamId = StreamId.Create("readings", _ctx.GrainId.Key);
             await provider.GetStream<int>(streamId).SubscribeAsync(this);
         }
 
-        public Task<int> GetLastValueAsync() => Task.FromResult(_last);
-        public Task OnNextAsync(int item, StreamSequenceToken? token = null) { _last = item; return Task.CompletedTask; }
+        public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<int> GetLastValueAsync() => Task.FromResult(_memory.Value.Last);
+        public Task OnNextAsync(int item, StreamSequenceToken? token = null) { _memory.Value.Last = item; return Task.CompletedTask; }
         public Task OnErrorAsync(Exception ex) => Task.CompletedTask;
         public Task OnCompletedAsync() => Task.CompletedTask;
-    }
-
-    private sealed class StreamListenerGrainActivatorFactory : IGrainActivatorFactory
-    {
-        public Type GrainClass => typeof(StreamListenerGrain);
-        public Grain Create(GrainId grainId, IServiceProvider services) => new StreamListenerGrain();
     }
 
     private readonly struct StreamListenerGrain_GetLastValueInvokable : IGrainInvokable<int>
     {
         public uint MethodId => 0u;
-        public ValueTask<int> Invoke(Grain grain) => new(((IStreamListenerGrain)grain).GetLastValueAsync());
+        public ValueTask<int> Invoke(IGrainBehavior behavior) => new(((IStreamListenerGrain)behavior).GetLastValueAsync());
         public void Serialize(ref CodecWriter writer) { }
         public int DeserializeResult(ref CodecReader reader) => reader.ReadInt32();
     }

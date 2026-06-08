@@ -40,9 +40,9 @@ internal sealed class GrainIdleCollector : BackgroundService
         foreach (var (_, activation) in _activationTable.GetActiveActivations())
         {
             if (activation.IsIdleLongerThan(_options.GrainCollectionAge, now)
-                && activation.Context.IsDeactivationAllowed(now))
+                && activation.IsDeactivationAllowed(now))
             {
-                activation.Context.Deactivate(DeactivationReason.IdleTimeout);
+                activation.Deactivate(DeactivationReason.IdleTimeout);
             }
         }
     }

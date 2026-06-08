@@ -612,25 +612,25 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         else if (isVoid)
         {
             // Grain void: cast to the grain interface.
-            string callExpr = $"(({m.FqInterfaceName})grain).{method.Name}({argList})";
+            string callExpr = $"(({m.FqInterfaceName})behavior).{method.Name}({argList})";
             // Task → wrap in ValueTask; ValueTask → return directly (ValueTask ctor takes Task, not ValueTask)
             string invokeBody = method.IsTask
                 ? $"        => new global::System.Threading.Tasks.ValueTask({callExpr});"
                 : $"        => {callExpr};";
             sb.AppendLine("    public global::System.Threading.Tasks.ValueTask Invoke(");
-            sb.AppendLine("        global::Quark.Core.Abstractions.Grains.Grain grain)");
+            sb.AppendLine("        global::Quark.Core.Abstractions.Grains.IGrainBehavior behavior)");
             sb.AppendLine(invokeBody);
         }
         else
         {
             // Grain returning value: cast to the grain interface.
-            string callExpr = $"(({m.FqInterfaceName})grain).{method.Name}({argList})";
+            string callExpr = $"(({m.FqInterfaceName})behavior).{method.Name}({argList})";
             // Task<T> → wrap in ValueTask<T>; ValueTask<T> → return directly
             string invokeBody = method.IsTaskOfT
                 ? $"        => new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>({callExpr});"
                 : $"        => {callExpr};";
             sb.AppendLine($"    public global::System.Threading.Tasks.ValueTask<{method.TaskResultType}> Invoke(");
-            sb.AppendLine("        global::Quark.Core.Abstractions.Grains.Grain grain)");
+            sb.AppendLine("        global::Quark.Core.Abstractions.Grains.IGrainBehavior behavior)");
             sb.AppendLine(invokeBody);
         }
 

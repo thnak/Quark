@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Quark.Client;
+using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
@@ -39,34 +40,59 @@ public sealed class FaultFixture : IAsyncDisposable
         services.AddSingleton<IStorage<WorkerState>>(workerStorage);
         services.AddSingleton<IStorage<OrchestratorState>>(orchestratorStorage);
 
-        // Core runtime — registry, directory, activation table
-        services.AddSingleton<GrainTypeRegistry>();
-        services.AddSingleton<IGrainTypeRegistry>(sp => sp.GetRequiredService<GrainTypeRegistry>());
-        services.AddSingleton<InMemoryGrainDirectory>();
-        services.AddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
-        services.AddSingleton<GrainActivationTable>();
-        // Grain activator factories
-        services.AddSingleton<IGrainActivatorFactory>(new WorkerGrainActivatorFactory());
-        services.AddSingleton<IGrainActivatorFactory>(new OrderOrchestratorGrainActivatorFactory());
-
-        // Fault-injecting activator wraps DefaultGrainActivator
-        services.AddSingleton<DefaultGrainActivator>();
-        services.AddSingleton<IGrainActivator>(sp =>
-            new FaultInjectingGrainActivator(
-                sp.GetRequiredService<DefaultGrainActivator>(),
+        // Register fault-injecting behavior resolver BEFORE AddQuarkRuntime so TryAdd skips it
+        services.AddScoped<IBehaviorResolver>(sp =>
+            new FaultInjectingBehaviorResolver(
+                sp,
                 sp.GetRequiredService<IGrainTypeRegistry>(),
                 ScenarioHolder.Activations));
+
+        // Core runtime (scoped shell/call-context services, activation table, etc.)
+        services.AddQuarkRuntime();
+
+        // Per-call persistent memory for each behavior state type
+        services.AddScoped<IPersistentActivationMemory<WorkerState>>(sp =>
+            new PersistentActivationMemoryAccessor<WorkerState>(
+                sp.GetRequiredService<IActivationShellAccessor>().Shell.GetOrCreateHolder<WorkerState>(),
+                sp.GetRequiredService<IStorage<WorkerState>>(),
+                sp.GetRequiredService<ICallContext>(),
+                StorageOptions.DefaultStateName));
+
+        services.AddScoped<IPersistentActivationMemory<OrchestratorState>>(sp =>
+            new PersistentActivationMemoryAccessor<OrchestratorState>(
+                sp.GetRequiredService<IActivationShellAccessor>().Shell.GetOrCreateHolder<OrchestratorState>(),
+                sp.GetRequiredService<IStorage<OrchestratorState>>(),
+                sp.GetRequiredService<ICallContext>(),
+                StorageOptions.DefaultStateName));
+
+        // Behavior types — transient, created per call via IBehaviorResolver
+        services.AddTransient<WorkerBehavior>();
+        services.AddTransient<OrderOrchestratorBehavior>();
 
         // Client-side registries
         services.AddSingleton<GrainProxyFactoryRegistry>();
         services.AddSingleton<GrainInterfaceTypeRegistry>();
 
+        // IGrainFactory lazy registration — breaks the LocalGrainCallInvoker ↔ IGrainFactory cycle.
+        // The factory lambda captures _faultInvoker so external Client can share the same instance.
+        FaultInjectingGrainCallInvoker? faultInvokerRef = null;
+        services.AddSingleton<IGrainFactory>(sp =>
+        {
+            faultInvokerRef ??= new FaultInjectingGrainCallInvoker(
+                sp.GetRequiredService<LocalGrainCallInvoker>(),
+                ScenarioHolder.Calls);
+            return new LocalGrainFactory(
+                sp.GetRequiredService<GrainProxyFactoryRegistry>(),
+                sp.GetRequiredService<GrainInterfaceTypeRegistry>(),
+                faultInvokerRef);
+        });
+
         _sp = services.BuildServiceProvider();
 
-        // Deferred registrations (normally done by hosted services)
+        // Apply deferred type registry registrations manually (SiloHostedService not running)
         var typeRegistry = _sp.GetRequiredService<GrainTypeRegistry>();
-        typeRegistry.Register(new GrainType("WorkerGrain"), typeof(WorkerGrain));
-        typeRegistry.Register(new GrainType("OrderOrchestratorGrain"), typeof(OrderOrchestratorGrain));
+        typeRegistry.Register(new GrainType("WorkerGrain"), typeof(WorkerBehavior));
+        typeRegistry.Register(new GrainType("OrderOrchestratorGrain"), typeof(OrderOrchestratorBehavior));
 
         var proxyRegistry = _sp.GetRequiredService<GrainProxyFactoryRegistry>();
         var interfaceRegistry = _sp.GetRequiredService<GrainInterfaceTypeRegistry>();
@@ -76,27 +102,12 @@ public sealed class FaultFixture : IAsyncDisposable
         proxyRegistry.Register<IWorkerGrain, WorkerGrainProxy>((id, inv) => new WorkerGrainProxy(id, inv));
         proxyRegistry.Register<IOrderOrchestratorGrain, OrderOrchestratorGrainProxy>((id, inv) => new OrderOrchestratorGrainProxy(id, inv));
 
-        // Break circular dep: LocalGrainFactory ↔ LocalGrainCallInvoker
-        var deferredInvoker = new DeferredGrainCallInvoker();
-        var localFactory = new LocalGrainFactory(proxyRegistry, interfaceRegistry, deferredInvoker);
-
         _activationTable = _sp.GetRequiredService<GrainActivationTable>();
-        var realInvoker = new LocalGrainCallInvoker(
-            _activationTable,
-            _sp.GetRequiredService<IGrainActivator>(),
-            typeRegistry,
-            _sp.GetRequiredService<IGrainDirectory>(),
-            _sp,
-            _sp.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
-            NullLogger<LocalGrainCallInvoker>.Instance,
-            NullLogger<GrainActivation>.Instance,
-            grainFactory: localFactory);
 
-        // Fault-injecting call invoker wraps the real one
-        IGrainCallInvoker effectiveInvoker = new FaultInjectingGrainCallInvoker(realInvoker, ScenarioHolder.Calls);
-        deferredInvoker.SetInvoker(effectiveInvoker);
+        // Force-resolve IGrainFactory to initialize faultInvokerRef
+        _ = _sp.GetRequiredService<IGrainFactory>();
 
-        Client = new LocalClusterClient(new LocalGrainFactory(proxyRegistry, interfaceRegistry, effectiveInvoker));
+        Client = new LocalClusterClient(new LocalGrainFactory(proxyRegistry, interfaceRegistry, faultInvokerRef!));
     }
 
     public IClusterClient Client { get; }
@@ -106,24 +117,5 @@ public sealed class FaultFixture : IAsyncDisposable
     {
         await _activationTable.DisposeAsync();
         await _sp.DisposeAsync();
-    }
-
-    private sealed class DeferredGrainCallInvoker : IGrainCallInvoker
-    {
-        private IGrainCallInvoker? _inner;
-
-        public void SetInvoker(IGrainCallInvoker invoker) => _inner = invoker;
-
-        public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default)
-            where TInvokable : struct, IGrainInvokable<TResult>
-            => _inner!.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
-
-        public Task InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default)
-            where TInvokable : struct, IGrainVoidInvokable
-            => _inner!.InvokeVoidAsync<TInvokable>(id, invokable, ct);
-
-        public Task InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default)
-            where TInvokable : struct, IObserverVoidInvokable
-            => _inner!.InvokeObserverAsync<TInvokable>(id, invokable, ct);
     }
 }

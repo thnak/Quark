@@ -21,8 +21,8 @@ public readonly struct ReceiveReminderInvokable : IGrainVoidInvokable
     public TickStatus Status { get; }
     public uint MethodId => ReminderMethodIds.ReceiveReminder;
 
-    public ValueTask Invoke(Grain grain)
-        => new(((IRemindable)grain).ReceiveReminder(ReminderName, Status));
+    public ValueTask Invoke(IGrainBehavior behavior)
+        => new(((IRemindable)behavior).ReceiveReminder(ReminderName, Status));
 
     public void Serialize(ref CodecWriter writer) { }
 }
