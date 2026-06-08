@@ -1,131 +1,137 @@
-# Orleans Repository Architecture Guide
+# Quark
 
-## What this repository is
+**Native AOT-first, Orleans-compatible distributed actor framework for .NET 10.**
 
-This repository contains the core Microsoft Orleans framework: a distributed virtual actor platform for .NET.
+Quark follows the Orleans mental model — Grain, Silo, Client, Placement, Persistence — while being built from the ground up for AOT compilation, per-call DI scoping, and lean memory footprints. It achieves Orleans API compatibility at three tiers: drop-in (identical attributes and interfaces), minor-change (same concept, different DI wiring), and Quark-native (new capabilities without direct Orleans equivalents).
 
-At a high level:
+## Features
 
-- **Grains** are the primary programming model (stateful or stateless virtual actors).
-- **Silos** host and execute grains.
-- **Clients** call grains from external applications.
-- **Providers/extensions** plug in storage, clustering, streaming, reminders, and infrastructure integrations.
+- Virtual actor model with grain behaviors (POCO, no base class required)
+- Per-call DI scoping — fresh `IServiceScope` per grain method call
+- `IActivationMemory<T>` and `IPersistentActivationMemory<T>` for in-memory and durable state
+- `[PersistentState]` attribute injection (Orleans-compatible)
+- `JournaledGrain<TState,TEvent>` event sourcing
+- Durable grain reminders (in-memory + Redis backends)
+- In-memory grain timers with mailbox-safe callbacks
+- In-memory streams (`IAsyncStream<T>`) with implicit subscriptions
+- TCP gateway client with server-pushed stream delivery
+- Multi-silo clustering with distributed grain directory
+- TLS transport (mutual TLS supported)
+- ACID transactions with 2PC coordinator (`ITransactionalState<T>`)
+- Grain observers (`IGrainObserver` + `CreateObjectReference<T>`)
+- Idle-timeout grain collector
+- OpenTelemetry activity propagation
+- Native AOT + trim-safe throughout — zero reflection on hot paths
+- Roslyn source generators: `GrainProxyGenerator`, `BehaviorRegistrationGenerator`, `SerializerGenerator`
+- AOT-safety analyzers (QRK0001–QRK0003)
 
-## Repository layout
+## Quick start
 
-### `src/`
-Core framework code and extension packages.
+```csharp
+// 1. Define a grain interface (shared project)
+public interface ICounterGrain : IGrainWithStringKey
+{
+    Task IncrementAsync();
+    Task<int> GetAsync();
+}
 
-- **Core runtime and SDK**
-  - `Orleans.Core.Abstractions` – foundational contracts and abstractions.
-  - `Orleans.Core` – shared runtime/client core components.
-  - `Orleans.Runtime` – silo-side runtime implementation.
-  - `Orleans.Client` – client-side communication stack.
-  - `Orleans.Server` – server metapackage for silo hosting.
-  - `Orleans.Sdk` – build-time/codegen SDK integration.
-  - `Orleans.CodeGenerator`, `Orleans.Analyzers` – source generation/analyzers.
-- **Serialization**
-  - `Orleans.Serialization` + abstractions.
-  - Optional serializer integrations (System.Text.Json, Newtonsoft.Json, MessagePack, MemoryPack, Protobuf, F#).
-- **Feature packages**
-  - Streaming, reminders, event sourcing, durable jobs, transactions, testing host.
-- **Infrastructure extensions**
-  - Provider-specific folders: `AdoNet`, `AWS`, `Azure`, `Cassandra`, `Redis`, `Dashboard`, and more.
+// 2. Write a grain behavior (server project)
+public sealed class CounterState { public int Count { get; set; } }
 
-### `test/`
-Unit, integration, analyzer, serialization, and distributed test projects that mirror major runtime areas.
+public sealed class CounterBehavior : IGrainBehavior, ICounterGrain
+{
+    private readonly IActivationMemory<CounterState> _memory;
+    public CounterBehavior(IActivationMemory<CounterState> memory) => _memory = memory;
+    public Task IncrementAsync() { _memory.Value.Count++; return Task.CompletedTask; }
+    public Task<int> GetAsync()  => Task.FromResult(_memory.Value.Count);
+}
 
-### `samples/`
-Entry point for official Orleans sample applications (now hosted in `dotnet/samples`).
+// 3. Host and call
+var host = Host.CreateDefaultBuilder(args)
+    .UseQuark(silo =>
+    {
+        silo.Services.AddQuarkRuntime();
+        silo.Services.AddTcpTransport();
+        silo.UseLocalhostClustering(gatewayPort: 30001);
+        silo.Services.AddMyAssemblyBehaviors(); // BehaviorRegistrationGenerator
+    })
+    .UseQuarkClient(client =>
+    {
+        client.Services.AddLocalClusterClient();
+        client.Services.AddGrainProxy<ICounterGrain, CounterGrainProxy>(); // GrainProxyGenerator
+    })
+    .Build();
 
-### `playground/`
-Experimental and scenario-focused apps for trying architecture/runtime behaviors.
+var factory = host.Services.GetRequiredService<IGrainFactory>();
+var counter = factory.GetGrain<ICounterGrain>("my-counter");
+await counter.IncrementAsync();
+Console.WriteLine(await counter.GetAsync()); // 1
+```
 
-### `src/api/`
-Generated API surface baselines for packable projects.
+## Build
 
-## Key technologies used
+```bash
+# Build entire solution
+dotnet build Quark.slnx
 
-- **Language/runtime:** C#, .NET (SDK pinned in `global.json`).
-- **Build system:** `dotnet build` with solution file `Orleans.slnx`.
-- **Dependency management:** central package management via `Directory.Packages.props`.
-- **Testing:** `dotnet test`, xUnit-based test projects, plus distributed performance/scenario tests.
-- **Integrations:** Azure, AWS, Redis, ADO.NET, Cassandra, Kubernetes, OpenTelemetry, multiple serializers.
+# Run all tests
+dotnet test Quark.slnx
 
-## How code is organized conceptually
+# Native AOT smoke build (Linux)
+dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r linux-x64 /p:PublishAot=true
+```
 
-### Layered architecture
+.NET SDK is pinned to `10.0.201` via `global.json`. Package versions are centrally managed in `Directory.Packages.props` — do not add `Version=` attributes to individual `<PackageReference>` elements.
 
-1. **Programming model layer**
-   - Grain interfaces/classes, grain identity, state, lifecycle APIs.
-2. **Runtime layer**
-   - Activation/deactivation, placement, messaging, scheduling, clustering.
-3. **Infrastructure layer**
-   - Persistence providers, membership stores, stream providers, reminder stores, dashboards.
-4. **Tooling layer**
-   - Source generators, analyzers, SDK/build support.
+## Package layout
 
-### Package composition model
+| Package | Role |
+|---|---|
+| `Quark.Core.Abstractions` | `IGrain`, key interfaces, `IGrainFactory`, `IClusterClient`, lifecycle, placement |
+| `Quark.Core` | Host-builder extensions (`UseQuark`, `UseQuarkClient`) |
+| `Quark.Runtime` | Silo runtime: activations, invoker, placement, message pump |
+| `Quark.Client` | `LocalClusterClient`, proxy factory registries |
+| `Quark.Client.Tcp` | `TcpGatewayClusterClient`, TCP stream push |
+| `Quark.Serialization` | Binary codec runtime (ZigZag + LEB128) |
+| `Quark.Transport.Tcp` | TCP transport with TLS (System.IO.Pipelines) |
+| `Quark.Persistence.*` | `IGrainStorage`, `IPersistentActivationMemory`, `JournaledGrain`, InMemory + Redis providers |
+| `Quark.Reminders.*` | Durable reminders, InMemory + Redis storage |
+| `Quark.Streaming.*` | `IAsyncStream<T>`, in-memory stream provider |
+| `Quark.Transactions` | `ITransactionalState<T>`, 2PC coordinator |
+| `Quark.CodeGenerator` | Roslyn source generators |
+| `Quark.Analyzers` | AOT-safety analyzers |
+| `Quark.Testing` | In-process `TestCluster` test harness |
 
-- Start with Orleans core/client/server packages.
-- Add provider packages based on deployment/storage needs.
-- Add optional feature packages (transactions, streaming, durable jobs, etc.) as required.
+## Samples
 
-## Architecture usage patterns
+| Sample | Demonstrates |
+|---|---|
+| `samples/Adventure` | Grain-to-grain calls, timers, TCP gateway client, multi-grain state |
+| `samples/ChatRoom` | In-memory streams, TCP client stream push, Spectre.Console UI |
 
-### 1) Local development architecture
+See the [Samples wiki page](../../wiki/Samples) for full walkthroughs.
 
-- Single silo + co-hosted client or separate local client.
-- In-memory/dev providers where possible.
-- Fastest feedback loop for grain behavior and API evolution.
+## Documentation
 
-### 2) Production cluster architecture
+Full documentation is in the [wiki](../../wiki):
 
-- Multiple silos in a cluster.
-- External membership and persistence providers (for resiliency).
-- Health checks, telemetry, and rolling deployment/versioning strategies.
+- [Architecture](../../wiki/Architecture)
+- [Writing Grains](../../wiki/Writing-Grains)
+- [Persistence](../../wiki/Persistence)
+- [Serialization](../../wiki/Serialization)
+- [Streaming](../../wiki/Streaming)
+- [Timers and Reminders](../../wiki/Timers-and-Reminders)
+- [Transactions](../../wiki/Transactions)
+- [Clustering and Transport](../../wiki/Clustering-and-Transport)
+- [Source Generators](../../wiki/Source-Generators)
+- [Testing](../../wiki/Testing)
+- [AOT and Trim](../../wiki/AOT-and-Trim)
+- [Orleans Migration Guide](../../wiki/Orleans-Migration)
 
-### 3) Cloud-native architecture
+## Design principles
 
-- Orleans hosted in containers/Kubernetes.
-- Cloud provider integrations for clustering, persistence, streams, and reminders.
-- Scales horizontally by adding silos.
-
-### 4) Event-driven architecture
-
-- Orleans Streams for pub/sub and near real-time processing.
-- Grains as stateful processors and workflow coordinators.
-- Optional durable jobs/event sourcing for long-running or replayable workflows.
-
-## Choosing packages by need
-
-- Need only grain calls from an app: **Client** packages.
-- Need to host grains: **Server/Runtime** packages.
-- Need persistence/reminders/clustering: add provider package(s) from `src/Azure`, `src/AWS`, `src/Redis`, `src/AdoNet`, etc.
-- Need custom serialization: add an `Orleans.Serialization.*` integration package.
-- Need Kubernetes hosting support: use `Orleans.Hosting.Kubernetes`.
-
-## Native AOT and Linker-Trimming
-
-Orleans targets full Native AOT support as a long-term goal. For an in-depth audit of the current state and a step-by-step roadmap, see **[docs/aot.md](docs/aot.md)**.
-
-### Design constraints for new code
-
-1. **Prefer code generation over reflection.** The Orleans source generator emits all grain-proxy, serializer, copier, and activator code at build time. New features should integrate with the code generator rather than resolving types or members at runtime.
-
-2. **Annotate unavoidable reflection.** Any code that must use runtime reflection, `Assembly.Load`, `DynamicMethod`, or similar must be annotated with `[RequiresUnreferencedCode]` and/or `[RequiresDynamicCode]` and the message must explain what the caller should do instead.
-
-3. **Guard JIT-only paths with `RuntimeFeature.IsDynamicCodeSupported`.** Where a fast JIT path exists alongside a slower but AOT-safe fallback, use `RuntimeFeature.IsDynamicCodeSupported` to select the path at runtime. The AOT compiler will eliminate the JIT-only branch as dead code.
-
-4. **Use `[UnsafeAccessor]` for private-member access on .NET 8+.** The `[System.Runtime.CompilerServices.UnsafeAccessor]` attribute is fully AOT-compatible and supersedes `DynamicMethod`-based field/method accessors for private members.
-
-5. **Do not add new `ISerializable`-dependent code.** The `ISerializable` pattern requires `DynamicMethod` and is incompatible with Native AOT. New exception types and serializable classes should use `[GenerateSerializer]` instead.
-
-6. **Register providers explicitly.** Auto-discovery via `RegisterProviderAttribute` assembly scanning is not trim-safe. New providers should offer explicit registration extension methods in addition to (or instead of) the attribute-based discovery path.
-
-## Start points for contributors
-
-- Read root `README.md` for model and features.
-- Explore `src/Orleans.Core*`, `src/Orleans.Runtime`, and `src/Orleans.Client` first.
-- Follow with provider folders relevant to your target deployment.
-- Use tests in `test/` matching your changed component for validation.
+1. **AOT-first.** No reflection on hot paths. Source generators emit all proxy, serializer, and registration code at build time.
+2. **Per-call DI scoping.** Each grain method call gets a fresh `IServiceScope`, enabling scoped services (DbContext, etc.) without manual workarounds.
+3. **Fail fast.** `BehaviorStartupValidator` catches DI misconfiguration at silo startup, not on the first live call.
+4. **Explicit registration.** No assembly scanning. Every type is registered via explicit extension methods.
+5. **Mailbox unchanged.** The `Channel<Func<Task>>` single-reader queue is the actor model's correctness guarantee.
