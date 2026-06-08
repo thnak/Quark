@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Quark.Tests.Unit"/>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Quark.Client\Quark.Client.csproj"/>
     <ProjectReference Include="..\Quark.Runtime\Quark.Runtime.csproj"/>
     <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj"/>
