@@ -22,5 +22,11 @@ public enum MessageType : byte
     StreamUnsubscribe = 5,
 
     /// <summary>Push stream data (server → client, unsolicited).</summary>
-    StreamPush = 6
+    StreamPush = 6,
+
+    /// <summary>Client registers a local observer GrainId with the silo (client → server, one-way).</summary>
+    ObserverRegister = 7,
+
+    /// <summary>Silo invokes a method on a client-side observer (server → client, one-way).</summary>
+    ObserverInvoke = 8
 }

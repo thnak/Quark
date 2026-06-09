@@ -9,18 +9,22 @@ namespace Quark.Client.Tcp;
 
 /// <summary>
 ///     <see cref="IGrainCallInvoker" /> that routes grain calls over TCP to the silo gateway.
-///     Observer invocations are not supported (local-only).
+///     Observer calls on locally-registered observers are dispatched in-process via
+///     <see cref="ObserverRegistry" />.
 /// </summary>
 public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
 {
     private readonly TcpGatewayConnection _connection;
     private readonly GrainMessageSerializer _grainSerializer;
+    private readonly ObserverRegistry? _observerRegistry;
     private long _nextCorrelationId;
 
-    public TcpGatewayCallInvoker(TcpGatewayConnection connection, GrainMessageSerializer grainSerializer)
+    public TcpGatewayCallInvoker(TcpGatewayConnection connection, GrainMessageSerializer grainSerializer,
+        ObserverRegistry? observerRegistry = null)
     {
         _connection = connection;
         _grainSerializer = grainSerializer;
+        _observerRegistry = observerRegistry;
     }
 
     public async Task<TResult> InvokeAsync<TInvokable, TResult>(
@@ -68,8 +72,14 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         TInvokable invokable,
         CancellationToken cancellationToken = default)
         where TInvokable : struct, IObserverVoidInvokable
-        => throw new NotSupportedException(
-            "Observer invocations are local-only and cannot travel over TCP.");
+    {
+        if (_observerRegistry?.TryGet(grainId, out ObserverRegistry.ObserverEntry entry) == true)
+            return invokable.Invoke(entry.Target).AsTask();
+
+        throw new NotSupportedException(
+            $"Observer '{grainId}' is not registered locally. " +
+            "Call CreateObjectReference before invoking observer methods.");
+    }
 
     private async Task<MessageEnvelope> SendAsync(
         GrainId grainId, uint methodId, byte[] argBytes, CancellationToken ct)

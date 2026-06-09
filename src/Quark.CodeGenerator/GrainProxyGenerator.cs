@@ -387,6 +387,17 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             if (isGrain && grainRefKind.HasValue) return new SerializeInfo(grainRefKind.Value);
         }
 
+        // Observer-ref parameters — type implements IGrainObserver.
+        // On the wire: GrainType (string) + GrainKey (string).
+        if (type is INamedTypeSymbol obsNamed)
+        {
+            foreach (INamedTypeSymbol iface in obsNamed.AllInterfaces)
+            {
+                if (iface.ToDisplayString() == IGrainObserverFqn)
+                    return new SerializeInfo(SerializeKind.GrainObserverRef);
+            }
+        }
+
         return new SerializeInfo(SerializeKind.Fallback);
     }
 
@@ -416,6 +427,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 or SerializeKind.GrainRefGuid
                 or SerializeKind.GrainRefInteger =>
                 $"writer.WriteString(((global::Quark.Core.Abstractions.Hosting.IGrainProxy){valueExpr}).GrainId.Key);",
+            SerializeKind.GrainObserverRef =>
+                $"writer.WriteString(((global::Quark.Core.Abstractions.Hosting.IGrainObserverProxy){valueExpr}).GrainId.Type.Value); writer.WriteString(((global::Quark.Core.Abstractions.Hosting.IGrainObserverProxy){valueExpr}).GrainId.Key);",
             _ => $"global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, {valueExpr});"
         };
 
@@ -444,6 +457,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.GrainRefString   => $"factory!.GetGrain<{fqTypeName}>(reader.ReadString())",
             SerializeKind.GrainRefGuid     => $"factory!.GetGrain<{fqTypeName}>(global::System.Guid.ParseExact(reader.ReadString(), \"N\"))",
             SerializeKind.GrainRefInteger  => $"factory!.GetGrain<{fqTypeName}>(long.Parse(reader.ReadString(), global::System.Globalization.CultureInfo.InvariantCulture))",
+            SerializeKind.GrainObserverRef =>
+                $"factory!.GetObserverRef<{fqTypeName}>(global::Quark.Core.Abstractions.Identity.GrainId.Create(new global::Quark.Core.Abstractions.Identity.GrainType(reader.ReadString()), reader.ReadString()))",
             _ => $"({fqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
         };
 
@@ -510,14 +525,15 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         {
             sb.AppendLine("    , global::Quark.Core.Abstractions.Hosting.IGrainProxy");
         }
+        else
+        {
+            sb.AppendLine("    , global::Quark.Core.Abstractions.Hosting.IGrainObserverProxy");
+        }
         sb.AppendLine("{");
         sb.AppendLine("    private readonly global::Quark.Core.Abstractions.Identity.GrainId _grainId;");
         sb.AppendLine("    private readonly global::Quark.Core.Abstractions.Hosting.IGrainCallInvoker _invoker;");
-        if (!m.IsObserver)
-        {
-            sb.AppendLine();
-            sb.AppendLine("    public global::Quark.Core.Abstractions.Identity.GrainId GrainId => _grainId;");
-        }
+        sb.AppendLine();
+        sb.AppendLine("    public global::Quark.Core.Abstractions.Identity.GrainId GrainId => _grainId;");
         sb.AppendLine();
         sb.AppendLine($"    public {m.ProxyClassName}(");
         sb.AppendLine("        global::Quark.Core.Abstractions.Identity.GrainId grainId,");
@@ -1066,6 +1082,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         GrainRefString,
         GrainRefGuid,
         GrainRefInteger,
+        GrainObserverRef,
         Fallback
     }
 

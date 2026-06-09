@@ -124,6 +124,17 @@ public sealed class LocalGrainFactory : IGrainFactory
         _observerRegistry?.UnregisterByTarget(reference);
     }
 
+    /// <inheritdoc />
+    public TGrainObserver GetObserverRef<TGrainObserver>(GrainId grainId)
+        where TGrainObserver : class, IGrainObserver
+    {
+        if (_observerProxyRegistry is null)
+            throw new InvalidOperationException(
+                "Observer support is not configured. " +
+                "Call AddObserverProxy<TInterface, TProxy>() during startup.");
+        return _observerProxyRegistry.CreateProxy<TGrainObserver>(grainId, _invoker);
+    }
+
     // -----------------------------------------------------------------------
 
     private GrainId GrainIdForInterface<TInterface>(string key)

@@ -55,6 +55,6 @@ public interface IObserverVoidInvokable
     /// <summary>Invokes the observer method on <paramref name="target" />.</summary>
     ValueTask Invoke(object target);
 
-    /// <summary>No-op — observer calls are local-only and never travel over TCP.</summary>
+    /// <summary>Serialises all method arguments into <paramref name="writer" /> for TCP transport.</summary>
     void Serialize(ref CodecWriter writer);
 }

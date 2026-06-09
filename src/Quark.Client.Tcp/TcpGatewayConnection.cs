@@ -15,6 +15,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
     private readonly TcpTransport _transport;
     private readonly MessageSerializer _serializer;
     private readonly TcpStreamPushDispatcher? _pushDispatcher;
+    private readonly TcpObserverDispatcher? _observerDispatcher;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<MessageEnvelope>> _pending = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private ITransportConnection? _connection;
@@ -23,11 +24,12 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
     private Task? _executeLoop;
 
     public TcpGatewayConnection(TcpTransport transport, MessageSerializer serializer,
-        TcpStreamPushDispatcher? pushDispatcher = null)
+        TcpStreamPushDispatcher? pushDispatcher = null, TcpObserverDispatcher? observerDispatcher = null)
     {
         _transport = transport;
         _serializer = serializer;
         _pushDispatcher = pushDispatcher;
+        _observerDispatcher = observerDispatcher;
     }
 
     public async Task ConnectAsync(EndPoint endpoint, CancellationToken ct = default)
@@ -126,10 +128,17 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
                     .ConfigureAwait(false);
                 if (response is null) break;
 
-                if (response.MessageType == MessageType.StreamPush || response.CorrelationId == -1)
+                if (response.MessageType == MessageType.StreamPush)
                 {
                     if (_pushDispatcher is not null)
                         await _pushDispatcher.DispatchAsync(response).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (response.MessageType == MessageType.ObserverInvoke)
+                {
+                    if (_observerDispatcher is not null)
+                        await _observerDispatcher.DispatchAsync(response).ConfigureAwait(false);
                     continue;
                 }
 

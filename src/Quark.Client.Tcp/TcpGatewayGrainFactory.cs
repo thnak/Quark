@@ -3,24 +3,37 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
+using Quark.Transport.Abstractions;
 
 namespace Quark.Client.Tcp;
 
 /// <summary>
 ///     <see cref="IGrainFactory" /> for the TCP gateway client.
-///     Delegates to a <see cref="LocalGrainFactory" /> wired with a <see cref="TcpGatewayCallInvoker" />.
-///     Observer references are not supported.
+///     Delegates grain lookups to an inner <see cref="LocalGrainFactory" />.
+///     Observer references are supported: <see cref="CreateObjectReference{T}" /> registers the
+///     local implementation and sends an <see cref="MessageType.ObserverRegister" /> frame to the
+///     silo so back-channel invocations can be routed over the open TCP connection.
 /// </summary>
 public sealed class TcpGatewayGrainFactory : IGrainFactory
 {
     private readonly LocalGrainFactory _inner;
+    private readonly ObserverRegistry? _observerRegistry;
+    private readonly ObserverProxyFactoryRegistry? _observerProxyRegistry;
+    private readonly TcpGatewayConnection? _connection;
 
     public TcpGatewayGrainFactory(
         GrainProxyFactoryRegistry proxyRegistry,
         GrainInterfaceTypeRegistry interfaceRegistry,
-        TcpGatewayCallInvoker invoker)
+        TcpGatewayCallInvoker invoker,
+        ObserverRegistry? observerRegistry = null,
+        ObserverProxyFactoryRegistry? observerProxyRegistry = null,
+        TcpGatewayConnection? connection = null)
     {
-        _inner = new LocalGrainFactory(proxyRegistry, interfaceRegistry, invoker);
+        _inner = new LocalGrainFactory(proxyRegistry, interfaceRegistry, invoker,
+            observerProxyRegistry, observerRegistry);
+        _observerRegistry = observerRegistry;
+        _observerProxyRegistry = observerProxyRegistry;
+        _connection = connection;
     }
 
     public TGrainInterface GetGrain<TGrainInterface>(string key)
@@ -58,9 +71,38 @@ public sealed class TcpGatewayGrainFactory : IGrainFactory
 
     public TGrainObserver CreateObjectReference<TGrainObserver>(TGrainObserver implementation)
         where TGrainObserver : class, IGrainObserver
-        => throw new NotSupportedException(
-            "Observer references are local-only and cannot be created on a TCP gateway client.");
+    {
+        if (_observerRegistry is null || _observerProxyRegistry is null)
+            throw new InvalidOperationException(
+                "Observer support is not configured. " +
+                "Register ObserverRegistry and ObserverProxyFactoryRegistry during client startup.");
+
+        var grainType = new GrainType($"observer:{typeof(TGrainObserver).Name}");
+        GrainId grainId = GrainId.Create(grainType, Guid.NewGuid().ToString("N"));
+        _observerRegistry.Register(grainId, implementation);
+
+        if (_connection is not null)
+        {
+            var headers = new MessageHeaders();
+            headers.Set("grain-type", grainId.Type.Value);
+            headers.Set("grain-key", grainId.Key);
+            _ = _connection.SendOneWayAsync(new MessageEnvelope
+            {
+                MessageType = MessageType.ObserverRegister,
+                CorrelationId = -1,
+                Headers = headers,
+                Payload = ReadOnlyMemory<byte>.Empty
+            });
+        }
+
+        return _inner.GetObserverRef<TGrainObserver>(grainId);
+    }
 
     public void DeleteObjectReference<TGrainObserver>(TGrainObserver reference)
-        where TGrainObserver : class, IGrainObserver { }
+        where TGrainObserver : class, IGrainObserver
+        => _observerRegistry?.UnregisterByTarget(reference);
+
+    public TGrainObserver GetObserverRef<TGrainObserver>(GrainId grainId)
+        where TGrainObserver : class, IGrainObserver
+        => _inner.GetObserverRef<TGrainObserver>(grainId);
 }

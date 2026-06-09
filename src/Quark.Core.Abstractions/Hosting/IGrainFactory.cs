@@ -85,4 +85,15 @@ public interface IGrainFactory
     {
         // Default no-op — concrete implementations that track observer registrations override this.
     }
+
+    /// <summary>
+    ///     Reconstructs an observer proxy for an already-registered observer <see cref="GrainId" />.
+    ///     Used by the transport dispatcher to turn a wire-encoded observer GrainId back into a
+    ///     callable proxy without re-registering the local implementation.
+    /// </summary>
+    TGrainObserver GetObserverRef<TGrainObserver>(GrainId grainId)
+        where TGrainObserver : class, IGrainObserver
+        => throw new NotSupportedException(
+            $"GetObserverRef is not supported by {GetType().Name}. " +
+            "Register observer proxy support via AddObserverProxy<>.");
 }

@@ -5,8 +5,8 @@ using Quark.Client;
 namespace Quark.Client.Tcp;
 
 /// <summary>
-///     Hosted service that (1) applies deferred grain-proxy registrations and (2) connects the
-///     <see cref="TcpGatewayClusterClient" /> at host startup.
+///     Hosted service that (1) applies deferred grain-proxy and observer registrations and
+///     (2) connects the <see cref="TcpGatewayClusterClient" /> at host startup.
 /// </summary>
 internal sealed class TcpClientStartupService : IHostedService
 {
@@ -29,6 +29,26 @@ internal sealed class TcpClientStartupService : IHostedService
                 in _services.GetServices<ClientServiceCollectionExtensions.IProxyRegistration>())
             {
                 reg.Apply(proxyRegistry, interfaceRegistry);
+            }
+        }
+
+        var observerProxyRegistry = _services.GetService<ObserverProxyFactoryRegistry>();
+        if (observerProxyRegistry is not null)
+        {
+            foreach (ClientServiceCollectionExtensions.IObserverProxyRegistration reg
+                in _services.GetServices<ClientServiceCollectionExtensions.IObserverProxyRegistration>())
+            {
+                reg.Apply(observerProxyRegistry);
+            }
+        }
+
+        var observerDispatcherRegistry = _services.GetService<ObserverTransportDispatcherRegistry>();
+        if (observerDispatcherRegistry is not null)
+        {
+            foreach (TcpClientBuilderExtensions.IObserverDispatcherRegistration reg
+                in _services.GetServices<TcpClientBuilderExtensions.IObserverDispatcherRegistration>())
+            {
+                reg.Apply(observerDispatcherRegistry);
             }
         }
 
