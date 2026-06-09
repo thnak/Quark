@@ -6,6 +6,8 @@
         <Project Path="src/Quark.CodeGenerator/Quark.CodeGenerator.csproj"/>
         <Project Path="src/Quark.Core.Abstractions/Quark.Core.Abstractions.csproj"/>
         <Project Path="src/Quark.Core/Quark.Core.csproj"/>
+        <Project Path="src/Quark.Diagnostics.Abstractions/Quark.Diagnostics.Abstractions.csproj"/>
+        <Project Path="src/Quark.Diagnostics/Quark.Diagnostics.csproj"/>
         <Project Path="src/Quark.Persistence.Abstractions/Quark.Persistence.Abstractions.csproj"/>
         <Project Path="src/Quark.Reminders.Abstractions/Quark.Reminders.Abstractions.csproj"/>
         <Project Path="src/Quark.Reminders.InMemory/Quark.Reminders.InMemory.csproj"/>

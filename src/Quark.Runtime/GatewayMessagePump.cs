@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
@@ -5,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Diagnostics.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Streaming.Abstractions;
 using Quark.Transport.Abstractions;
@@ -30,10 +32,13 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     private IUntypedStreamSubscriptionRegistry? _streamRegistry;
     private GatewayClientSubscriptionTable? _subTable;
     private ICodecProvider? _codecs;
+    private TcpClientObserverTable? _tcpObserverTable;
+    private IQuarkDiagnosticListener _diagnostics = NullDiagnosticListener.Instance;
 
     private Task? _acceptLoop;
     private CancellationTokenSource? _cts;
     private ITransportListener? _listener;
+    private int _activeConnectionCount;
 
     public GatewayMessagePump(
         IServiceProvider services,
@@ -59,6 +64,8 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         _streamRegistry = _services.GetService<IUntypedStreamSubscriptionRegistry>();
         _subTable = _services.GetService<GatewayClientSubscriptionTable>();
         _codecs = _services.GetService<ICodecProvider>();
+        _tcpObserverTable = _services.GetService<TcpClientObserverTable>();
+        _diagnostics = _services.GetService<IQuarkDiagnosticListener>() ?? NullDiagnosticListener.Instance;
         var transport = _services.GetService(typeof(ITransport)) as ITransport;
         if (transport is null)
         {
@@ -127,11 +134,19 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     private async Task ProcessConnectionAsync(ITransportConnection connection,
         CancellationToken cancellationToken)
     {
+        int count = Interlocked.Increment(ref _activeConnectionCount);
+        long connectedAt = Stopwatch.GetTimestamp();
+        QuarkInstruments.ActiveGatewayConnections.Add(1);
+        _diagnostics.OnConnectionAccepted(new ConnectionAcceptedEvent(
+            connection.ConnectionId, connection.RemoteEndPoint, count));
+
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task executeTask = connection.ExecuteAsync(linkedCts.Token);
 
         using var writeLock = new SemaphoreSlim(1, 1);
         var connectionSubscriptions = new List<Guid>();
+        var connectionObservers = new List<GrainId>();
+        Exception? connectionError = null;
 
         try
         {
@@ -139,10 +154,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             {
                 MessageEnvelope? envelope = await _serializer.ReadAsync(connection.Transport.Input, linkedCts.Token)
                     .ConfigureAwait(false);
-                if (envelope is null)
-                {
-                    break;
-                }
+                if (envelope is null) break;
+
+                QuarkInstruments.GatewayMessagesReceived.Add(1,
+                    new KeyValuePair<string, object?>("message_type", envelope.MessageType.ToString()));
 
                 switch (envelope.MessageType)
                 {
@@ -156,9 +171,34 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                         HandleStreamUnsubscribe(envelope, connectionSubscriptions);
                         break;
 
+                    case MessageType.ObserverRegister:
+                        HandleObserverRegister(envelope, connection.Transport.Output, writeLock,
+                            connectionObservers, linkedCts.Token, connection.RemoteEndPoint);
+                        break;
+
                     default:
-                        MessageEnvelope? response = await _dispatcher.DispatchAsync(envelope, linkedCts.Token)
-                            .ConfigureAwait(false);
+                        long dispatchStart = Stopwatch.GetTimestamp();
+                        MessageEnvelope? response = null;
+                        Exception? dispatchError = null;
+                        try
+                        {
+                            response = await _dispatcher.DispatchAsync(envelope, linkedCts.Token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            dispatchError = ex;
+                            throw;
+                        }
+                        finally
+                        {
+                            // Best-effort GrainId extraction — envelope.Headers may carry it.
+                            GrainId grainId = default;
+                            _diagnostics.OnMessageDispatched(new MessageDispatchedEvent(
+                                connection.ConnectionId, grainId, envelope.MessageType,
+                                Stopwatch.GetElapsedTime(dispatchStart), dispatchError is null));
+                        }
+
                         if (response is not null)
                         {
                             await writeLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
@@ -177,16 +217,33 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                 }
             }
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            connectionError = ex;
+            throw;
+        }
         finally
         {
+            Interlocked.Decrement(ref _activeConnectionCount);
+            QuarkInstruments.ActiveGatewayConnections.Add(-1);
+            _diagnostics.OnConnectionClosed(new ConnectionClosedEvent(
+                connection.ConnectionId, connection.RemoteEndPoint,
+                Stopwatch.GetElapsedTime(connectedAt), connectionError));
+
+            // Clean up observer registrations created by this connection.
+            if (connectionObservers.Count > 0)
+            {
+                if (_tcpObserverTable is not null)
+                    _tcpObserverTable.RemoveAll(connectionObservers);
+                foreach (GrainId id in connectionObservers)
+                    _diagnostics.OnObserverDeregistered(new ObserverDeregisteredEvent(id));
+            }
+
             // Clean up all subscriptions created by this connection.
             if (connectionSubscriptions.Count > 0)
             {
                 foreach (Guid subId in connectionSubscriptions)
-                {
                     _streamRegistry?.UnsubscribeUntyped(subId);
-                }
-
                 _subTable?.RemoveAll(connectionSubscriptions);
             }
 
@@ -308,6 +365,60 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         {
             connectionSubscriptions.Remove(subId);
         }
+    }
+
+    private void HandleObserverRegister(
+        MessageEnvelope envelope,
+        PipeWriter output,
+        SemaphoreSlim writeLock,
+        List<GrainId> connectionObservers,
+        CancellationToken cancellationToken,
+        EndPoint? remoteEndPoint)
+    {
+        if (_tcpObserverTable is null) return;
+
+        string? grainTypeName = envelope.Headers?.Get("grain-type");
+        string? grainKey = envelope.Headers?.Get("grain-key");
+        if (grainTypeName is null || grainKey is null)
+        {
+            _logger.LogWarning("ObserverRegister envelope is missing required headers (grain-type, grain-key); ignoring.");
+            return;
+        }
+
+        GrainId grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
+
+        _tcpObserverTable.Register(grainId, async (methodId, argPayload, ct) =>
+        {
+            var headers = new MessageHeaders();
+            headers.Set("grain-type", grainTypeName);
+            headers.Set("grain-key", grainKey);
+            headers.Set("method-id", methodId.ToString());
+
+            var invoke = new MessageEnvelope
+            {
+                MessageType = MessageType.ObserverInvoke,
+                CorrelationId = -1,
+                Headers = headers,
+                Payload = argPayload
+            };
+
+            await writeLock.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await _serializer.WriteAsync(output, invoke, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                writeLock.Release();
+            }
+        });
+
+        lock (connectionObservers)
+        {
+            connectionObservers.Add(grainId);
+        }
+
+        _diagnostics.OnObserverRegistered(new ObserverRegisteredEvent(grainId, remoteEndPoint));
     }
 
     private async Task AcceptLoopAsync(ITransportListener listener, CancellationToken cancellationToken)

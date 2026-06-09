@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
@@ -57,6 +58,12 @@ public static class RuntimeServiceCollectionExtensions
         // Observer registry
         services.TryAddSingleton<ObserverRegistry>();
 
+        // TCP client-observer back-channel table (optional; populated by GatewayMessagePump)
+        services.TryAddSingleton<TcpClientObserverTable>();
+
+        // Diagnostic listener — NullDiagnosticListener unless the consumer calls AddQuarkDiagnostics.
+        services.TryAddSingleton<IQuarkDiagnosticListener>(NullDiagnosticListener.Instance);
+
         // Local in-process call invoker
         services.TryAddSingleton<LocalGrainCallInvoker>(sp => new LocalGrainCallInvoker(
             sp.GetRequiredService<GrainActivationTable>(),
@@ -68,7 +75,9 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<ILogger<GrainActivation>>(),
             sp.GetService<ObserverRegistry>(),
             copierProvider: sp.GetService<ICopierProvider>(),
-            siloRouter: sp.GetService<ISiloRouter>()));
+            siloRouter: sp.GetService<ISiloRouter>(),
+            tcpObserverTable: sp.GetService<TcpClientObserverTable>(),
+            diagnostics: sp.GetService<IQuarkDiagnosticListener>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services

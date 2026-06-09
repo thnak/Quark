@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Timers;
+using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 
 namespace Quark.Runtime;
@@ -26,9 +28,13 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly ConcurrentDictionary<Type, object> _memoryBag = new();
     private readonly Lock _timersLock = new();
     private readonly List<IGrainTimer> _timers = [];
+    private readonly IQuarkDiagnosticListener _diagnostics;
     private Func<Task>? _onDeactivated;
     private long _lastAccessedTicks;
     private long _deactivationNotBeforeTicks;
+    private long _activatedAtTicks;   // Stopwatch ticks when MarkActive() is called
+    private long _workItemStartedAt;  // Stopwatch ticks when a work item starts executing; 0 = idle
+    private int _pendingWorkCount;    // work items queued but not yet executing
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
     private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
@@ -39,13 +45,15 @@ public sealed class GrainActivation : IAsyncDisposable
         GrainType grainType,
         bool isReentrant,
         IServiceProvider root,
-        ILogger<GrainActivation> logger)
+        ILogger<GrainActivation> logger,
+        IQuarkDiagnosticListener? diagnostics = null)
     {
         GrainId = grainId;
         GrainType = grainType;
         _isReentrant = isReentrant;
         _root = root;
         _logger = logger;
+        _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
         _processingLoop = RunLoopAsync(_cts.Token);
         _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
@@ -58,6 +66,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _isReentrant = false;
         _root = root;
         _logger = NullLogger<GrainActivation>.Instance;
+        _diagnostics = NullDiagnosticListener.Instance;
         _processingLoop = Task.CompletedTask;
         _status = GrainActivationStatus.Active;
         _lastAccessedTicks = 0;
@@ -80,7 +89,23 @@ public sealed class GrainActivation : IAsyncDisposable
     public GrainActivationStatus ActivationStatus => _status;
 
     /// <summary>Marks this activation as fully active. Called by LocalGrainCallInvoker after OnActivateAsync.</summary>
-    internal void MarkActive() => _status = GrainActivationStatus.Active;
+    internal void MarkActive()
+    {
+        _status = GrainActivationStatus.Active;
+        Interlocked.Exchange(ref _activatedAtTicks, Stopwatch.GetTimestamp());
+    }
+
+    /// <summary>
+    ///     Stopwatch ticks at which the current mailbox work item started executing.
+    ///     Zero means the mailbox is idle.  Read by <see cref="StuckGrainDetector" />.
+    /// </summary>
+    internal long WorkItemStartedAt => Interlocked.Read(ref _workItemStartedAt);
+
+    /// <summary>
+    ///     Number of work items currently queued (not yet executing).
+    ///     Read by <see cref="StuckGrainDetector" /> for diagnostic context.
+    /// </summary>
+    internal int PendingWorkCount => Volatile.Read(ref _pendingWorkCount);
 
     /// <summary>
     ///     Returns or creates the <see cref="StateHolder{TState}" /> for the given state type.
@@ -243,6 +268,9 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
+        int depth = Interlocked.Increment(ref _pendingWorkCount);
+        Console.Error.WriteLine($"[GRAIN] PostAsync enqueue depth={depth} GrainId={GrainId} cts.IsCancellationRequested={_cts.IsCancellationRequested}");
+        _diagnostics.OnMailboxEnqueued(new MailboxEnqueuedEvent(GrainId, depth));
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var ctx = ExecutionContext.Capture();
 
@@ -276,6 +304,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
     private async Task RunDeactivationAsync(DeactivationReason reason)
     {
+        _diagnostics.OnGrainDeactivating(new GrainDeactivatingEvent(GrainId, reason));
         DisposeTimers();
         try
         {
@@ -289,6 +318,14 @@ public sealed class GrainActivation : IAsyncDisposable
         await DisposeManagedHoldersAsync().ConfigureAwait(false);
         _status = GrainActivationStatus.Inactive;
         _queue.Writer.TryComplete();
+
+        long activatedAt = Interlocked.Read(ref _activatedAtTicks);
+        TimeSpan lifetime = activatedAt > 0 ? Stopwatch.GetElapsedTime(activatedAt) : TimeSpan.Zero;
+        _diagnostics.OnGrainDeactivated(new GrainDeactivatedEvent(GrainId, reason, lifetime));
+        QuarkInstruments.GrainActivationsDeactivated.Add(1,
+            new KeyValuePair<string, object?>("grain_type", GrainType.Value));
+        QuarkInstruments.ActiveGrainActivations.Add(-1,
+            new KeyValuePair<string, object?>("grain_type", GrainType.Value));
     }
 
     private async Task DisposeManagedHoldersAsync()
@@ -333,6 +370,8 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         await foreach (Func<Task> work in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
         {
+            Interlocked.Decrement(ref _pendingWorkCount);
+            Interlocked.Exchange(ref _workItemStartedAt, Stopwatch.GetTimestamp());
             try
             {
                 await work().ConfigureAwait(false);
@@ -340,6 +379,10 @@ public sealed class GrainActivation : IAsyncDisposable
             catch (Exception e)
             {
                 _logger.LogError(e, "Error executing grain method on {GrainId}", GrainId);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _workItemStartedAt, 0);
             }
         }
     }
