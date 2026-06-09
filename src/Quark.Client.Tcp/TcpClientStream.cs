@@ -4,27 +4,6 @@ using Quark.Transport.Abstractions;
 
 namespace Quark.Client.Tcp;
 
-internal sealed class DelegateObserver<T> : IAsyncObserver<T>
-{
-    private readonly Func<T, StreamSequenceToken?, Task> _onNext;
-    private readonly Func<Exception, Task>? _onError;
-    private readonly Func<Task>? _onCompleted;
-
-    public DelegateObserver(
-        Func<T, StreamSequenceToken?, Task> onNext,
-        Func<Exception, Task>? onError,
-        Func<Task>? onCompleted)
-    {
-        _onNext = onNext;
-        _onError = onError;
-        _onCompleted = onCompleted;
-    }
-
-    public Task OnNextAsync(T item, StreamSequenceToken? token = null) => _onNext(item, token);
-    public Task OnErrorAsync(Exception ex) => _onError?.Invoke(ex) ?? Task.CompletedTask;
-    public Task OnCompletedAsync() => _onCompleted?.Invoke() ?? Task.CompletedTask;
-}
-
 /// <summary>
 ///     <see cref="IAsyncStream{T}" /> implementation for the TCP gateway client.
 ///     Sends <see cref="MessageType.StreamSubscribe" /> requests and awaits ack responses.

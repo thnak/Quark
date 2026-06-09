@@ -10,8 +10,3 @@ public interface IActivationShellAccessor
 {
     GrainActivation Shell { get; }
 }
-
-internal sealed class ActivationShellAccessor : IActivationShellAccessor
-{
-    public GrainActivation Shell { get; set; } = null!;
-}

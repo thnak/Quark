@@ -8,13 +8,6 @@ using Streaming.Simple.GrainInterfaces;
 
 namespace Streaming.Simple.Grains;
 
-public sealed class ProducerState
-{
-    public IAsyncStream<int>? Stream { get; set; }
-    public IGrainTimer? Timer { get; set; }
-    public int Counter { get; set; }
-}
-
 public sealed class ProducerBehavior : IGrainBehavior, IProducerGrain
 {
     private readonly IActivationMemory<ProducerState> _memory;

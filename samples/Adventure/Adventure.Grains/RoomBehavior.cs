@@ -5,14 +5,6 @@ using Quark.Core.Abstractions.Hosting;
 
 namespace Adventure.Grains;
 
-public sealed class RoomState
-{
-    public RoomInfo? Info { get; set; }
-    public List<PlayerInfo> Players { get; } = [];
-    public List<Thing> Things { get; } = [];
-    public List<MonsterInfo> Monsters { get; } = [];
-}
-
 public sealed class RoomBehavior : IGrainBehavior, IRoomGrain
 {
     private readonly IActivationMemory<RoomState> _memory;

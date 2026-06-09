@@ -8,8 +8,3 @@ public interface IStreamSubscriptionObserver
 {
     Task OnSubscribed(IStreamSubscriptionHandleFactory handleFactory);
 }
-
-public interface IStreamSubscriptionHandleFactory
-{
-    StreamSubscriptionHandle<T> Create<T>(IAsyncObserver<T> observer);
-}

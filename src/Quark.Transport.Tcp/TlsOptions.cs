@@ -3,19 +3,6 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace Quark.Transport.Tcp;
 
-/// <summary>How the local silo validates the remote silo's TLS certificate.</summary>
-public enum RemoteCertificateMode
-{
-    /// <summary>No certificate is required from the remote side.</summary>
-    NoCertificate,
-
-    /// <summary>A certificate is accepted regardless of validity (useful for self-signed test certs).</summary>
-    AllowAny,
-
-    /// <summary>A valid, trusted certificate is required from the remote side.</summary>
-    RequireCertificate,
-}
-
 /// <summary>
 ///     TLS configuration for the Quark TCP transport.
 ///     Passed to <c>UseTls()</c> on <c>ISiloBuilder</c>.

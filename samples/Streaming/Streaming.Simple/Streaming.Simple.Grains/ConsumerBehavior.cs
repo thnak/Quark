@@ -7,11 +7,6 @@ using Streaming.Simple.GrainInterfaces;
 
 namespace Streaming.Simple.Grains;
 
-public sealed class ConsumerState
-{
-    public StreamSubscriptionHandle<int>? Handle { get; set; }
-}
-
 public sealed class ConsumerBehavior : IGrainBehavior, IConsumerGrain
 {
     private readonly IActivationMemory<ConsumerState> _memory;

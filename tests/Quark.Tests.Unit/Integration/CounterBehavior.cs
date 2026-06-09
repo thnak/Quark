@@ -4,12 +4,6 @@ using Quark.Runtime;
 
 namespace Quark.Tests.Unit.Integration;
 
-public sealed class CounterState
-{
-    public long Value { get; set; }
-    public bool DeactivateCalled { get; set; }
-}
-
 public sealed class CounterBehavior : IGrainBehavior, ICounterGrain, IActivationLifecycle
 {
     private readonly IActivationMemory<CounterState> _memory;
