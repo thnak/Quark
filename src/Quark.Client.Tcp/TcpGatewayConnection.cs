@@ -138,7 +138,18 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
                 if (response.MessageType == MessageType.ObserverInvoke)
                 {
                     if (_observerDispatcher is not null)
-                        await _observerDispatcher.DispatchAsync(response).ConfigureAwait(false);
+                    {
+                        try
+                        {
+                            await _observerDispatcher.DispatchAsync(response).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Log and continue — a bad observer frame must not crash the whole connection.
+                            // (Observer not found, user exception, etc.)
+                            _ = ex; // best-effort; no logger here
+                        }
+                    }
                     continue;
                 }
 

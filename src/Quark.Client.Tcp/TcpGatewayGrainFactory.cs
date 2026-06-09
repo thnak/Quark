@@ -86,13 +86,19 @@ public sealed class TcpGatewayGrainFactory : IGrainFactory
             var headers = new MessageHeaders();
             headers.Set("grain-type", grainId.Type.Value);
             headers.Set("grain-key", grainId.Key);
-            _ = _connection.SendOneWayAsync(new MessageEnvelope
+            Task send = _connection.SendOneWayAsync(new MessageEnvelope
             {
                 MessageType = MessageType.ObserverRegister,
                 CorrelationId = -1,
                 Headers = headers,
                 Payload = ReadOnlyMemory<byte>.Empty
             });
+            // If the send fails, unregister locally so the broken proxy is cleaned up.
+            _ = send.ContinueWith(
+                t => _observerRegistry!.Unregister(grainId),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
         }
 
         return _inner.GetObserverRef<TGrainObserver>(grainId);
@@ -100,7 +106,22 @@ public sealed class TcpGatewayGrainFactory : IGrainFactory
 
     public void DeleteObjectReference<TGrainObserver>(TGrainObserver reference)
         where TGrainObserver : class, IGrainObserver
-        => _observerRegistry?.UnregisterByTarget(reference);
+    {
+        if (reference is not IGrainObserverProxy proxy) return;
+        GrainId grainId = proxy.GrainId;
+        _observerRegistry?.Unregister(grainId);
+        if (_connection is null) return;
+        var headers = new MessageHeaders();
+        headers.Set("grain-type", grainId.Type.Value);
+        headers.Set("grain-key", grainId.Key);
+        _ = _connection.SendOneWayAsync(new MessageEnvelope
+        {
+            MessageType = MessageType.ObserverUnregister,
+            CorrelationId = -1,
+            Headers = headers,
+            Payload = ReadOnlyMemory<byte>.Empty
+        });
+    }
 
     public TGrainObserver GetObserverRef<TGrainObserver>(GrainId grainId)
         where TGrainObserver : class, IGrainObserver

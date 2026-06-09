@@ -176,6 +176,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                             connectionObservers, linkedCts.Token, connection.RemoteEndPoint);
                         break;
 
+                    case MessageType.ObserverUnregister:
+                        HandleObserverUnregister(envelope, connectionObservers);
+                        break;
+
                     default:
                         long dispatchStart = Stopwatch.GetTimestamp();
                         MessageEnvelope? response = null;
@@ -224,6 +228,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         }
         finally
         {
+            // Cancel first so in-flight write-back lambdas get OperationCanceledException,
+            // not ObjectDisposedException from the disposed writeLock.
+            linkedCts.Cancel();
+
             Interlocked.Decrement(ref _activeConnectionCount);
             QuarkInstruments.ActiveGatewayConnections.Add(-1);
             _diagnostics.OnConnectionClosed(new ConnectionClosedEvent(
@@ -247,7 +255,6 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                 _subTable?.RemoveAll(connectionSubscriptions);
             }
 
-            linkedCts.Cancel();
             await connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {
@@ -387,7 +394,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
 
         GrainId grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
 
-        _tcpObserverTable.Register(grainId, async (methodId, argPayload, ct) =>
+        _tcpObserverTable.Register(grainId, async (methodId, argPayload, _) =>
         {
             var headers = new MessageHeaders();
             headers.Set("grain-type", grainTypeName);
@@ -402,10 +409,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                 Payload = argPayload
             };
 
-            await writeLock.WaitAsync(ct).ConfigureAwait(false);
+            await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await _serializer.WriteAsync(output, invoke, ct).ConfigureAwait(false);
+                await _serializer.WriteAsync(output, invoke, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -413,12 +420,20 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             }
         });
 
-        lock (connectionObservers)
-        {
-            connectionObservers.Add(grainId);
-        }
+        connectionObservers.Add(grainId);
 
         _diagnostics.OnObserverRegistered(new ObserverRegisteredEvent(grainId, remoteEndPoint));
+    }
+
+    private void HandleObserverUnregister(MessageEnvelope envelope, List<GrainId> connectionObservers)
+    {
+        string? grainTypeName = envelope.Headers?.Get("grain-type");
+        string? grainKey = envelope.Headers?.Get("grain-key");
+        if (grainTypeName is null || grainKey is null) return;
+        GrainId grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
+        _tcpObserverTable?.Unregister(grainId);
+        connectionObservers.Remove(grainId);
+        _diagnostics.OnObserverDeregistered(new ObserverDeregisteredEvent(grainId));
     }
 
     private async Task AcceptLoopAsync(ITransportListener listener, CancellationToken cancellationToken)

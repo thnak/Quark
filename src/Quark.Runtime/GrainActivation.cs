@@ -269,7 +269,6 @@ public sealed class GrainActivation : IAsyncDisposable
 
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         int depth = Interlocked.Increment(ref _pendingWorkCount);
-        Console.Error.WriteLine($"[GRAIN] PostAsync enqueue depth={depth} GrainId={GrainId} cts.IsCancellationRequested={_cts.IsCancellationRequested}");
         _diagnostics.OnMailboxEnqueued(new MailboxEnqueuedEvent(GrainId, depth));
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var ctx = ExecutionContext.Capture();

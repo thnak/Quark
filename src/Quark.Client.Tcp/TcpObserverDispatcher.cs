@@ -13,15 +13,15 @@ namespace Quark.Client.Tcp;
 /// </summary>
 public sealed class TcpObserverDispatcher
 {
-    private readonly ObserverRegistry _observerRegistry;
     private readonly ObserverTransportDispatcherRegistry _dispatcherRegistry;
+    private readonly LocalObserverCallInvoker _invoker;
 
     public TcpObserverDispatcher(
         ObserverRegistry observerRegistry,
         ObserverTransportDispatcherRegistry dispatcherRegistry)
     {
-        _observerRegistry = observerRegistry;
         _dispatcherRegistry = dispatcherRegistry;
+        _invoker = new LocalObserverCallInvoker(observerRegistry);
     }
 
     public async Task DispatchAsync(MessageEnvelope envelope)
@@ -40,8 +40,7 @@ public sealed class TcpObserverDispatcher
             return;
 
         GrainId grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
-        var invoker = new LocalObserverCallInvoker(_observerRegistry);
-        await dispatcher.DispatchAsync(grainId, methodId, envelope.Payload, invoker, null)
+        await dispatcher.DispatchAsync(grainId, methodId, envelope.Payload, _invoker, null)
             .ConfigureAwait(false);
     }
 }

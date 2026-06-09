@@ -28,5 +28,8 @@ public enum MessageType : byte
     ObserverRegister = 7,
 
     /// <summary>Silo invokes a method on a client-side observer (server → client, one-way).</summary>
-    ObserverInvoke = 8
+    ObserverInvoke = 8,
+
+    /// <summary>Client unregisters a local observer GrainId from the silo (client → server, one-way).</summary>
+    ObserverUnregister = 9,
 }
