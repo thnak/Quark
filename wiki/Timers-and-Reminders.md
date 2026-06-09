@@ -16,12 +16,23 @@ Timers fire in-process and post their callbacks through the grain's mailbox, pre
 
 Inject `IGrainContext` (or use `ICallContext` to get the grain ID and register through the activation shell) and call `RegisterGrainTimer`:
 
+> **Timer handles must be stored in `IActivationMemory<T>`, not in behavior instance fields.**
+> Quark creates a fresh behavior instance for every grain method call, including lifecycle hooks
+> such as `OnActivateAsync` and `OnDeactivateAsync`. A handle stored in a plain instance field
+> during `OnActivateAsync` will always be `null` by the time `OnDeactivateAsync` runs.
+> The compiler diagnostic **QRK0020** flags this mistake at build time.
+
 ```csharp
+public sealed class CacheState
+{
+    public IGrainTimer? RefreshTimer { get; set; }
+    // ... other activation-scoped state
+}
+
 public sealed class CacheBehavior : IGrainBehavior, ICacheGrain, IActivationLifecycle
 {
     private readonly IActivationMemory<CacheState> _memory;
     private readonly IGrainContext _ctx;
-    private IGrainTimer? _refreshTimer;
 
     public CacheBehavior(IActivationMemory<CacheState> memory, IGrainContext ctx)
     {
@@ -31,7 +42,7 @@ public sealed class CacheBehavior : IGrainBehavior, ICacheGrain, IActivationLife
 
     public Task OnActivateAsync(CancellationToken ct)
     {
-        _refreshTimer = _ctx.RegisterGrainTimer<object?>(
+        _memory.Value.RefreshTimer = _ctx.RegisterGrainTimer<object?>(
             static (_, _) => Task.CompletedTask, // callback
             null,                                 // state
             new GrainTimerCreationOptions
@@ -45,7 +56,8 @@ public sealed class CacheBehavior : IGrainBehavior, ICacheGrain, IActivationLife
 
     public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
     {
-        _refreshTimer?.Dispose();
+        _memory.Value.RefreshTimer?.Dispose();
+        _memory.Value.RefreshTimer = null;
         return Task.CompletedTask;
     }
 }
@@ -69,7 +81,7 @@ When `Interleave = false` (default), a timer tick that arrives while the previou
 ### Changing a running timer
 
 ```csharp
-_refreshTimer.Change(
+_memory.Value.RefreshTimer?.Change(
     dueTime: TimeSpan.FromSeconds(1),
     period:  TimeSpan.FromSeconds(60));
 ```
