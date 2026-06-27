@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Hosting;
 
 namespace Quark.Runtime;
@@ -15,10 +16,14 @@ public sealed class GrainActivationTable : IAsyncDisposable
     // actually runs the factory; both await the same Task.
     private readonly ConcurrentDictionary<GrainId, Lazy<Task<GrainActivation>>> _activations = new();
     private readonly ILogger<GrainActivationTable> _logger;
+    private readonly int _maxActivations;
 
-    public GrainActivationTable(ILogger<GrainActivationTable> logger)
+    public GrainActivationTable(
+        ILogger<GrainActivationTable> logger,
+        IOptions<SiloRuntimeOptions>? options = null)
     {
         _logger = logger;
+        _maxActivations = options?.Value.MaxActivations ?? 0;
     }
 
     /// <summary>Total number of currently tracked activations (including pending).</summary>
@@ -55,6 +60,19 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public Task<GrainActivation> GetOrCreateAsync(GrainId grainId, Func<Task<GrainActivation>> factory)
     {
+        // Existing grains are always reachable — only the creation of *new* activations is capped.
+        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? existing))
+        {
+            return existing.Value;
+        }
+
+        // Best-effort cap: the count check races with concurrent adds, so the live total may briefly
+        // exceed the cap by the number of in-flight creators, but it cannot grow without bound.
+        if (_maxActivations > 0 && _activations.Count >= _maxActivations)
+        {
+            throw new GrainActivationLimitExceededException(grainId, _maxActivations);
+        }
+
         return _activations.GetOrAdd(grainId,
             static (_, f) => new Lazy<Task<GrainActivation>>(f),
             factory).Value;

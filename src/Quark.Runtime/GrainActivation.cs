@@ -36,8 +36,9 @@ public sealed class GrainActivation : IAsyncDisposable
     private int _pendingWorkCount;    // work items queued but not yet executing
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
-    private readonly Channel<Func<Task>> _queue = Channel.CreateUnbounded<Func<Task>>(
-        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+    private readonly Channel<Func<Task>> _queue;
+    private readonly int _mailboxCapacity;
+    private readonly MailboxFullMode _mailboxFullMode;
 
     public GrainActivation(
         GrainId grainId,
@@ -45,7 +46,9 @@ public sealed class GrainActivation : IAsyncDisposable
         bool isReentrant,
         IServiceProvider root,
         ILogger<GrainActivation> logger,
-        IQuarkDiagnosticListener? diagnostics = null)
+        IQuarkDiagnosticListener? diagnostics = null,
+        int mailboxCapacity = 0,
+        MailboxFullMode mailboxFullMode = MailboxFullMode.Wait)
     {
         GrainId = grainId;
         GrainType = grainType;
@@ -53,9 +56,27 @@ public sealed class GrainActivation : IAsyncDisposable
         _root = root;
         _logger = logger;
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
+        _mailboxCapacity = mailboxCapacity;
+        _mailboxFullMode = mailboxFullMode;
+        _queue = CreateQueue(mailboxCapacity);
         _processingLoop = RunLoopAsync(_cts.Token);
         _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
+
+    // A bounded mailbox caps the work a single grain can queue. We always create bounded channels in
+    // FullMode.Wait; RejectWhenFull is enforced in PostAsync via TryWrite so a rejection raises a
+    // clean MailboxFullException rather than silently dropping work.
+    private static Channel<Func<Task>> CreateQueue(int capacity)
+        => capacity <= 0
+            ? Channel.CreateUnbounded<Func<Task>>(
+                new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false })
+            : Channel.CreateBounded<Func<Task>>(
+                new BoundedChannelOptions(capacity)
+                {
+                    SingleReader = true,
+                    AllowSynchronousContinuations = false,
+                    FullMode = BoundedChannelFullMode.Wait,
+                });
 
     // Probe constructor — no processing loop, used only by BehaviorStartupValidator.
     private GrainActivation(GrainId grainId, GrainType grainType, IServiceProvider root)
@@ -66,6 +87,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _root = root;
         _logger = NullLogger<GrainActivation>.Instance;
         _diagnostics = NullDiagnosticListener.Instance;
+        _queue = CreateQueue(0);
         _processingLoop = Task.CompletedTask;
         _status = GrainActivationStatus.Active;
         _lastAccessedTicks = 0;
@@ -303,7 +325,20 @@ public sealed class GrainActivation : IAsyncDisposable
             };
         }
 
-        await _queue.Writer.WriteAsync(dispatched, _cts.Token).ConfigureAwait(false);
+        if (_mailboxFullMode == MailboxFullMode.RejectWhenFull && _mailboxCapacity > 0)
+        {
+            // Fail fast when the bounded mailbox is full rather than waiting for space.
+            if (!_queue.Writer.TryWrite(dispatched))
+            {
+                Interlocked.Decrement(ref _pendingWorkCount);
+                throw new MailboxFullException(GrainId, _mailboxCapacity);
+            }
+        }
+        else
+        {
+            await _queue.Writer.WriteAsync(dispatched, _cts.Token).ConfigureAwait(false);
+        }
+
         await tcs.Task.ConfigureAwait(false);
     }
 

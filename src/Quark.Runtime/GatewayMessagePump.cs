@@ -39,19 +39,22 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     private CancellationTokenSource? _cts;
     private ITransportListener? _listener;
     private int _activeConnectionCount;
+    private readonly int _maxConnections;
 
     public GatewayMessagePump(
         IServiceProvider services,
         MessageSerializer serializer,
         IMessageDispatcher dispatcher,
         IOptions<SiloRuntimeOptions> options,
-        ILogger<GatewayMessagePump> logger)
+        ILogger<GatewayMessagePump> logger,
+        TransportOptions? transportOptions = null)
     {
         _services = services;
         _serializer = serializer;
         _dispatcher = dispatcher;
         _options = options.Value;
         _logger = logger;
+        _maxConnections = transportOptions?.MaxConnections ?? 0;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -472,6 +475,26 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                 break;
             }
 
+            // Shed inbound client connections beyond the configured concurrency cap. Only the accept
+            // loop adds to _connectionTasks, so its count never under-reports the live total here.
+            if (_maxConnections > 0)
+            {
+                int active;
+                lock (_connectionTasks)
+                {
+                    active = _connectionTasks.Count;
+                }
+
+                if (active >= _maxConnections)
+                {
+                    _logger.LogWarning(
+                        "Rejecting gateway connection {ConnectionId}: concurrent connection limit ({Max}) reached.",
+                        connection.ConnectionId, _maxConnections);
+                    await CloseRejectedAsync(connection).ConfigureAwait(false);
+                    continue;
+                }
+            }
+
             Task task = ProcessConnectionAsync(connection, cancellationToken);
             lock (_connectionTasks)
             {
@@ -490,6 +513,22 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                     _logger.LogWarning(t.Exception, "Gateway connection loop failed.");
                 }
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+    }
+
+    private async Task CloseRejectedAsync(ITransportConnection connection)
+    {
+        try
+        {
+            await connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error closing rejected gateway connection {ConnectionId}.", connection.ConnectionId);
+        }
+        finally
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
         }
     }
 

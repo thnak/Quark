@@ -49,4 +49,26 @@ public sealed class SiloRuntimeOptions
     ///     Default: 1 minute.
     /// </summary>
     public TimeSpan GrainCollectionInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    ///     Maximum number of concurrent grain activations this silo will host. New activations are
+    ///     refused with <see cref="GrainActivationLimitExceededException"/> once the cap is reached;
+    ///     calls to already-active grains are unaffected. Pairs with idle collection
+    ///     (<see cref="GrainCollectionAge"/>) to shed load. <c>0</c> (the default) means unlimited.
+    /// </summary>
+    public int MaxActivations { get; set; }
+
+    /// <summary>
+    ///     Bound on the number of work items a single grain's mailbox may queue. Caps the memory a
+    ///     flood of calls to one grain can pin. <c>0</c> (the default) means unbounded.
+    ///     See <see cref="MailboxFullMode"/> for the policy applied when a bounded mailbox is full.
+    /// </summary>
+    public int MailboxCapacity { get; set; }
+
+    /// <summary>
+    ///     Policy applied when a bounded mailbox (<see cref="MailboxCapacity"/> &gt; 0) is full.
+    ///     Ignored when <see cref="MailboxCapacity"/> is <c>0</c> (unbounded).
+    ///     Default: <see cref="Quark.Runtime.MailboxFullMode.Wait"/> (backpressure).
+    /// </summary>
+    public MailboxFullMode MailboxFullMode { get; set; } = MailboxFullMode.Wait;
 }

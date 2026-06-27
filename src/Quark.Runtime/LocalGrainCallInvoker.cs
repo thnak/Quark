@@ -30,6 +30,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly SiloAddress _siloAddress;
     private readonly ISiloRouter? _siloRouter;
     private readonly IGrainTypeRegistry _typeRegistry;
+    private readonly int _mailboxCapacity;
+    private readonly MailboxFullMode _mailboxFullMode;
 
     public LocalGrainCallInvoker(
         GrainActivationTable activationTable,
@@ -50,6 +52,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _directory = directory;
         _services = services;
         _siloAddress = options.Value.SiloAddress;
+        _mailboxCapacity = options.Value.MailboxCapacity;
+        _mailboxFullMode = options.Value.MailboxFullMode;
         _logger = logger;
         _activationLogger = activationLogger;
         _observerRegistry = observerRegistry;
@@ -293,7 +297,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         long activationStart = Stopwatch.GetTimestamp();
 
         bool isReentrant = behaviorType.IsDefined(typeof(ReentrantAttribute), inherit: true);
-        var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger, _diagnostics);
+        var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger,
+            _diagnostics, _mailboxCapacity, _mailboxFullMode);
 
         // Run OnActivateAsync lifecycle hook if the behavior implements IActivationLifecycle.
         await activation.PostAsync(async () =>
