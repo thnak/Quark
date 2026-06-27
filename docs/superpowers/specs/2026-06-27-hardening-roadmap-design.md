@@ -116,3 +116,12 @@ Tracked as four **epic** issues (A/B/C/D), each with **child** issues per item, 
 and grouped under a single milestone. Labels reuse the existing taxonomy (`area:*`, `type:*`,
 `status:*`) plus new `severity:*`, `roadmap:*`, and `epic` labels. Recommended order:
 A-criticals → C1 → D1 → parallel.
+
+### Issue map (`thnak/Quark`, milestone "v0.1.0 Hardening — Trust · Safe · Fast")
+
+| Epic | Children |
+|------|----------|
+| **#50** Track A — Safe | #54 A1 · #55 A2 · #56 A3 · #57 A4 · #58 A5 |
+| **#51** Track B — Trust | #59 B1 · #60 B2 · #61 B3 · #62 B4 · #63 B5 · #64 B6 |
+| **#52** Track C — Fast | #65 C1 · #66 C2 · #67 C3 · #68 C4 · #69 C5 |
+| **#53** Track D — Foundation | #70 D1 · #71 D2 |
