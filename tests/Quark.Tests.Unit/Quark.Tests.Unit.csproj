@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\src\Quark.Reminders.Abstractions\Quark.Reminders.Abstractions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Streaming.InMemory\Quark.Streaming.InMemory.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Transactions\Quark.Transactions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Client.Tcp\Quark.Client.Tcp.csproj"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>

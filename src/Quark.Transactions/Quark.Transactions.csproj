@@ -5,6 +5,9 @@
     <Description>ACID transaction support for the Quark distributed actor framework.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Quark.Tests.Unit"/>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
