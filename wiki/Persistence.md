@@ -1,14 +1,15 @@
 # Persistence
 
-Quark offers five persistence patterns, from ephemeral in-memory state to full event sourcing.
+Quark offers five implemented persistence patterns and one planned pattern, from ephemeral in-memory state to full event sourcing.
 
-| Pattern | Interface | State lifetime | Storage |
-|---|---|---|---|
-| In-memory | `IActivationMemory<T>` | Activation | None |
-| Managed in-memory | `IManagedActivationMemory<T>` | Activation | None (async init/destroy) |
-| Persistent activation | `IPersistentActivationMemory<T>` | Durable | `IGrainStorage` |
-| Named state injection | `[PersistentState] IPersistentState<T>` | Durable | Named `IGrainStorage` |
-| Event sourcing | `JournaledGrain<TState,TEvent>` | Durable | `ILogStorage` |
+| Pattern | Interface | Init timing | `.Value` access | Storage |
+|---|---|---|---|---|
+| In-memory | `IActivationMemory<T>` | `new()` sync | Sync | None |
+| Managed in-memory | `IManagedActivationMemory<T>` | Lazy — first `GetAsync()` | `await GetAsync()` | None |
+| Eager in-memory _(planned — [#27](https://github.com/thnak/Quark/issues/27))_ | `IEagerActivationMemory<T>` | Eager — before `OnActivateAsync` | Sync | None |
+| Persistent activation | `IPersistentActivationMemory<T>` | `ReadStateAsync()` | Sync | `IGrainStorage` |
+| Named state injection | `[PersistentState] IPersistentState<T>` | `ReadStateAsync()` | `.State` | Named `IGrainStorage` |
+| Event sourcing | `JournaledGrain<TState,TEvent>` | Replay on activation | `State` | `ILogStorage` |
 
 ## 1. In-memory activation state (`IActivationMemory<T>`)
 
@@ -42,17 +43,29 @@ The `StateHolder<TState>` lives on the `GrainActivation` shell and is shared acr
 
 ## 2. Managed in-memory resource (`IManagedActivationMemory<T>`)
 
-For resources that require **async initialization** and **explicit cleanup** but should not be persisted — in-memory circular buffers, pooled channels, pre-computed projections, or anything with an async factory.
+For resources that require **async initialization** and optional **async cleanup** on deactivation, but must not be persisted. Common uses: in-memory ring buffers, pooled channels, cached projections, or anything built with an async factory.
+
+Key differences from `IActivationMemory<T>`:
+
+- `T` has no `new()` constraint — works with any class.
+- Init is async and **lazy**: the factory runs only on the first `GetAsync()` call, not at activation time.
+- Access is always `await GetAsync()` — one async hop per call site.
+
+Key differences from `IEagerActivationMemory<T>` _(planned — see section 6)_:
+
+- **Lazy vs. eager**: factory runs on first access, not during grain activation.
+- **Async vs. sync access**: `await GetAsync()` instead of `.Value`.
+- The factory receives no `IServiceProvider`; close over injected services in the behavior constructor instead.
 
 ```csharp
 public sealed class MetricsBehavior : IGrainBehavior, IMetricsGrain
 {
     private readonly IManagedActivationMemory<RingBuffer> _buffer;
 
-    public MetricsBehavior(IManagedActivationMemory<RingBuffer> buffer)
+    public MetricsBehavior(IManagedActivationMemory<RingBuffer> buffer, IOptions<MetricsOptions> opts)
     {
         _buffer = buffer
-            .Init(() => ValueTask.FromResult(new RingBuffer(capacity: 1024)))
+            .Init(() => ValueTask.FromResult(new RingBuffer(capacity: opts.Value.BufferSize)))
             .Destroy(b => b.FlushAsync());
     }
 
@@ -64,9 +77,16 @@ public sealed class MetricsBehavior : IGrainBehavior, IMetricsGrain
 }
 ```
 
-- `Init(Func<ValueTask<T>>)` — factory invoked on first `GetAsync()` call; result is cached for the activation lifetime.
-- `Destroy(Func<T, ValueTask>)` — cleanup called **after** `OnDeactivateAsync` completes, so the grain can still read the resource during its own teardown.
-- `IsInitialized` — `false` until the first `GetAsync()` succeeds; `Destroy` is a no-op if the resource was never initialized.
+**API:**
+
+| Member | Description |
+|---|---|
+| `Init(Func<ValueTask<T>>)` | Configures the async factory. Called once in the behavior constructor. Invoked on the first `GetAsync()` call; result cached for the activation lifetime. |
+| `Destroy(Func<T, ValueTask>)` | Optional cleanup delegate. Called after `OnDeactivateAsync` completes, so the grain can still read the resource during teardown. Omit if no cleanup is needed. |
+| `GetAsync(CancellationToken)` | Returns the value; initializes it on first call. |
+| `IsInitialized` | `true` once the factory has succeeded. `Destroy` is a no-op if the resource was never initialized. |
+
+> **Thread safety:** `GetAsync()` is safe only from within the grain mailbox. Do not call from timer callbacks or external threads without routing through `GrainActivation.PostAsync`.
 
 Register in silo startup:
 
@@ -200,6 +220,83 @@ Register an `ILogStorage` provider (in-memory is provided):
 
 ```csharp
 services.AddInMemoryLogStorage();
+```
+
+## 6. Eager in-memory resource (`IEagerActivationMemory<T>`) — _planned_
+
+> **Status: planned.** Tracked in [issue #27](https://github.com/thnak/Quark/issues/27). This section documents the intended API; nothing described here is implemented yet.
+
+Fills the gap between `IActivationMemory<T>` (sync default-construct, no DI) and `IManagedActivationMemory<T>` (lazy, async access). Use when you need to **load a large or externally-sourced resource at grain activation time** and then access it **synchronously** on every call.
+
+Motivating use case: a time-series grain that loads a large `RingBuffer<DataPoint>` from a database when it activates. The buffer is too large to persist on every write, but must be fully populated before any method runs and must be readable without `await`.
+
+Key differences from `IManagedActivationMemory<T>`:
+
+- **Eager vs. lazy**: factory runs before `OnActivateAsync` fires, not on first access.
+- **Sync access**: `.Value` is available without `await` after activation.
+- **Full DI access**: the factory receives the scoped `IServiceProvider`, so repositories, options, and `ICallContext` are all available.
+
+### Planned API
+
+```csharp
+public interface IEagerActivationMemory<T>
+{
+    // Configure in the behavior constructor. The IServiceProvider is the
+    // activation-scoped provider — resolve repositories or ICallContext from it.
+    IEagerActivationMemory<T> Load(Func<IServiceProvider, CancellationToken, ValueTask<T>> factory);
+
+    // Optional cleanup called after OnDeactivateAsync, same as IManagedActivationMemory<T>.
+    IEagerActivationMemory<T> Destroy(Func<T, ValueTask> cleanup);
+
+    // Synchronous access — safe after grain activation completes.
+    T Value { get; }
+    bool IsInitialized { get; }
+}
+```
+
+### Planned usage
+
+```csharp
+public sealed class TimeSeriesBehavior : IGrainBehavior, ITimeSeriesGrain
+{
+    private readonly IEagerActivationMemory<RingBuffer<DataPoint>> _buffer;
+
+    public TimeSeriesBehavior(IEagerActivationMemory<RingBuffer<DataPoint>> buffer)
+    {
+        _buffer = buffer
+            .Load(async (sp, ct) =>
+            {
+                var repo = sp.GetRequiredService<ITimeSeriesRepository>();
+                var key = sp.GetRequiredService<ICallContext>().GrainId.Key;
+                return await repo.LoadRingBufferAsync(key, capacity: 4096, ct);
+            })
+            .Destroy(b => b.FlushAsync());
+    }
+
+    // .Value is always safe — init ran before the first call arrived
+    public Task<DataPoint[]> QueryAsync(DateTimeOffset from, DateTimeOffset to)
+        => Task.FromResult(_buffer.Value.Query(from, to));
+}
+```
+
+### How it will work in the runtime
+
+When `LocalGrainCallInvoker` creates a new `GrainActivation` it will:
+
+1. Construct the behavior (behavior constructor fires → `Load(...)` registers the factory on the shell's `EagerActivationMemoryHolder<T>`).
+2. Call `RunEagerInitAsync(scopedServiceProvider, ct)` — discovers all `IEagerActivationMemoryHolder` instances in the memory bag and calls each factory.
+3. Call `OnActivateAsync` (if the behavior implements `IActivationLifecycle`).
+
+After step 2 `.Value` is available for the rest of the activation lifetime, including inside `OnActivateAsync`.
+
+### Planned registration
+
+```csharp
+// Manual:
+silo.Services.AddEagerActivationMemory<RingBuffer<DataPoint>>();
+
+// Via BehaviorRegistrationGenerator (auto-detected from constructor parameters):
+silo.Services.AddMyAssemblyBehaviors();
 ```
 
 ## Storage providers
