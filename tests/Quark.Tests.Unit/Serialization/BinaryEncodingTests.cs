@@ -129,6 +129,70 @@ public sealed class BinaryEncodingTests
     }
 
     [Fact]
+    public void ReadFieldHeader_Rejects_Nesting_Beyond_Configured_MaxDepth()
+    {
+        // A hostile payload of consecutive TagDelimited opens (never closed) would drive the
+        // recursive ReadValue/SkipField descent until the CLR stack overflows. The depth guard
+        // must reject it with a clean InvalidDataException instead.
+        const int maxDepth = 4;
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        for (int i = 0; i < maxDepth + 1; i++)
+        {
+            writer.WriteFieldHeader(1, WireType.TagDelimited);
+        }
+
+        CodecReader reader = new(buf.WrittenMemory, maxDepth: maxDepth);
+
+        Assert.Throws<InvalidDataException>(() =>
+        {
+            for (int i = 0; i < maxDepth + 1; i++)
+            {
+                reader.ReadFieldHeader();
+            }
+        });
+    }
+
+    [Fact]
+    public void ReadFieldHeader_Allows_Nesting_Up_To_MaxDepth()
+    {
+        const int maxDepth = 4;
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        for (int i = 0; i < maxDepth; i++)
+        {
+            writer.WriteFieldHeader(1, WireType.TagDelimited);
+        }
+
+        CodecReader reader = new(buf.WrittenMemory, maxDepth: maxDepth);
+
+        for (int i = 0; i < maxDepth; i++)
+        {
+            Assert.Equal(WireType.TagDelimited, reader.ReadFieldHeader().WireType);
+        }
+    }
+
+    [Fact]
+    public void ReadFieldHeader_Balanced_OpenClose_DoesNotAccumulateDepth()
+    {
+        // Many sequential (balanced) composites must not trip the limit: the guard bounds
+        // nesting depth, not the total number of TagDelimited headers seen.
+        const int maxDepth = 2;
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        for (int i = 0; i < maxDepth * 10; i++)
+        {
+            writer.WriteFieldHeader(1, WireType.TagDelimited);
+            writer.WriteFieldHeader(0, WireType.EndTagDelimited);
+        }
+
+        CodecReader reader = new(buf.WrittenMemory, maxDepth: maxDepth);
+
+        for (int i = 0; i < maxDepth * 10; i++)
+        {
+            Assert.Equal(WireType.TagDelimited, reader.ReadFieldHeader().WireType);
+            Assert.Equal(WireType.EndTagDelimited, reader.ReadFieldHeader().WireType);
+        }
+    }
+
+    [Fact]
     public void FieldHeader_RoundTrip()
     {
         (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();

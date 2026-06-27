@@ -15,22 +15,30 @@ public sealed class CodecReader
     /// <summary>Default maximum length-prefixed byte-array size in bytes.</summary>
     public const int DefaultMaxByteArrayBytes = 100 * 1024 * 1024;
 
+    /// <summary>Default maximum composite nesting depth accepted while deserializing.</summary>
+    public const int DefaultMaxDepth = 100;
+
     private readonly ReadOnlyMemory<byte> _buffer;
     private readonly int _maxStringBytes;
     private readonly int _maxByteArrayBytes;
+    private readonly int _maxDepth;
+    private int _depth;
 
     /// <summary>Initialises a new <see cref="CodecReader" /> over <paramref name="buffer" />.</summary>
     public CodecReader(
         ReadOnlyMemory<byte> buffer,
         int maxStringBytes = DefaultMaxStringBytes,
-        int maxByteArrayBytes = DefaultMaxByteArrayBytes)
+        int maxByteArrayBytes = DefaultMaxByteArrayBytes,
+        int maxDepth = DefaultMaxDepth)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxStringBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(maxByteArrayBytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxDepth);
 
         _buffer = buffer;
         _maxStringBytes = maxStringBytes;
         _maxByteArrayBytes = maxByteArrayBytes;
+        _maxDepth = maxDepth;
         Position = 0;
     }
 
@@ -172,6 +180,22 @@ public sealed class CodecReader
         uint tag = ReadVarUInt32();
         uint fieldId = tag >> 3;
         var wireType = (WireType)(tag & 0x07);
+
+        // Bound composite nesting so a hostile stream of unmatched TagDelimited opens cannot
+        // drive the recursive ReadValue/SkipField descent into a stack overflow. Each
+        // TagDelimited opens one level; the matching EndTagDelimited closes it.
+        if (wireType == WireType.TagDelimited)
+        {
+            if (++_depth > _maxDepth)
+            {
+                throw new InvalidDataException(
+                    $"Serialized data nesting depth exceeds the configured maximum of {_maxDepth}.");
+            }
+        }
+        else if (wireType == WireType.EndTagDelimited && _depth > 0)
+        {
+            _depth--;
+        }
 
         ExtendedWireType extendedWireType = default;
         if (wireType == WireType.Extended)
