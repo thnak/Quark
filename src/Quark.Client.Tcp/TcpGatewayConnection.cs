@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Threading.Channels;
 using Quark.Runtime;
 using Quark.Transport.Abstractions;
 using Quark.Transport.Tcp;
@@ -18,10 +19,26 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
     private readonly TcpObserverDispatcher? _observerDispatcher;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<MessageEnvelope>> _pending = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+    // Side-channel frames (StreamPush / ObserverInvoke) carry no correlation id and run user
+    // callback code. They are handed off to this queue and dispatched on a dedicated worker so
+    // the read loop never blocks inside a user handler. Without this hand-off a slow (or
+    // re-entrant) observer/stream callback would stall delivery of the grain-call Response frame
+    // that follows it on the same socket — head-of-line blocking (issue #49). The channel is
+    // unbounded so the read loop's TryWrite always succeeds immediately and never applies
+    // back-pressure that would re-introduce the stall.
+    private readonly Channel<MessageEnvelope> _sideChannel =
+        Channel.CreateUnbounded<MessageEnvelope>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = true,
+        });
+
     private ITransportConnection? _connection;
     private CancellationTokenSource? _readCts;
     private Task? _readLoop;
     private Task? _executeLoop;
+    private Task? _dispatchLoop;
 
     public TcpGatewayConnection(TcpTransport transport, MessageSerializer serializer,
         TcpStreamPushDispatcher? pushDispatcher = null, TcpObserverDispatcher? observerDispatcher = null)
@@ -37,6 +54,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
         _connection = await _transport.ConnectAsync(endpoint, ct).ConfigureAwait(false);
         _readCts = new CancellationTokenSource();
         _executeLoop = _connection.ExecuteAsync(_readCts.Token);
+        _dispatchLoop = DispatchLoopAsync(_readCts.Token);
         _readLoop = ReadLoopAsync(_readCts.Token);
     }
 
@@ -94,11 +112,18 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
         if (cts is not null)
         {
             cts.Cancel();
+            // Stop accepting new side-channel frames so the dispatch worker drains and exits.
+            _sideChannel.Writer.TryComplete();
             if (_connection is not null)
                 await _connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
             if (_readLoop is not null)
             {
                 try { await _readLoop.ConfigureAwait(false); }
+                catch { }
+            }
+            if (_dispatchLoop is not null)
+            {
+                try { await _dispatchLoop.ConfigureAwait(false); }
                 catch { }
             }
             if (_executeLoop is not null)
@@ -128,28 +153,12 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
                     .ConfigureAwait(false);
                 if (response is null) break;
 
-                if (response.MessageType == MessageType.StreamPush)
+                // Side-channel frames run user callbacks — hand them to the dispatch worker and
+                // keep reading so the Response frame that may follow on the same socket is not
+                // blocked behind a slow handler (issue #49).
+                if (response.MessageType is MessageType.StreamPush or MessageType.ObserverInvoke)
                 {
-                    if (_pushDispatcher is not null)
-                        await _pushDispatcher.DispatchAsync(response).ConfigureAwait(false);
-                    continue;
-                }
-
-                if (response.MessageType == MessageType.ObserverInvoke)
-                {
-                    if (_observerDispatcher is not null)
-                    {
-                        try
-                        {
-                            await _observerDispatcher.DispatchAsync(response).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            // Log and continue — a bad observer frame must not crash the whole connection.
-                            // (Observer not found, user exception, etc.)
-                            _ = ex; // best-effort; no logger here
-                        }
-                    }
+                    _sideChannel.Writer.TryWrite(response);
                     continue;
                 }
 
@@ -160,10 +169,46 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            _sideChannel.Writer.TryComplete();
             FaultAllPending(ex);
             return;
         }
+        _sideChannel.Writer.TryComplete();
         FaultAllPending(new InvalidOperationException("Gateway connection closed."));
+    }
+
+    /// <summary>
+    ///     Sequentially dispatches side-channel frames (StreamPush / ObserverInvoke) off the read
+    ///     loop's thread. Serial processing preserves per-connection delivery order; a slow or
+    ///     re-entrant handler delays only subsequent side-channel frames, never grain-call responses.
+    /// </summary>
+    private async Task DispatchLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (MessageEnvelope frame in _sideChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            {
+                try
+                {
+                    if (frame.MessageType == MessageType.StreamPush)
+                    {
+                        if (_pushDispatcher is not null)
+                            await _pushDispatcher.DispatchAsync(frame).ConfigureAwait(false);
+                    }
+                    else if (_observerDispatcher is not null)
+                    {
+                        await _observerDispatcher.DispatchAsync(frame).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // A bad side-channel frame (observer not found, user exception, …) must not
+                    // crash the dispatch worker or the connection.
+                    _ = ex; // best-effort; no logger here
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
     }
 
     private void FaultAllPending(Exception ex)

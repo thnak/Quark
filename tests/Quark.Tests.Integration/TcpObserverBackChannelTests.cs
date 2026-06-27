@@ -138,6 +138,49 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
         Assert.Equal(["north", "east", "south"], recorder.AllPositions);
     }
 
+    // -------------------------------------------------------------------------
+    // Test — a slow observer callback must NOT block the grain-call Response that
+    // follows it on the same socket (issue #49 — head-of-line blocking).
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Slow_Observer_Callback_Does_Not_Block_Grain_Call_Response()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        IGrainFactory factory = _clientHost.Services.GetRequiredService<IGrainFactory>();
+        IClusterClient client = _clientHost.Services.GetRequiredService<IClusterClient>();
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gated = new GatedRecorder(gate.Task, invoked);
+        IPositionObserver observerRef = factory.CreateObjectReference<IPositionObserver>(gated);
+        await Task.Delay(50, cts.Token);
+
+        IVehicleGrain vehicle = client.GetGrain<IVehicleGrain>("truck-gated");
+        try
+        {
+            await vehicle.Subscribe(observerRef).WaitAsync(cts.Token);
+
+            // UpdatePosition emits an ObserverInvoke frame and then its Response on the same
+            // socket. The observer handler blocks on `gate`. With head-of-line blocking the
+            // client read loop would stall inside the observer dispatch and never read the
+            // Response — so this WaitAsync would time out. Decoupled dispatch lets the Response
+            // through while the observer handler is still blocked.
+            Task updateTask = vehicle.UpdatePosition("blocked");
+            await updateTask.WaitAsync(TimeSpan.FromSeconds(3), cts.Token);
+
+            // The grain call returned; the observer handler must still be mid-flight (blocked).
+            await invoked.Task.WaitAsync(TimeSpan.FromSeconds(3), cts.Token);
+        }
+        finally
+        {
+            // Always release so the observer dispatch (and host teardown) can complete,
+            // even if the assertions above failed/timed out.
+            gate.TrySetResult();
+        }
+    }
+
     // =========================================================================
     // Observer interface and implementations
     // =========================================================================
@@ -145,6 +188,24 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
     public interface IPositionObserver : IGrainObserver
     {
         Task PositionUpdated(string position);
+    }
+
+    private sealed class GatedRecorder : IPositionObserver
+    {
+        private readonly Task _gate;
+        private readonly TaskCompletionSource _invoked;
+
+        public GatedRecorder(Task gate, TaskCompletionSource invoked)
+        {
+            _gate = gate;
+            _invoked = invoked;
+        }
+
+        public async Task PositionUpdated(string position)
+        {
+            _invoked.TrySetResult();
+            await _gate.ConfigureAwait(false);
+        }
     }
 
     private sealed class PositionRecorder : IPositionObserver

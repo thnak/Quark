@@ -85,7 +85,13 @@ public sealed class MessageSerializer
 
             if (TryReadEnvelope(ref buffer, out MessageEnvelope? envelope))
             {
-                reader.AdvanceTo(buffer.Start, buffer.End);
+                // Mark only the consumed frame as examined (examined == consumed). Using
+                // buffer.End here would tell the PipeReader we examined ALL buffered bytes, so the
+                // next ReadAsync would block for new data even when a second, already-buffered
+                // frame is sitting in the pipe. That stalls the trailing frame whenever two
+                // envelopes coalesce into one read — e.g. an ObserverInvoke immediately followed
+                // by its grain-call Response on the gateway back-channel (issue #49).
+                reader.AdvanceTo(buffer.Start);
                 return envelope;
             }
 
