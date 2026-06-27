@@ -67,7 +67,7 @@ public sealed class MembershipOracle : BackgroundService
         await MarkSelfDeadAsync().ConfigureAwait(false);
     }
 
-    private async Task EvictDeadSilosAsync(CancellationToken ct)
+    internal async Task EvictDeadSilosAsync(CancellationToken ct)
     {
         IReadOnlyList<MembershipEntry> all = await _table.ReadAllAsync(ct).ConfigureAwait(false);
         foreach (MembershipEntry entry in all)
@@ -87,7 +87,7 @@ public sealed class MembershipOracle : BackgroundService
         }
     }
 
-    private async Task MarkSelfDeadAsync()
+    internal async Task MarkSelfDeadAsync()
     {
         try
         {
