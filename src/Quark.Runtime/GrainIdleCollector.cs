@@ -36,7 +36,7 @@ internal sealed class GrainIdleCollector : BackgroundService
         }
     }
 
-    private void CollectIdleGrains()
+    internal void CollectIdleGrains()
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         foreach ((GrainId _, GrainActivation activation) in _activationTable.GetActiveActivations())
