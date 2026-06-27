@@ -70,7 +70,7 @@ public sealed class SiloMessagePump : IAsyncDisposable
     {
         if (_cts is not null)
         {
-            _cts.Cancel();
+            await _cts.CancelAsync();
         }
 
         if (_listener is not null)
@@ -105,7 +105,7 @@ public sealed class SiloMessagePump : IAsyncDisposable
     }
 
     /// <summary>Processes a single accepted connection until it closes.</summary>
-    public async Task ProcessConnectionAsync(ITransportConnection connection,
+    private async Task ProcessConnectionAsync(ITransportConnection connection,
         CancellationToken cancellationToken = default)
     {
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -133,7 +133,7 @@ public sealed class SiloMessagePump : IAsyncDisposable
         }
         finally
         {
-            linkedCts.Cancel();
+            await linkedCts.CancelAsync();
             await connection.CloseAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {

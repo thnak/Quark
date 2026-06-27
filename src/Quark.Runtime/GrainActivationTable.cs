@@ -68,8 +68,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
     public void RemoveIfFaulted(GrainId grainId)
     {
         if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? lazy)
-            && lazy.IsValueCreated
-            && lazy.Value.IsFaulted)
+            && lazy is { IsValueCreated: true, Value.IsFaulted: true })
         {
             _activations.TryRemove(new KeyValuePair<GrainId, Lazy<Task<GrainActivation>>>(grainId, lazy));
         }
@@ -85,11 +84,15 @@ public sealed class GrainActivationTable : IAsyncDisposable
         foreach (var (grainId, lazy) in _activations)
         {
             if (!lazy.IsValueCreated || !lazy.Value.IsCompletedSuccessfully)
+            {
                 continue;
+            }
 
             GrainActivation activation = lazy.Value.Result;
             if (activation.ActivationStatus == GrainActivationStatus.Active)
+            {
                 result.Add((grainId, activation));
+            }
         }
         return result;
     }
@@ -125,7 +128,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
     ///     Runs <c>OnDeactivateAsync</c> on the grain's scheduler before tearing down the loop.
     ///     No-op if the grain is not currently tracked.
     /// </summary>
-    public async Task TryDeactivateAsync(GrainId grainId)
+    public async Task TryDeactivateAsync(GrainId grainId) // TODO did not called anywhere
     {
         if (_activations.TryRemove(grainId, out Lazy<Task<GrainActivation>>? lazy) && lazy.IsValueCreated)
         {

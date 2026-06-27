@@ -25,7 +25,9 @@ internal sealed class GrainIdleCollector : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (_options.GrainCollectionAge == TimeSpan.Zero)
+        {
             return;
+        }
 
         using var timer = new PeriodicTimer(_options.GrainCollectionInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
@@ -37,7 +39,7 @@ internal sealed class GrainIdleCollector : BackgroundService
     private void CollectIdleGrains()
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        foreach (var (_, activation) in _activationTable.GetActiveActivations())
+        foreach ((GrainId _, GrainActivation activation) in _activationTable.GetActiveActivations())
         {
             if (activation.IsIdleLongerThan(_options.GrainCollectionAge, now)
                 && activation.IsDeactivationAllowed(now))

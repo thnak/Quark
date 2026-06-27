@@ -16,7 +16,9 @@ public sealed class GatewayClientSubscriptionTable
 
     public void RemoveAll(IEnumerable<Guid> subIds)
     {
-        foreach (var id in subIds)
+        foreach (Guid id in subIds)
+        {
             _all.TryRemove(id, out _);
+        }
     }
 }

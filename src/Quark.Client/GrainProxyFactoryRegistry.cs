@@ -21,7 +21,7 @@ public sealed class GrainProxyFactoryRegistry
         where TProxy : class, TInterface
     {
         // Wrap as IGrain-returning delegate — avoids DynamicInvoke in the runtime-typed overload.
-        _factories[typeof(TInterface)] = (grainId, invoker) => factory(grainId, invoker);
+        _factories[typeof(TInterface)] = factory;
     }
 
     /// <summary>

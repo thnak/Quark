@@ -47,8 +47,7 @@ public sealed class SiloHostedService : IHostedService
         // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
         ApplyTransportDispatcherRegistrations();
 
-        var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
-        if (messagePump is not null)
+        if (_services.GetService(typeof(SiloMessagePump)) is SiloMessagePump messagePump)
         {
             await messagePump.StartAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -56,10 +55,9 @@ public sealed class SiloHostedService : IHostedService
         await _lifecycle.StartAsync(cancellationToken).ConfigureAwait(false);
 
         // Register this silo in the cluster router so remote silos can forward calls to us.
-        var router = _services.GetService(typeof(ISiloRouter)) as ISiloRouter;
-        if (router is not null)
+        if (_services.GetService(typeof(ISiloRouter)) is ISiloRouter router)
         {
-            var invoker = _services.GetRequiredService<IGrainCallInvoker>();
+            IGrainCallInvoker invoker = _services.GetRequiredService<IGrainCallInvoker>();
             router.Register(_options.SiloAddress, invoker);
             _logger.LogDebug("Silo {SiloAddress} registered in cluster router.", _options.SiloAddress);
         }
@@ -76,8 +74,7 @@ public sealed class SiloHostedService : IHostedService
         var router = _services.GetService(typeof(ISiloRouter)) as ISiloRouter;
         router?.Unregister(_options.SiloAddress);
 
-        var messagePump = _services.GetService(typeof(SiloMessagePump)) as SiloMessagePump;
-        if (messagePump is not null)
+        if (_services.GetService(typeof(SiloMessagePump)) is SiloMessagePump messagePump)
         {
             await messagePump.StopAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -87,9 +84,10 @@ public sealed class SiloHostedService : IHostedService
         // Drain all grain activations while the DI root is still live.
         // GrainActivationTable is disposed again by the container after StopAsync returns, but
         // by then _activations is empty so that second call is a no-op.
-        var table = _services.GetService(typeof(GrainActivationTable)) as GrainActivationTable;
-        if (table is not null)
+        if (_services.GetService(typeof(GrainActivationTable)) is GrainActivationTable table)
+        {
             await table.DisposeAsync().ConfigureAwait(false);
+        }
 
         _logger.LogInformation("Quark silo '{SiloName}' stopped.", _options.SiloName);
     }
@@ -104,7 +102,7 @@ public sealed class SiloHostedService : IHostedService
             return;
         }
 
-        foreach (var reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainBehaviorRegistration>())
+        foreach (RuntimeServiceCollectionExtensions.IGrainBehaviorRegistration reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainBehaviorRegistration>())
         {
             reg.Apply(typeRegistry);
         }
@@ -119,7 +117,7 @@ public sealed class SiloHostedService : IHostedService
             return;
         }
 
-        foreach (var reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>())
+        foreach (RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>())
         {
             reg.Apply(dispatcherRegistry);
         }

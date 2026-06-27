@@ -26,17 +26,15 @@ internal sealed class ClientStartupService : IHostedService
             return Task.CompletedTask;
         }
 
-        foreach (var reg in _services.GetServices<ClientServiceCollectionExtensions.IProxyRegistration>())
+        foreach (ClientServiceCollectionExtensions.IProxyRegistration reg in _services.GetServices<ClientServiceCollectionExtensions.IProxyRegistration>())
         {
             reg.Apply(proxyRegistry, interfaceRegistry);
         }
 
         // Apply deferred observer proxy registrations.
-        var observerProxyRegistry =
-            _services.GetService(typeof(ObserverProxyFactoryRegistry)) as ObserverProxyFactoryRegistry;
-        if (observerProxyRegistry is not null)
+        if (_services.GetService(typeof(ObserverProxyFactoryRegistry)) is ObserverProxyFactoryRegistry observerProxyRegistry)
         {
-            foreach (var reg in _services.GetServices<ClientServiceCollectionExtensions.IObserverProxyRegistration>())
+            foreach (ClientServiceCollectionExtensions.IObserverProxyRegistration reg in _services.GetServices<ClientServiceCollectionExtensions.IObserverProxyRegistration>())
             {
                 reg.Apply(observerProxyRegistry);
             }

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 
@@ -30,6 +29,8 @@ public sealed class TcpClientObserverTable
     public void RemoveAll(IEnumerable<GrainId> grainIds)
     {
         foreach (GrainId id in grainIds)
+        {
             _entries.TryRemove(id, out _);
+        }
     }
 }

@@ -22,13 +22,24 @@ public sealed class TcpStreamPushDispatcher
 
     public async Task DispatchAsync(MessageEnvelope envelope)
     {
-        var subIdStr = envelope.Headers?.Get("sub-id");
-        if (subIdStr is null) return;
-        if (!Guid.TryParse(subIdStr, out var subId)) return;
-        if (!_subscriptions.TryGetValue(subId, out var sub)) return;
+        string? subIdStr = envelope.Headers?.Get("sub-id");
+        if (subIdStr is null)
+        {
+            return;
+        }
 
-        var seqStr = envelope.Headers?.Get("seq");
-        var seq = long.TryParse(seqStr, out var s) ? s : 0L;
+        if (!Guid.TryParse(subIdStr, out Guid subId))
+        {
+            return;
+        }
+
+        if (!_subscriptions.TryGetValue(subId, out IClientStreamSubscription? sub))
+        {
+            return;
+        }
+
+        string? seqStr = envelope.Headers?.Get("seq");
+        long seq = long.TryParse(seqStr, out long s) ? s : 0L;
         var token = new SequentialToken(seq);
 
         await sub.DispatchAsync(envelope.Payload, token).ConfigureAwait(false);

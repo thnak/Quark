@@ -43,7 +43,10 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
 
         GrainInvocationResponse result = _grainSerializer.DeserializeResponse(response.Payload);
         if (!result.Success)
+        {
             throw new InvalidOperationException(result.Error ?? "Remote grain invocation failed.");
+        }
+
         var resultReader = new CodecReader(result.ResultPayload);
         return invokable.DeserializeResult(ref resultReader);
     }
@@ -64,7 +67,9 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
 
         GrainInvocationResponse result = _grainSerializer.DeserializeResponse(response.Payload);
         if (!result.Success)
+        {
             throw new InvalidOperationException(result.Error ?? "Remote grain invocation failed.");
+        }
     }
 
     public Task InvokeObserverAsync<TInvokable>(
@@ -74,7 +79,9 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         where TInvokable : struct, IObserverVoidInvokable
     {
         if (_observerRegistry?.TryGet(grainId, out ObserverRegistry.ObserverEntry entry) == true)
+        {
             return invokable.Invoke(entry.Target).AsTask();
+        }
 
         throw new NotSupportedException(
             $"Observer '{grainId}' is not registered locally. " +

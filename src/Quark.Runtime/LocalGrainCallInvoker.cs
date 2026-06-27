@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Identity;
 using Quark.Diagnostics.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
@@ -54,7 +53,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _services = services;
         _grainFactory = grainFactory is not null
             ? new Lazy<IGrainFactory>(() => grainFactory)
-            : new Lazy<IGrainFactory>(() => services.GetRequiredService<IGrainFactory>());
+            : new Lazy<IGrainFactory>(services.GetRequiredService<IGrainFactory>);
         _siloAddress = options.Value.SiloAddress;
         _logger = logger;
         _activationLogger = activationLogger;

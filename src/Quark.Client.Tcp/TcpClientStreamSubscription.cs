@@ -33,8 +33,8 @@ internal sealed class TcpClientStreamSubscription<T> : IClientStreamSubscription
     public async Task DispatchAsync(ReadOnlyMemory<byte> payload, StreamSequenceToken token)
     {
         var reader = new CodecReader(payload);
-        var field = reader.ReadFieldHeader();
-        var item = _codec.ReadValue(reader, field);
+        Field field = reader.ReadFieldHeader();
+        T item = _codec.ReadValue(reader, field);
         await _observer.OnNextAsync(item!, token).ConfigureAwait(false);
     }
 

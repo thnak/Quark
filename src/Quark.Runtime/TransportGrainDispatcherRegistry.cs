@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 

@@ -6,8 +6,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Timers;
+using Quark.Diagnostics;
 using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 
@@ -97,7 +97,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
     /// <summary>
     ///     Stopwatch ticks at which the current mailbox work item started executing.
-    ///     Zero means the mailbox is idle.  Read by <see cref="StuckGrainDetector" />.
+    ///     Zero means the mailbox is idle.  Read by <see cref="Quark.Diagnostics.StuckGrainDetector" />.
     /// </summary>
     internal long WorkItemStartedAt => Interlocked.Read(ref _workItemStartedAt);
 
@@ -127,7 +127,7 @@ public sealed class GrainActivation : IAsyncDisposable
             static _ => new ManagedActivationMemoryHolder<T>());
 
     // Discriminator type so managed holders and state holders never share a key.
-    private sealed class ManagedKey<T> { }
+    private sealed class ManagedKey<T>;
 
     /// <summary>
     ///     Gets or creates an activation-scoped singleton of type <typeparamref name="T" />.
@@ -147,7 +147,9 @@ public sealed class GrainActivation : IAsyncDisposable
         GrainTimerCreationOptions options)
     {
         if (_status is GrainActivationStatus.Deactivating or GrainActivationStatus.Inactive)
+        {
             throw new InvalidOperationException("Cannot register a timer on a deactivating or inactive grain.");
+        }
 
         var timer = new GrainTimer<TState>(callback, state, options, PostAsync);
         lock (_timersLock) { _timers.Add(timer); }
@@ -160,7 +162,9 @@ public sealed class GrainActivation : IAsyncDisposable
     public void Deactivate(DeactivationReason reason)
     {
         if (_status != GrainActivationStatus.Active && _status != GrainActivationStatus.Activating)
+        {
             return;
+        }
 
         _status = GrainActivationStatus.Deactivating;
         _queue.Writer.TryWrite(() => RunDeactivationAsync(reason));
@@ -178,7 +182,10 @@ public sealed class GrainActivation : IAsyncDisposable
         do
         {
             current = Interlocked.Read(ref _deactivationNotBeforeTicks);
-            if (newTicks <= current) return;
+            if (newTicks <= current)
+            {
+                return;
+            }
         } while (Interlocked.CompareExchange(ref _deactivationNotBeforeTicks, newTicks, current) != current);
     }
 
@@ -331,7 +338,11 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         foreach (object obj in _memoryBag.Values)
         {
-            if (obj is not IAsyncDisposable disposable) continue;
+            if (obj is not IAsyncDisposable disposable)
+            {
+                continue;
+            }
+
             try
             {
                 await disposable.DisposeAsync().ConfigureAwait(false);
@@ -351,7 +362,9 @@ public sealed class GrainActivation : IAsyncDisposable
         sp.GetRequiredService<ICallContextSetter>().Set(GrainId);
         IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(GrainType);
         if (behavior is IActivationLifecycle lifecycle)
+        {
             await hook(lifecycle).ConfigureAwait(false);
+        }
     }
 
     private void DisposeTimers()
@@ -362,7 +375,10 @@ public sealed class GrainActivation : IAsyncDisposable
             timers = [.. _timers];
             _timers.Clear();
         }
-        foreach (IGrainTimer t in timers) t.Dispose();
+        foreach (IGrainTimer t in timers)
+        {
+            t.Dispose();
+        }
     }
 
     private async Task RunLoopAsync(CancellationToken ct)

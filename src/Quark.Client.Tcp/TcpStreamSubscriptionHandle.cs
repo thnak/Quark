@@ -14,7 +14,6 @@ public sealed class TcpStreamSubscriptionHandle<T> : StreamSubscriptionHandle<T>
     private readonly TcpGatewayConnection _connection;
     private readonly TcpClientStreamSubscription<T> _sub;
     private readonly Guid _handleId;
-    private readonly StreamId _streamId;
 
     internal TcpStreamSubscriptionHandle(
         Guid handleId,
@@ -24,14 +23,14 @@ public sealed class TcpStreamSubscriptionHandle<T> : StreamSubscriptionHandle<T>
         TcpClientStreamSubscription<T> sub)
     {
         _handleId = handleId;
-        _streamId = streamId;
+        StreamId = streamId;
         _dispatcher = dispatcher;
         _connection = connection;
         _sub = sub;
     }
 
     public override Guid HandleId => _handleId;
-    public override StreamId StreamId => _streamId;
+    public override StreamId StreamId { get; }
 
     public override async Task UnsubscribeAsync()
     {

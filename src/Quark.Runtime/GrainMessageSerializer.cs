@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Reminders;
 using Quark.Serialization.Abstractions.Buffers;
 using Quark.Streaming.Abstractions;
@@ -22,7 +21,9 @@ public sealed class GrainMessageSerializer
         writer.WriteString(request.GrainId.Key);
         writer.WriteVarUInt32(request.MethodId);
         if (request.ArgumentPayload.Length > 0)
+        {
             writer.WriteRaw(request.ArgumentPayload.Span);
+        }
 
         return buffer.WrittenMemory.ToArray();
     }
@@ -63,7 +64,10 @@ public sealed class GrainMessageSerializer
             ? buffer.Slice(reader.Position, (int)resultLen)
             : ReadOnlyMemory<byte>.Empty;
         if (resultLen > 0)
+        {
             reader.ReadRaw((int)resultLen);
+        }
+
         string? error = ReadValue(reader) as string;
         return new GrainInvocationResponse(success, resultPayload, error);
     }
@@ -74,11 +78,18 @@ public sealed class GrainMessageSerializer
     /// </summary>
     public static ReadOnlyMemory<byte> SerializeArgs(params object?[] args)
     {
-        if (args.Length == 0) return ReadOnlyMemory<byte>.Empty;
+        if (args.Length == 0)
+        {
+            return ReadOnlyMemory<byte>.Empty;
+        }
+
         ArrayBufferWriter<byte> buffer = new();
         CodecWriter writer = new(buffer);
         foreach (object? arg in args)
+        {
             WriteValue(writer, arg);
+        }
+
         return buffer.WrittenMemory.ToArray();
     }
 
@@ -138,7 +149,10 @@ public sealed class GrainMessageSerializer
             case decimal dec:
                 writer.WriteByte((byte)ValueKind.Decimal);
                 foreach (int part in decimal.GetBits(dec))
+                {
                     writer.WriteInt32(part);
+                }
+
                 break;
             case TickStatus ts:
                 writer.WriteByte((byte)ValueKind.TickStatus);

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Quark.Client;
 
 namespace Quark.Client.Tcp;
 
@@ -21,8 +20,8 @@ internal sealed class TcpClientStartupService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var proxyRegistry = _services.GetService<GrainProxyFactoryRegistry>();
-        var interfaceRegistry = _services.GetService<GrainInterfaceTypeRegistry>();
+        GrainProxyFactoryRegistry? proxyRegistry = _services.GetService<GrainProxyFactoryRegistry>();
+        GrainInterfaceTypeRegistry? interfaceRegistry = _services.GetService<GrainInterfaceTypeRegistry>();
         if (proxyRegistry is not null && interfaceRegistry is not null)
         {
             foreach (ClientServiceCollectionExtensions.IProxyRegistration reg
@@ -32,7 +31,7 @@ internal sealed class TcpClientStartupService : IHostedService
             }
         }
 
-        var observerProxyRegistry = _services.GetService<ObserverProxyFactoryRegistry>();
+        ObserverProxyFactoryRegistry? observerProxyRegistry = _services.GetService<ObserverProxyFactoryRegistry>();
         if (observerProxyRegistry is not null)
         {
             foreach (ClientServiceCollectionExtensions.IObserverProxyRegistration reg
@@ -42,7 +41,7 @@ internal sealed class TcpClientStartupService : IHostedService
             }
         }
 
-        var observerDispatcherRegistry = _services.GetService<ObserverTransportDispatcherRegistry>();
+        ObserverTransportDispatcherRegistry? observerDispatcherRegistry = _services.GetService<ObserverTransportDispatcherRegistry>();
         if (observerDispatcherRegistry is not null)
         {
             foreach (TcpClientBuilderExtensions.IObserverDispatcherRegistration reg

@@ -1,7 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Quark.Client;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -30,7 +29,7 @@ public static class TcpClientBuilderExtensions
     /// <summary>
     ///     Configures the client to connect to a gateway silo using the provided endpoint configuration.
     /// </summary>
-    public static IClientBuilder UseTcpGateway(
+    private static IClientBuilder UseTcpGateway(
         this IClientBuilder builder,
         Action<TcpGatewayClientOptions> configure)
     {

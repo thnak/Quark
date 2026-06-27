@@ -31,9 +31,9 @@ public sealed class GatewayClientSubscription : IUntypedStreamObserver
 
     public async Task OnNextAsync(object item, StreamSequenceToken? token)
     {
-        var codec = _codecs.TryGetGeneralizedCodec(item.GetType())
-            ?? throw new InvalidOperationException(
-                $"No IGeneralizedCodec registered for {item.GetType().Name}");
+        IGeneralizedCodec codec = _codecs.TryGetGeneralizedCodec(item.GetType())
+                                  ?? throw new InvalidOperationException(
+                                      $"No IGeneralizedCodec registered for {item.GetType().Name}");
 
         var buffer = new ArrayBufferWriter<byte>();
         var writer = new CodecWriter(buffer);
