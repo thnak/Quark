@@ -294,6 +294,10 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             Factory = new LocalGrainFactory(proxyRegistry, interfaceRegistry, realInvoker,
                 observerProxyRegistry, observerRegistry);
             Client = new LocalGrainFactory(proxyRegistry, interfaceRegistry, realInvoker);
+
+            // Fulfill the lazy IGrainFactory singleton so behavior DI can resolve it.
+            // Read lazily at call time, so assigning here (post-construction) is sufficient.
+            grainFactoryRef = Factory;
         }
 
         public LocalGrainFactory Factory { get; }
