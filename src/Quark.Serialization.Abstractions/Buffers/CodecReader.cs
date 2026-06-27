@@ -9,12 +9,28 @@ namespace Quark.Serialization.Abstractions.Buffers;
 /// </summary>
 public sealed class CodecReader
 {
+    /// <summary>Default maximum length-prefixed string size in bytes.</summary>
+    public const int DefaultMaxStringBytes = 100 * 1024 * 1024;
+
+    /// <summary>Default maximum length-prefixed byte-array size in bytes.</summary>
+    public const int DefaultMaxByteArrayBytes = 100 * 1024 * 1024;
+
     private readonly ReadOnlyMemory<byte> _buffer;
+    private readonly int _maxStringBytes;
+    private readonly int _maxByteArrayBytes;
 
     /// <summary>Initialises a new <see cref="CodecReader" /> over <paramref name="buffer" />.</summary>
-    public CodecReader(ReadOnlyMemory<byte> buffer)
+    public CodecReader(
+        ReadOnlyMemory<byte> buffer,
+        int maxStringBytes = DefaultMaxStringBytes,
+        int maxByteArrayBytes = DefaultMaxByteArrayBytes)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxStringBytes);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxByteArrayBytes);
+
         _buffer = buffer;
+        _maxStringBytes = maxStringBytes;
+        _maxByteArrayBytes = maxByteArrayBytes;
         Position = 0;
     }
 
@@ -39,7 +55,9 @@ public sealed class CodecReader
     /// <summary>Reads exactly <paramref name="count" /> bytes verbatim.</summary>
     public ReadOnlySpan<byte> ReadRaw(int count)
     {
-        if (Position + count > _buffer.Length)
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+
+        if (_buffer.Length - Position < count)
         {
             throw new EndOfStreamException("Unexpected end of serialized data.");
         }
@@ -130,6 +148,7 @@ public sealed class CodecReader
             return string.Empty;
         }
 
+        ValidateLength(byteCount, _maxStringBytes, "String");
         ReadOnlySpan<byte> bytes = ReadRaw((int)byteCount);
         return Encoding.UTF8.GetString(bytes);
     }
@@ -143,6 +162,7 @@ public sealed class CodecReader
             return Array.Empty<byte>();
         }
 
+        ValidateLength(length, _maxByteArrayBytes, "Byte array");
         return ReadRaw((int)length).ToArray();
     }
 
@@ -165,5 +185,13 @@ public sealed class CodecReader
             WireType = wireType,
             ExtendedWireType = extendedWireType
         };
+    }
+
+    private static void ValidateLength(uint length, int maxLength, string valueKind)
+    {
+        if (length > (uint)maxLength)
+        {
+            throw new InvalidDataException($"{valueKind} length {length} exceeds the configured maximum of {maxLength} bytes.");
+        }
     }
 }

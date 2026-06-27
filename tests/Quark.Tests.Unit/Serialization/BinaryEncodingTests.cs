@@ -73,6 +73,29 @@ public sealed class BinaryEncodingTests
     }
 
     [Fact]
+    public void String_LengthPrefixed_Rejects_Length_Above_Configured_Max()
+    {
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        writer.WriteVarUInt32(9);
+        writer.WriteByte(0);
+
+        CodecReader reader = new(buf.WrittenMemory, maxStringBytes: 8);
+
+        Assert.Throws<InvalidDataException>(() => reader.ReadString());
+    }
+
+    [Fact]
+    public void String_LengthPrefixed_Rejects_UInt32_Length_Before_Int_Cast()
+    {
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        writer.WriteVarUInt32(uint.MaxValue);
+
+        CodecReader reader = new(buf.WrittenMemory);
+
+        Assert.Throws<InvalidDataException>(() => reader.ReadString());
+    }
+
+    [Fact]
     public void Bytes_LengthPrefixed_RoundTrip()
     {
         byte[] original = [0x01, 0x02, 0xAB, 0xCD, 0xFF];
@@ -80,6 +103,29 @@ public sealed class BinaryEncodingTests
         writer.WriteBytes(original);
         CodecReader reader = new(buf.WrittenMemory);
         Assert.Equal(original, reader.ReadBytes());
+    }
+
+    [Fact]
+    public void Bytes_LengthPrefixed_Rejects_Length_Above_Configured_Max()
+    {
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        writer.WriteVarUInt32(9);
+        writer.WriteByte(0);
+
+        CodecReader reader = new(buf.WrittenMemory, maxByteArrayBytes: 8);
+
+        Assert.Throws<InvalidDataException>(() => reader.ReadBytes());
+    }
+
+    [Fact]
+    public void Bytes_LengthPrefixed_Rejects_UInt32_Length_Before_Int_Cast()
+    {
+        (CodecWriter writer, ArrayBufferWriter<byte> buf) = CreateWriter();
+        writer.WriteVarUInt32(uint.MaxValue);
+
+        CodecReader reader = new(buf.WrittenMemory);
+
+        Assert.Throws<InvalidDataException>(() => reader.ReadBytes());
     }
 
     [Fact]

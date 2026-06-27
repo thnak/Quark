@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Buffers.Binary;
+using System.IO.Pipelines;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Buffers;
@@ -64,5 +66,49 @@ public sealed class MessageSerializerTests
         var resultReader = new CodecReader(decodedResponse.ResultPayload);
         Assert.Equal(99L, resultReader.ReadInt64());
         Assert.Null(decodedResponse.Error);
+    }
+
+    [Fact]
+    public async Task ReadAsync_Rejects_Negative_Frame_Length()
+    {
+        Pipe pipe = new();
+        byte[] prefix = new byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(prefix, -1);
+        await pipe.Writer.WriteAsync(prefix);
+        await pipe.Writer.CompleteAsync();
+
+        MessageSerializer serializer = new();
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await serializer.ReadAsync(pipe.Reader));
+    }
+
+    [Fact]
+    public async Task ReadAsync_Rejects_Frame_Larger_Than_Configured_Max()
+    {
+        Pipe pipe = new();
+        byte[] frame = new byte[sizeof(int) + 9];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, 9);
+        await pipe.Writer.WriteAsync(frame);
+        await pipe.Writer.CompleteAsync();
+
+        MessageSerializer serializer = new(new TransportOptions { MaxMessageBytes = 8 });
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await serializer.ReadAsync(pipe.Reader));
+    }
+
+    [Fact]
+    public void Deserialize_Rejects_Too_Many_Headers()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        var writer = new CodecWriter(buffer);
+        writer.WriteInt64(1);
+        writer.WriteByte((byte)MessageType.Request);
+        writer.WriteVarUInt32(MessageSerializer.DefaultMaxHeaders + 1u);
+
+        MessageSerializer serializer = new();
+
+        Assert.Throws<InvalidDataException>(() => serializer.Deserialize(buffer.WrittenMemory));
     }
 }

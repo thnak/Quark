@@ -11,6 +11,28 @@ namespace Quark.Runtime;
 /// </summary>
 public sealed class MessageSerializer
 {
+    /// <summary>Default maximum number of headers accepted on an envelope.</summary>
+    public const uint DefaultMaxHeaders = 1000;
+
+    private readonly int _maxMessageBytes;
+    private readonly uint _maxHeaders;
+
+    /// <summary>Initializes a new serializer using default transport limits.</summary>
+    public MessageSerializer()
+        : this(new TransportOptions())
+    {
+    }
+
+    /// <summary>Initializes a new serializer using the provided transport limits.</summary>
+    public MessageSerializer(TransportOptions options, uint maxHeaders = DefaultMaxHeaders)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaxMessageBytes);
+
+        _maxMessageBytes = options.MaxMessageBytes;
+        _maxHeaders = maxHeaders;
+    }
+
     /// <summary>Serializes <paramref name="envelope" /> into a byte array.</summary>
     public byte[] Serialize(MessageEnvelope envelope)
     {
@@ -32,7 +54,14 @@ public sealed class MessageSerializer
         }
 
         writer.WriteBytes(envelope.Payload.Span);
-        return buffer.WrittenMemory.ToArray();
+        byte[] bytes = buffer.WrittenMemory.ToArray();
+        if (bytes.Length > _maxMessageBytes)
+        {
+            throw new InvalidDataException(
+                $"Serialized message size {bytes.Length} exceeds the configured maximum of {_maxMessageBytes} bytes.");
+        }
+
+        return bytes;
     }
 
     /// <summary>Deserializes a <see cref="MessageEnvelope" /> from <paramref name="buffer" />.</summary>
@@ -43,6 +72,12 @@ public sealed class MessageSerializer
         var messageType = (MessageType)reader.ReadByte();
 
         uint headerCount = reader.ReadVarUInt32();
+        if (headerCount > _maxHeaders)
+        {
+            throw new InvalidDataException(
+                $"Header count {headerCount} exceeds the configured maximum of {_maxHeaders}.");
+        }
+
         MessageHeaders? headers = headerCount > 0 ? new MessageHeaders() : null;
         for (uint i = 0; i < headerCount; i++)
         {
@@ -118,14 +153,26 @@ public sealed class MessageSerializer
         buffer.Slice(0, sizeof(int)).CopyTo(lengthBytes);
         int payloadLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBytes);
 
-        if (buffer.Length < sizeof(int) + payloadLength)
+        if (payloadLength < 0)
+        {
+            throw new InvalidDataException("Message frame length cannot be negative.");
+        }
+
+        if (payloadLength > _maxMessageBytes)
+        {
+            throw new InvalidDataException(
+                $"Message frame length {payloadLength} exceeds the configured maximum of {_maxMessageBytes} bytes.");
+        }
+
+        long frameLength = sizeof(int) + (long)payloadLength;
+        if (buffer.Length < frameLength)
         {
             return false;
         }
 
         ReadOnlySequence<byte> payload = buffer.Slice(sizeof(int), payloadLength);
         envelope = Deserialize(payload.ToArray());
-        buffer = buffer.Slice(sizeof(int) + payloadLength);
+        buffer = buffer.Slice(frameLength);
         return true;
     }
 }

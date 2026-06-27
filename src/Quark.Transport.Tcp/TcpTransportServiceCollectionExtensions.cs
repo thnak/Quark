@@ -24,6 +24,7 @@ public static class TcpTransportServiceCollectionExtensions
         // TcpTransport can take the concrete class (no IOptions<T> dependency in the ctor).
         services.TryAddSingleton<TcpTransportOptions>(
             sp => sp.GetRequiredService<IOptions<TcpTransportOptions>>().Value);
+        services.TryAddSingleton<TransportOptions>(sp => sp.GetRequiredService<TcpTransportOptions>());
 
         services.TryAddSingleton<TcpTransport>();
         services.TryAddSingleton<ITransport>(sp => sp.GetRequiredService<TcpTransport>());

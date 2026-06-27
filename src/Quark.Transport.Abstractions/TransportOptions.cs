@@ -33,4 +33,10 @@ public class TransportOptions
     ///     Connection attempt timeout.  Default: 30 seconds.
     /// </summary>
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    ///     Maximum serialized message frame size in bytes.
+    ///     Default: 100 MB.
+    /// </summary>
+    public int MaxMessageBytes { get; set; } = 100 * 1024 * 1024;
 }
