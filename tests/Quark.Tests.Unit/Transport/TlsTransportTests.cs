@@ -17,8 +17,12 @@ public sealed class TlsTransportTests
         var req = new CertificateRequest(subject, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        X509Certificate2 cert = req.CreateSelfSigned(now.AddMinutes(-1), now.AddHours(1));
-        return X509Certificate2.CreateFromPem(cert.ExportCertificatePem(), rsa.ExportPkcs8PrivateKeyPem());
+        using X509Certificate2 cert = req.CreateSelfSigned(now.AddMinutes(-1), now.AddHours(1));
+        // Export to PFX and reload so the private key lands in a key set usable by SChannel
+        // server-side TLS on Windows. The previous PEM round-trip produced an ephemeral key
+        // that AuthenticateAsServerAsync rejects on Windows, causing the server to close the
+        // socket mid-handshake and the client to see "unexpected EOF" (issue #48).
+        return X509CertificateLoader.LoadPkcs12(cert.Export(X509ContentType.Pfx), null);
     }
 
     [Fact]
