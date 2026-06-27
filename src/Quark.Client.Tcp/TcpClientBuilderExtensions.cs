@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -60,7 +61,8 @@ public static class TcpClientBuilderExtensions
             sp.GetRequiredService<TcpTransport>(),
             sp.GetRequiredService<MessageSerializer>(),
             sp.GetService<TcpStreamPushDispatcher>(),
-            sp.GetService<TcpObserverDispatcher>()));
+            sp.GetService<TcpObserverDispatcher>(),
+            sp.GetService<ILogger<TcpGatewayConnection>>()));
         services.TryAddSingleton(sp => new TcpGatewayCallInvoker(
             sp.GetRequiredService<TcpGatewayConnection>(),
             sp.GetRequiredService<GrainMessageSerializer>(),

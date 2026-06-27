@@ -1,6 +1,8 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Quark.Client;
 using Quark.Client.Tcp;
 using Quark.Core;
@@ -30,6 +32,7 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
 
     private IHost _siloHost = null!;
     private IHost _clientHost = null!;
+    private readonly CaptureLoggerProvider _logCapture = new();
 
     public async Task InitializeAsync()
     {
@@ -59,6 +62,7 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
             .Build();
 
         _clientHost = Host.CreateDefaultBuilder()
+            .ConfigureLogging(lb => lb.AddProvider(_logCapture))
             .UseQuarkClient(client =>
             {
                 client.UseLocalhostGateway(GatewayPort);
@@ -181,6 +185,70 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Test — an observer callback that THROWS must not crash the client read loop
+    // or fault unrelated pending grain RPCs (issue #20). Before the back-channel
+    // decoupling, the uncaught exception hit FaultAllPending and cancelled every
+    // in-flight call on the connection.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Throwing_Observer_Callback_Does_Not_Fault_Pending_Grain_Calls()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        IGrainFactory factory = _clientHost.Services.GetRequiredService<IGrainFactory>();
+        IClusterClient client = _clientHost.Services.GetRequiredService<IClusterClient>();
+
+        var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thrower = new ThrowingRecorder(invoked);
+        IPositionObserver observerRef = factory.CreateObjectReference<IPositionObserver>(thrower);
+        await Task.Delay(50, cts.Token);
+
+        IVehicleGrain vehicle = client.GetGrain<IVehicleGrain>("truck-throws");
+        await vehicle.Subscribe(observerRef).WaitAsync(cts.Token);
+
+        // Triggers an ObserverInvoke whose handler throws on the client.
+        await vehicle.UpdatePosition("boom").WaitAsync(cts.Token);
+        await invoked.Task.WaitAsync(TimeSpan.FromSeconds(5), cts.Token);
+
+        // The connection must still be alive: a subsequent grain RPC must succeed,
+        // proving the throwing observer did not fault the connection's pending map.
+        await vehicle.UpdatePosition("still-alive").WaitAsync(TimeSpan.FromSeconds(5), cts.Token);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test — a failed side-channel dispatch must be logged, not silently
+    // swallowed, so operators can diagnose stale/throwing observers (issue #20).
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Throwing_Observer_Dispatch_Is_Logged()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        IGrainFactory factory = _clientHost.Services.GetRequiredService<IGrainFactory>();
+        IClusterClient client = _clientHost.Services.GetRequiredService<IClusterClient>();
+
+        var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thrower = new ThrowingRecorder(invoked);
+        IPositionObserver observerRef = factory.CreateObjectReference<IPositionObserver>(thrower);
+        await Task.Delay(50, cts.Token);
+
+        IVehicleGrain vehicle = client.GetGrain<IVehicleGrain>("truck-logged");
+        await vehicle.Subscribe(observerRef).WaitAsync(cts.Token);
+        await vehicle.UpdatePosition("boom").WaitAsync(cts.Token);
+        await invoked.Task.WaitAsync(TimeSpan.FromSeconds(5), cts.Token);
+
+        bool logged = await _logCapture.WaitForAsync(
+            e => e.Level >= LogLevel.Warning
+                 && e.Category == typeof(TcpGatewayConnection).FullName
+                 && e.Exception is not null,
+            TimeSpan.FromSeconds(5));
+
+        Assert.True(logged, "Expected a warning log for the failed observer dispatch.");
+    }
+
     // =========================================================================
     // Observer interface and implementations
     // =========================================================================
@@ -205,6 +273,19 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
         {
             _invoked.TrySetResult();
             await _gate.ConfigureAwait(false);
+        }
+    }
+
+    private sealed class ThrowingRecorder : IPositionObserver
+    {
+        private readonly TaskCompletionSource _invoked;
+
+        public ThrowingRecorder(TaskCompletionSource invoked) => _invoked = invoked;
+
+        public Task PositionUpdated(string position)
+        {
+            _invoked.TrySetResult();
+            throw new InvalidOperationException($"boom for {position}");
         }
     }
 
@@ -249,6 +330,52 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
         {
             using var cts = new CancellationTokenSource(timeout);
             await (_allDone?.Task ?? Task.CompletedTask).WaitAsync(cts.Token);
+        }
+    }
+
+    // =========================================================================
+    // In-memory logger capture
+    // =========================================================================
+
+    private sealed record LogEntry(string Category, LogLevel Level, string Message, Exception? Exception);
+
+    private sealed class CaptureLoggerProvider : ILoggerProvider
+    {
+        private readonly ConcurrentQueue<LogEntry> _entries = new();
+
+        public ILogger CreateLogger(string categoryName) => new CaptureLogger(categoryName, _entries);
+
+        public async Task<bool> WaitForAsync(Func<LogEntry, bool> predicate, TimeSpan timeout)
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            while (!cts.IsCancellationRequested)
+            {
+                if (_entries.Any(predicate)) return true;
+                try { await Task.Delay(25, cts.Token); }
+                catch (OperationCanceledException) { break; }
+            }
+            return _entries.Any(predicate);
+        }
+
+        public void Dispose() { }
+
+        private sealed class CaptureLogger : ILogger
+        {
+            private readonly string _category;
+            private readonly ConcurrentQueue<LogEntry> _entries;
+
+            public CaptureLogger(string category, ConcurrentQueue<LogEntry> entries)
+            {
+                _category = category;
+                _entries = entries;
+            }
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+                => _entries.Enqueue(new LogEntry(_category, logLevel, formatter(state, exception), exception));
         }
     }
 

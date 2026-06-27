@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Quark.Runtime;
 using Quark.Transport.Abstractions;
 using Quark.Transport.Tcp;
@@ -17,6 +18,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
     private readonly MessageSerializer _serializer;
     private readonly TcpStreamPushDispatcher? _pushDispatcher;
     private readonly TcpObserverDispatcher? _observerDispatcher;
+    private readonly ILogger<TcpGatewayConnection>? _logger;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<MessageEnvelope>> _pending = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -41,12 +43,14 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
     private Task? _dispatchLoop;
 
     public TcpGatewayConnection(TcpTransport transport, MessageSerializer serializer,
-        TcpStreamPushDispatcher? pushDispatcher = null, TcpObserverDispatcher? observerDispatcher = null)
+        TcpStreamPushDispatcher? pushDispatcher = null, TcpObserverDispatcher? observerDispatcher = null,
+        ILogger<TcpGatewayConnection>? logger = null)
     {
         _transport = transport;
         _serializer = serializer;
         _pushDispatcher = pushDispatcher;
         _observerDispatcher = observerDispatcher;
+        _logger = logger;
     }
 
     public async Task ConnectAsync(EndPoint endpoint, CancellationToken ct = default)
@@ -203,8 +207,11 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
                 catch (Exception ex)
                 {
                     // A bad side-channel frame (observer not found, user exception, …) must not
-                    // crash the dispatch worker or the connection.
-                    _ = ex; // best-effort; no logger here
+                    // crash the dispatch worker or the connection. Log and continue so the failure
+                    // is diagnosable instead of silently swallowed (issue #20).
+                    _logger?.LogWarning(ex,
+                        "Side-channel frame dispatch failed (MessageType={MessageType}); connection continues.",
+                        frame.MessageType);
                 }
             }
         }
