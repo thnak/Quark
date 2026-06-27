@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Identity;
 
 namespace Quark.Runtime;
 

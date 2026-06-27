@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Timers;
-using Quark.Diagnostics;
 using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 

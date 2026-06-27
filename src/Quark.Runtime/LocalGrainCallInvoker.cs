@@ -22,7 +22,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly ICopierProvider? _copierProvider;
     private readonly IQuarkDiagnosticListener _diagnostics;
     private readonly IGrainDirectory _directory;
-    private readonly Lazy<IGrainFactory> _grainFactory;
     private readonly ILogger<LocalGrainCallInvoker> _logger;
     private readonly ILogger<GrainActivation> _activationLogger;
     private readonly ObserverRegistry? _observerRegistry;
@@ -41,7 +40,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         ILogger<LocalGrainCallInvoker> logger,
         ILogger<GrainActivation> activationLogger,
         ObserverRegistry? observerRegistry = null,
-        IGrainFactory? grainFactory = null,
         ICopierProvider? copierProvider = null,
         ISiloRouter? siloRouter = null,
         TcpClientObserverTable? tcpObserverTable = null,
@@ -51,9 +49,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _typeRegistry = typeRegistry;
         _directory = directory;
         _services = services;
-        _grainFactory = grainFactory is not null
-            ? new Lazy<IGrainFactory>(() => grainFactory)
-            : new Lazy<IGrainFactory>(services.GetRequiredService<IGrainFactory>);
         _siloAddress = options.Value.SiloAddress;
         _logger = logger;
         _activationLogger = activationLogger;
@@ -78,8 +73,10 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
         IGrainCallInvoker? remote = TryRouteRemote(grainId);
         if (remote is not null)
+        {
             return await remote.InvokeAsync<TInvokable, TResult>(grainId, invokable, cancellationToken)
                 .ConfigureAwait(false);
+        }
 
         _diagnostics.OnInvocationStart(new InvocationStartEvent(grainId, invokable.MethodId, isObserver: false));
         long startedAt = Stopwatch.GetTimestamp();
@@ -97,7 +94,10 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType);
                 TResult result = await invokable.Invoke(behavior).ConfigureAwait(false);
                 if (_copierProvider?.TryGetCopier<TResult>() is { } copier)
+                {
                     result = copier.DeepCopy(result, new CopyContext());
+                }
+
                 tcs.TrySetResult(result);
             }
             catch (Exception ex)
@@ -241,10 +241,26 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     private IGrainCallInvoker? TryRouteRemote(GrainId grainId)
     {
-        if (_siloRouter is null) return null;
-        if (!_directory.TryLookup(grainId, out SiloAddress owner)) return null;
-        if (owner == _siloAddress) return null;
-        if (_siloRouter.TryGetInvoker(owner, out IGrainCallInvoker? remote)) return remote;
+        if (_siloRouter is null)
+        {
+            return null;
+        }
+
+        if (!_directory.TryLookup(grainId, out SiloAddress owner))
+        {
+            return null;
+        }
+
+        if (owner == _siloAddress)
+        {
+            return null;
+        }
+
+        if (_siloRouter.TryGetInvoker(owner, out IGrainCallInvoker? remote))
+        {
+            return remote;
+        }
+
         _directory.TryUnregister(grainId, owner);
         return null;
     }

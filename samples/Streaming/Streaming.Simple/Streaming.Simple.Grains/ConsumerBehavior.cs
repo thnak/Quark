@@ -27,8 +27,12 @@ public sealed class ConsumerBehavior : IGrainBehavior, IConsumerGrain
 
     public async Task Subscribe(StreamId streamId)
     {
-        if (_streamProvider is null) return;
-        var stream = _streamProvider.GetStream<int>(streamId);
+        if (_streamProvider is null)
+        {
+            return;
+        }
+
+        IAsyncStream<int> stream = _streamProvider.GetStream<int>(streamId);
         S.Handle = await stream.SubscribeAsync(new LoggingObserver(_logger));
     }
 

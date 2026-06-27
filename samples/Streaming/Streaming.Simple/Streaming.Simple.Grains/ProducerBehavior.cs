@@ -29,10 +29,14 @@ public sealed class ProducerBehavior : IGrainBehavior, IProducerGrain
     public Task StartProducing(string ns, Guid key)
     {
         if (S.Timer is not null)
+        {
             throw new InvalidOperationException("Already producing.");
+        }
 
         if (_streamProvider is null)
+        {
             throw new InvalidOperationException("Stream provider not registered.");
+        }
 
         S.Stream = _streamProvider.GetStream<int>(StreamId.Create(ns, key));
         S.Timer = _shellAccessor.Shell.RegisterTimer<ProducerState>(

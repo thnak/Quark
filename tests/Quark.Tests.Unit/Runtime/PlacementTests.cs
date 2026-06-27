@@ -48,7 +48,7 @@ public sealed class PlacementTests
     public void StatelessWorkerAttribute_ResolvesToStatelessWorker_WithDefaultMax()
     {
         PlacementStrategy strategy = Resolve<StatelessGrain>();
-        var worker = Assert.IsType<StatelessWorkerPlacement>(strategy);
+        StatelessWorkerPlacement worker = Assert.IsType<StatelessWorkerPlacement>(strategy);
         Assert.Equal(-1, worker.MaxLocalWorkers);
     }
 
@@ -56,7 +56,7 @@ public sealed class PlacementTests
     public void StatelessWorkerAttribute_PreservesMaxLocalWorkers()
     {
         PlacementStrategy strategy = Resolve<BoundedStatelessGrain>();
-        var worker = Assert.IsType<StatelessWorkerPlacement>(strategy);
+        StatelessWorkerPlacement worker = Assert.IsType<StatelessWorkerPlacement>(strategy);
         Assert.Equal(4, worker.MaxLocalWorkers);
     }
 
@@ -201,7 +201,9 @@ public sealed class PlacementTests
         SiloAddress[] silos = [SiloA, SiloB, SiloC];
         var chosen = new HashSet<SiloAddress>();
         for (int i = 0; i < 50; i++)
+        {
             chosen.Add(director.SelectActivationSilo(Grain($"key-{i}"), typeof(object), SiloA, silos));
+        }
 
         // Hashing across many keys should spread over more than one silo.
         Assert.True(chosen.Count > 1, $"Expected spread across silos, got {chosen.Count}.");

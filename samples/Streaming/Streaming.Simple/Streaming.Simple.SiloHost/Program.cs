@@ -14,7 +14,7 @@ using Streaming.Common;
 using Streaming.Simple.GrainInterfaces;
 using Streaming.Simple.Grains;
 
-var host = Host.CreateDefaultBuilder(args)
+IHost host = Host.CreateDefaultBuilder(args)
     .UseQuark(silo =>
     {
         silo.Services.AddQuarkRuntime();

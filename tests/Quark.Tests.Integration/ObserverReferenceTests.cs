@@ -259,31 +259,25 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             _serviceProvider = services.BuildServiceProvider();
 
             // Manual deferred registrations
-            var typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
+            GrainTypeRegistry typeRegistry = _serviceProvider.GetRequiredService<GrainTypeRegistry>();
             typeRegistry.Register(new GrainType("EventSourceGrain"), typeof(EventSourceGrainBehavior));
 
-            var proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
-            var interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
+            GrainProxyFactoryRegistry proxyRegistry = _serviceProvider.GetRequiredService<GrainProxyFactoryRegistry>();
+            GrainInterfaceTypeRegistry interfaceRegistry = _serviceProvider.GetRequiredService<GrainInterfaceTypeRegistry>();
             interfaceRegistry.Register(typeof(IEventSourceGrain), new GrainType("EventSourceGrain"));
             proxyRegistry.Register<IEventSourceGrain, EventSourceGrainProxy>(
                 (id, inv) => new EventSourceGrainProxy(id, inv));
 
-            var observerProxyRegistry = _serviceProvider.GetRequiredService<ObserverProxyFactoryRegistry>();
+            ObserverProxyFactoryRegistry observerProxyRegistry = _serviceProvider.GetRequiredService<ObserverProxyFactoryRegistry>();
             observerProxyRegistry.Register<IEventObserver, EventObserverProxy>(
                 (id, inv) => new EventObserverProxy(id, inv));
 
             _activationTable = _serviceProvider.GetRequiredService<GrainActivationTable>();
 
             // Build invoker with observer registry support
-            var observerRegistry = _serviceProvider.GetRequiredService<ObserverRegistry>();
+            ObserverRegistry observerRegistry = _serviceProvider.GetRequiredService<ObserverRegistry>();
 
             var deferredInvoker = new DeferredGrainCallInvoker();
-            var localFactory = new LocalGrainFactory(
-                proxyRegistry, interfaceRegistry, deferredInvoker,
-                observerProxyRegistry, observerRegistry);
-
-            // Fulfill the lazy IGrainFactory singleton so behavior DI can resolve it
-            grainFactoryRef = localFactory;
 
             var realInvoker = new LocalGrainCallInvoker(
                 _activationTable,
@@ -293,8 +287,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
                 _serviceProvider.GetRequiredService<IOptions<SiloRuntimeOptions>>(),
                 NullLogger<LocalGrainCallInvoker>.Instance,
                 NullLogger<GrainActivation>.Instance,
-                observerRegistry,
-                grainFactory: localFactory);
+                observerRegistry);
 
             deferredInvoker.SetInvoker(realInvoker);
 

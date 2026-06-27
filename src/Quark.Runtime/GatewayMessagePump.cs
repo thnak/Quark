@@ -21,7 +21,7 @@ namespace Quark.Runtime;
 /// </summary>
 public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
 {
-    private readonly List<Task> _connectionTasks = new();
+    private readonly List<Task> _connectionTasks = [];
     private readonly IMessageDispatcher _dispatcher;
     private readonly ILogger<GatewayMessagePump> _logger;
     private readonly SiloRuntimeOptions _options;
@@ -57,7 +57,9 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (_acceptLoop is not null)
+        {
             return;
+        }
 
         // Resolve optional streaming dependencies lazily at start time, outside DI singleton
         // construction context, to avoid a re-entrancy deadlock on the DI root scope lock.
@@ -86,7 +88,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         CancellationTokenSource? cts = _cts;
-        cts?.Cancel();
+        if (cts != null)
+        {
+            await cts.CancelAsync();
+        }
 
         if (_listener is not null)
         {
@@ -154,7 +159,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             {
                 MessageEnvelope? envelope = await _serializer.ReadAsync(connection.Transport.Input, linkedCts.Token)
                     .ConfigureAwait(false);
-                if (envelope is null) break;
+                if (envelope is null)
+                {
+                    break;
+                }
 
                 QuarkInstruments.GatewayMessagesReceived.Add(1,
                     new KeyValuePair<string, object?>("message_type", envelope.MessageType.ToString()));
@@ -180,9 +188,15 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
                         HandleObserverUnregister(envelope, connectionObservers);
                         break;
 
+                    case MessageType.Request:
+                    case MessageType.Response:
+                    case MessageType.OneWayRequest:
+                    case MessageType.System:
+                    case MessageType.StreamPush:
+                    case MessageType.ObserverInvoke:
                     default:
                         long dispatchStart = Stopwatch.GetTimestamp();
-                        MessageEnvelope? response = null;
+                        MessageEnvelope? response;
                         Exception? dispatchError = null;
                         try
                         {
@@ -230,7 +244,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         {
             // Cancel first so in-flight write-back lambdas get OperationCanceledException,
             // not ObjectDisposedException from the disposed writeLock.
-            linkedCts.Cancel();
+            await linkedCts.CancelAsync();
 
             Interlocked.Decrement(ref _activeConnectionCount);
             QuarkInstruments.ActiveGatewayConnections.Add(-1);
@@ -241,17 +255,22 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             // Clean up observer registrations created by this connection.
             if (connectionObservers.Count > 0)
             {
-                if (_tcpObserverTable is not null)
-                    _tcpObserverTable.RemoveAll(connectionObservers);
+                _tcpObserverTable?.RemoveAll(connectionObservers);
+
                 foreach (GrainId id in connectionObservers)
+                {
                     _diagnostics.OnObserverDeregistered(new ObserverDeregisteredEvent(id));
+                }
             }
 
             // Clean up all subscriptions created by this connection.
             if (connectionSubscriptions.Count > 0)
             {
                 foreach (Guid subId in connectionSubscriptions)
+                {
                     _streamRegistry?.UnsubscribeUntyped(subId);
+                }
+
                 _subTable?.RemoveAll(connectionSubscriptions);
             }
 
@@ -291,7 +310,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             return;
         }
 
-        StreamId streamId = StreamId.Create(ns, key);
+        var streamId = StreamId.Create(ns, key);
 
         // Push delegate: serializes payload and writes a StreamPush envelope back to client.
         // Captured variables are all connection-scoped; writeLock serialises concurrent pushes.
@@ -382,7 +401,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         CancellationToken cancellationToken,
         EndPoint? remoteEndPoint)
     {
-        if (_tcpObserverTable is null) return;
+        if (_tcpObserverTable is null)
+        {
+            return;
+        }
 
         string? grainTypeName = envelope.Headers?.Get("grain-type");
         string? grainKey = envelope.Headers?.Get("grain-key");
@@ -392,7 +414,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
             return;
         }
 
-        GrainId grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
+        var grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
 
         _tcpObserverTable.Register(grainId, async (methodId, argPayload, _) =>
         {
@@ -429,8 +451,12 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     {
         string? grainTypeName = envelope.Headers?.Get("grain-type");
         string? grainKey = envelope.Headers?.Get("grain-key");
-        if (grainTypeName is null || grainKey is null) return;
-        GrainId grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
+        if (grainTypeName is null || grainKey is null)
+        {
+            return;
+        }
+
+        var grainId = GrainId.Create(new GrainType(grainTypeName), grainKey);
         _tcpObserverTable?.Unregister(grainId);
         connectionObservers.Remove(grainId);
         _diagnostics.OnObserverDeregistered(new ObserverDeregisteredEvent(grainId));

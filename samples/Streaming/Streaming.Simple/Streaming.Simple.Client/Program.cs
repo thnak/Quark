@@ -10,7 +10,7 @@ using Streaming.Simple.GrainInterfaces;
 
 var key = Guid.NewGuid();
 
-using var host = Host.CreateDefaultBuilder(args)
+using IHost host = Host.CreateDefaultBuilder(args)
     .UseQuarkClient(client =>
     {
         client.UseLocalhostGateway(30003);
@@ -22,11 +22,11 @@ using var host = Host.CreateDefaultBuilder(args)
 
 await host.StartAsync();
 
-var clusterClient = host.Services.GetRequiredService<IClusterClient>();
-var streamProvider = clusterClient.GetStreamProvider(Constants.StreamProvider);
+IClusterClient clusterClient = host.Services.GetRequiredService<IClusterClient>();
+IStreamProvider streamProvider = clusterClient.GetStreamProvider(Constants.StreamProvider);
 
-var producer = clusterClient.GetGrain<IProducerGrain>("producer-1");
-var consumer = clusterClient.GetGrain<IConsumerGrain>(key);
+IProducerGrain producer = clusterClient.GetGrain<IProducerGrain>("producer-1");
+IConsumerGrain consumer = clusterClient.GetGrain<IConsumerGrain>(key);
 
 // 1. Start producer timer — publishes an int every second
 await producer.StartProducing(Constants.StreamNamespace, key);
@@ -37,8 +37,8 @@ await consumer.Subscribe(StreamId.Create(Constants.StreamNamespace, key));
 Console.WriteLine("Consumer grain subscribed.");
 
 // 3. Client subscribes directly over TCP push
-var stream = streamProvider.GetStream<int>(StreamId.Create(Constants.StreamNamespace, key));
-var handle = await stream.SubscribeAsync((item, _) =>
+IAsyncStream<int> stream = streamProvider.GetStream<int>(StreamId.Create(Constants.StreamNamespace, key));
+StreamSubscriptionHandle<int> handle = await stream.SubscribeAsync((item, _) =>
 {
     Console.WriteLine($"[Client] Received: {item}");
     return Task.CompletedTask;

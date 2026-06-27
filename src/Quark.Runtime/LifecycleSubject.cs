@@ -9,7 +9,7 @@ namespace Quark.Runtime;
 /// </summary>
 public sealed class LifecycleSubject : ILifecycleSubject
 {
-    private readonly List<ObserverEntry> _entries = new();
+    private readonly List<ObserverEntry> _entries = [];
     private readonly Lock _lock = new();
     private bool _started;
 
