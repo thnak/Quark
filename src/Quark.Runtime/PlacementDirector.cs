@@ -4,7 +4,7 @@ namespace Quark.Runtime;
 
 /// <summary>
 ///     Default placement director supporting the Tier 1 placement strategies:
-///     random, prefer-local, and hash-based placement.
+///     random, prefer-local, local (must-be-local), and hash-based placement.
 /// </summary>
 public sealed class PlacementDirector : IPlacementDirector
 {
@@ -37,7 +37,7 @@ public sealed class PlacementDirector : IPlacementDirector
         return strategy switch
         {
             PreferLocalPlacement => SelectPreferLocal(localSilo, availableSilos),
-            LocalPlacement => SelectPreferLocal(localSilo, availableSilos),
+            LocalPlacement => SelectLocal(grainId, localSilo, availableSilos),
             StatelessWorkerPlacement => SelectPreferLocal(localSilo, availableSilos),
             HashBasedPlacement => SelectHashBased(grainId, availableSilos),
             _ => SelectRandom(availableSilos)
@@ -57,6 +57,26 @@ public sealed class PlacementDirector : IPlacementDirector
         }
 
         return SelectRandom(availableSilos);
+    }
+
+    private static SiloAddress SelectLocal(
+        GrainId grainId,
+        SiloAddress localSilo,
+        IReadOnlyList<SiloAddress> availableSilos)
+    {
+        // [LocalPlacement] must activate on the local silo. Unlike prefer-local, it refuses
+        // to fall back to another silo when the local silo is not a candidate.
+        for (int i = 0; i < availableSilos.Count; i++)
+        {
+            if (availableSilos[i] == localSilo)
+            {
+                return localSilo;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"[LocalPlacement] requires grain '{grainId}' to activate on the local silo " +
+            $"'{localSilo}', but it is not among the available candidate silos.");
     }
 
     private static SiloAddress SelectHashBased(

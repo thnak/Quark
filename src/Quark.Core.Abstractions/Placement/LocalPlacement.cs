@@ -1,8 +1,9 @@
 ﻿namespace Quark.Core.Abstractions.Placement;
 
 /// <summary>
-///     Prefers placing a new activation on the local silo when possible.
-///     Falls back to random placement when the local silo is overloaded.
+///     Must-be-local placement: a new activation is required to be placed on the local silo.
+///     Unlike <see cref="PreferLocalPlacement" />, this does not fall back to another silo —
+///     placement fails if the local silo is not among the candidate silos.
 /// </summary>
 public sealed class LocalPlacement : PlacementStrategy
 {

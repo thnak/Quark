@@ -29,9 +29,16 @@ public sealed class PlacementTests
         => Assert.Same(PreferLocalPlacement.Singleton, Resolve<PreferLocalGrain>());
 
     [Fact]
-    public void LocalAttribute_ResolvesToPreferLocal()
-        // The resolver maps [LocalPlacement] onto the PreferLocal strategy singleton.
-        => Assert.Same(PreferLocalPlacement.Singleton, Resolve<LocalGrain>());
+    public void LocalAttribute_ResolvesToLocalPlacement()
+        // [LocalPlacement] has distinct must-be-local semantics, separate from prefer-local.
+        => Assert.Same(LocalPlacement.Singleton, Resolve<LocalGrain>());
+
+    [Fact]
+    public void PreferLocalAndLocalAttributes_AreResolvedToDistinctStrategies()
+    {
+        Assert.Same(PreferLocalPlacement.Singleton, Resolve<PreferLocalGrain>());
+        Assert.Same(LocalPlacement.Singleton, Resolve<LocalGrain>());
+    }
 
     [Fact]
     public void HashBasedAttribute_ResolvesToHashBased()
@@ -135,6 +142,16 @@ public sealed class PlacementTests
         PlacementDirector director = DirectorFor(LocalPlacement.Singleton);
         SiloAddress chosen = director.SelectActivationSilo(Grain("k"), typeof(object), SiloA, [SiloA, SiloB]);
         Assert.Equal(SiloA, chosen);
+    }
+
+    [Fact]
+    public void LocalPlacement_WhenLocalNotAvailable_Throws()
+    {
+        // Must-be-local refuses to fall back when the local silo is not a candidate,
+        // distinguishing it from prefer-local (which falls back to random).
+        PlacementDirector director = DirectorFor(LocalPlacement.Singleton);
+        Assert.Throws<InvalidOperationException>(
+            () => director.SelectActivationSilo(Grain("k"), typeof(object), SiloC, [SiloA, SiloB]));
     }
 
     [Fact]

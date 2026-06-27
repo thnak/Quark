@@ -20,10 +20,14 @@ public sealed class AttributePlacementStrategyResolver : IPlacementStrategyResol
 
     private static PlacementStrategy ResolveCore(Type grainClass)
     {
-        if (Attribute.IsDefined(grainClass, typeof(PreferLocalPlacementAttribute), true) ||
-            Attribute.IsDefined(grainClass, typeof(LocalPlacementAttribute), true))
+        if (Attribute.IsDefined(grainClass, typeof(PreferLocalPlacementAttribute), true))
         {
             return PreferLocalPlacement.Singleton;
+        }
+
+        if (Attribute.IsDefined(grainClass, typeof(LocalPlacementAttribute), true))
+        {
+            return LocalPlacement.Singleton;
         }
 
         if (Attribute.IsDefined(grainClass, typeof(HashBasedPlacementAttribute), true))
