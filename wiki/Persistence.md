@@ -11,9 +11,80 @@ Quark offers six implemented persistence patterns, from ephemeral in-memory stat
 | Named state injection | `[PersistentState] IPersistentState<T>` | `ReadStateAsync()` | `.State` | Named `IGrainStorage` |
 | Event sourcing | `JournaledGrain<TState,TEvent>` | Replay on activation | `State` | `ILogStorage` |
 
+## Lifecycle at a glance
+
+Every persistence pattern is anchored to the **grain activation lifecycle**. State init runs during
+activation; cleanup runs during deactivation, in this exact order (verified against the runtime —
+`GrainActivation.RunActivationAsync` / `RunDeactivationAsync`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> Activating : first call / placement
+    state Activating {
+        [*] --> ConstructBehavior
+        ConstructBehavior --> EagerInit : Load() factories registered in ctor
+        EagerInit --> OnActivate : RunEagerInitAsync, eager .Value ready
+        OnActivate --> [*] : OnActivateAsync, ReadStateAsync / replay log
+    }
+    Activating --> Active
+    state Active {
+        [*] --> Idle
+        Idle --> Serving : grain call
+        Serving --> Idle : per-call scope + behavior disposed
+    }
+    Active --> Deactivating : idle timeout / Deactivate() / shutdown
+    state Deactivating {
+        [*] --> DisposeTimers
+        DisposeTimers --> OnDeactivate : OnDeactivateAsync
+        OnDeactivate --> DestroyHolders : managed + eager Destroy()
+        DestroyHolders --> [*]
+    }
+    Deactivating --> [*] : shell removed, in-memory state lost
+```
+
+**What survives, and where the source of truth lives.** Activation memory (plain, managed, eager) and
+the journaled projection live only in the volatile shell; durable backends are the only thing that
+crosses a deactivation or a silo restart:
+
+```mermaid
+flowchart TB
+    subgraph Shell["GrainActivation shell — volatile, one per identity, lost on deactivation"]
+        AM["IActivationMemory / Managed / Eager<br/>(never persisted)"]
+        PAM["IPersistentActivationMemory cache"]
+        JG["JournaledGrain in-memory projection"]
+    end
+    subgraph Durable["Durable backends — survive deactivation + restart"]
+        GS[(IGrainStorage)]
+        LS[(ILogStorage)]
+    end
+    PSlot["IPersistentState slot<br/>per-call handle, no shell cache"]
+
+    PAM -- "LoadAsync on activate" --> GS
+    PAM -- "SaveAsync write-through" --> GS
+    PSlot -- "Read/WriteStateAsync each call" --> GS
+    JG -- "ConfirmEventsAsync appends" --> LS
+    JG -- "replay on activate" --> LS
+```
+
+| Pattern | Survives across calls? | Survives deactivation? | Source of truth |
+|---|---|---|---|
+| `IActivationMemory<T>` | ✅ shell-cached | ❌ | shell |
+| `IManagedActivationMemory<T>` | ✅ shell-cached | ❌ | shell |
+| `IEagerActivationMemory<T>` | ✅ shell-cached | ❌ (rebuilt each activation) | shell (rebuilt from DI) |
+| `IPersistentActivationMemory<T>` | ✅ shell-cached | ✅ via `SaveAsync` | `IGrainStorage` |
+| `[PersistentState] IPersistentState<T>` | ⚠️ **no** — re-read each call | ✅ | `IGrainStorage` |
+| `JournaledGrain<TState,TEvent>` | ✅ shell projection | ✅ via event log | `ILogStorage` |
+
+The per-pattern lifecycle is shown inline in each section below.
+
 ## 1. In-memory activation state (`IActivationMemory<T>`)
 
 For state that must survive across method calls on the same activation but does **not** need to outlive it:
+
+```mermaid
+flowchart LR
+    N["new() at first access"] --> C["read/write .Value across calls"] --> D["discarded on deactivation (no storage)"]
+```
 
 ```csharp
 public sealed class CounterState { public int Count { get; set; } }
@@ -44,6 +115,11 @@ The `StateHolder<TState>` lives on the `GrainActivation` shell and is shared acr
 ## 2. Managed in-memory resource (`IManagedActivationMemory<T>`)
 
 For resources that require **async initialization** and optional **async cleanup** on deactivation, but must not be persisted. Common uses: in-memory ring buffers, pooled channels, cached projections, or anything built with an async factory.
+
+```mermaid
+flowchart LR
+    R["Init() factory registered in ctor"] --> L["lazy: factory runs on first GetAsync()"] --> C["value cached for the activation"] --> D["Destroy() after OnDeactivateAsync"]
+```
 
 Key differences from `IActivationMemory<T>`:
 
@@ -103,6 +179,11 @@ silo.Services.AddMyAssemblyBehaviors();
 
 Drop-in for `IActivationMemory<T>` with automatic load-on-first-access and explicit `WriteAsync()`:
 
+```mermaid
+flowchart LR
+    A["OnActivateAsync: ReadStateAsync() loads from storage"] --> C["read .Value with no round-trip"] --> W["WriteStateAsync() write-through after mutation"] --> D["deactivation drops cache; storage keeps data"] --> A
+```
+
 ```csharp
 public sealed class AccountBehavior : IGrainBehavior, IAccountGrain, IActivationLifecycle
 {
@@ -142,6 +223,17 @@ silo.Services.AddScoped<IPersistentActivationMemory<AccountState>>(sp =>
 
 Grains that want Orleans-style named state injection use `IPersistentState<T>` with the `[PersistentState]` attribute:
 
+> ⚠️ **Lifetime gotcha.** Unlike `IPersistentActivationMemory<T>`, a named slot is **not** cached in
+> the shell. The handle is resolved **per call** (scoped), so its in-memory `State`/`RecordExists`
+> reset between calls. Reading state in `OnActivateAsync` only populates the first call's instance.
+> Treat it as a thin handle over a storage record: `ReadStateAsync()` when you need the value,
+> `WriteStateAsync()` after a mutation.
+
+```mermaid
+flowchart LR
+    H["fresh handle injected per call (scoped)"] --> RW["ReadStateAsync() / WriteStateAsync() hit storage directly"] --> X["no shell cache: re-read each call"]
+```
+
 ```csharp
 public sealed class ProfileBehavior : IGrainBehavior, IProfileGrain
 {
@@ -174,6 +266,11 @@ The `[PersistentState("name","provider")]` attribute is resolved at construction
 ## 5. Event sourcing (`JournaledGrain<TState, TEvent>`)
 
 For grains whose history of decisions matters. Inherit from `JournaledGrain<TState,TEvent>`:
+
+```mermaid
+flowchart LR
+    A["OnActivateAsync: replay log, rebuild State"] --> R["RaiseEvent() applies to State in memory"] --> C["ConfirmEventsAsync() appends to ILogStorage"] --> D["deactivation drops projection; events stay durable"] --> A
+```
 
 ```csharp
 public sealed class BankAccountState { public decimal Balance { get; set; } }
@@ -225,6 +322,11 @@ services.AddInMemoryLogStorage();
 ## 6. Eager in-memory resource (`IEagerActivationMemory<T>`)
 
 Fills the gap between `IActivationMemory<T>` (sync default-construct, no DI) and `IManagedActivationMemory<T>` (lazy, async access). Use when you need to **load a large or externally-sourced resource at grain activation time** and then access it **synchronously** on every call.
+
+```mermaid
+flowchart LR
+    Reg["Load() factory registered in ctor"] --> E["eager: RunEagerInitAsync before OnActivateAsync (DI available)"] --> S["read .Value synchronously on every call"] --> D["Destroy() after OnDeactivateAsync"]
+```
 
 Motivating use case: a time-series grain that loads a large `RingBuffer<DataPoint>` from a database when it activates. The buffer is too large to persist on every write, but must be fully populated before any method runs and must be readable without `await`.
 

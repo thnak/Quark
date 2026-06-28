@@ -6,6 +6,39 @@ Quark implements Orleans-compatible ACID transactions using a two-phase commit (
 
 A transactional grain wraps its mutable state in `ITransactionalState<T>`. All reads and writes go through the transactional state object, which participates in 2PC when invoked inside a `[Transaction]`-decorated method.
 
+### Transaction lifetime (2PC)
+
+A transaction's lifetime spans the `[Transaction]` method call. Tentative reads/writes accumulate,
+then the coordinator runs prepare across every participant and commits only if all vote yes — any
+failure aborts and rolls back, so participants never expose a partial result.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant TM as Transaction coordinator
+    participant A as Grain A (ITransactionalState)
+    participant B as Grain B (ITransactionalState)
+
+    Client->>TM: enter [Transaction] method
+    TM->>A: PerformUpdate / PerformRead (tentative)
+    TM->>B: PerformUpdate / PerformRead (tentative)
+    Note over TM,B: Phase 1 - Prepare (collect votes)
+    TM->>A: Prepare
+    TM->>B: Prepare
+    alt all participants vote yes
+        Note over TM,B: Phase 2 - Commit
+        TM->>A: Commit
+        TM->>B: Commit
+        TM-->>Client: success
+    else any failure / timeout
+        Note over TM,B: Abort - roll back
+        TM->>A: Abort
+        TM->>B: Abort
+        TM-->>Client: OrleansTransactionException
+    end
+```
+
 ## Declaring transactional state
 
 ```csharp

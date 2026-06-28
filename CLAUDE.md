@@ -37,7 +37,7 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 dotnet run --project samples/Adventure/Adventure.Server    # then Adventure.Client in another shell
 ```
 
-Runnable samples live under `samples/` — `Adventure` (text adventure), `ChatRoom` (TCP gateway + observers), and `Streaming` (in-memory + TCP stream push). They are the best end-to-end usage references; `samples/Adventure/Adventure.slnx` opens that sample standalone.
+Runnable samples live under `samples/` — `Adventure` (text adventure), `ChatRoom` (TCP gateway + observers), `Streaming` (in-memory + TCP stream push), and `Persistence` (the "Bank" sample: persistent activation memory, named `[PersistentState]` slots, `JournaledGrain` event sourcing, eager `IEagerActivationMemory<T>`, and managed `IManagedActivationMemory<T>` side by side). They are the best end-to-end usage references; `samples/Adventure/Adventure.slnx` opens that sample standalone.
 
 .NET SDK version is pinned to `10.0.201` in `global.json`. Package versions are managed centrally in `Directory.Packages.props`; do not add `Version=` attributes to individual `<PackageReference>` elements.
 

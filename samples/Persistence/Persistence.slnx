@@ -1,0 +1,6 @@
+<Solution>
+    <Project Path="Bank.GrainInterfaces/Bank.GrainInterfaces.csproj"/>
+    <Project Path="Bank.Grains/Bank.Grains.csproj"/>
+    <Project Path="Bank.Server/Bank.Server.csproj"/>
+    <Project Path="Bank.Client/Bank.Client.csproj"/>
+</Solution>

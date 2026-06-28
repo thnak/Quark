@@ -12,6 +12,25 @@ Quark provides two time-based mechanisms for grains:
 
 Timers fire in-process and post their callbacks through the grain's mailbox, preserving single-threaded semantics.
 
+### Timer lifetime
+
+A timer is bound to the activation that created it. It is disposed automatically when the grain
+deactivates (timers are torn down **first** in `RunDeactivationAsync`, before `OnDeactivateAsync`),
+and never survives a silo restart.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Active : RegisterGrainTimer()
+    Active --> Firing : due time / period
+    Firing --> Active : callback runs on the mailbox
+    Active --> Disposed : Dispose() OR grain deactivation
+    Disposed --> [*]
+    note right of Disposed
+        in-memory only — never survives
+        deactivation or silo restart
+    end note
+```
+
 ### Registration
 
 Inject `IGrainContext` (or use `ICallContext` to get the grain ID and register through the activation shell) and call `RegisterGrainTimer`:
@@ -107,6 +126,21 @@ public void OnTimerFired(in TimerFiredEvent e)
 ## Grain reminders
 
 Reminders are durable — they survive silo restarts and are stored in a backing store (in-memory or Redis). When a silo starts, it reloads all reminders for grains it owns and resumes firing them.
+
+### Reminder lifetime
+
+Unlike a timer, a reminder's lifetime is independent of any activation. It lives in the reminder
+store until explicitly unregistered, and re-activates a grain to deliver `ReceiveReminder` even if the
+grain was idle.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Persisted : RegisterOrUpdateReminderAsync()
+    Persisted --> Delivering : due — silo activates grain if needed
+    Delivering --> Persisted : ReceiveReminder(name, status)
+    Persisted --> Persisted : survives deactivation + silo restart
+    Persisted --> [*] : UnregisterReminderAsync()
+```
 
 ### Prerequisites
 

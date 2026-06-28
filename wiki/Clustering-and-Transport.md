@@ -76,6 +76,37 @@ Quark uses `System.IO.Pipelines` for all TCP I/O.
 silo.Services.AddTcpTransport();
 ```
 
+### Message flow over the gateway
+
+A remote grain call is a request/response pair over one duplex pipe; the same connection is also used
+to **push** stream items and observer callbacks back to the client without polling.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as TcpGatewayClusterClient
+    participant Ser as GrainMessageSerializer
+    participant Pipe as TcpGatewayConnection (pipe)
+    participant Gw as Gateway / SiloMessagePump
+    participant Disp as MessageDispatcher
+    participant Grain as LocalGrainCallInvoker → Behavior
+
+    Client->>Ser: build request (grainId, method, args)
+    Ser->>Pipe: write MessageEnvelope
+    Pipe->>Gw: bytes
+    Gw->>Disp: decode envelope
+    Disp->>Grain: invoke locally
+    Grain-->>Disp: result
+    Disp-->>Gw: encode response
+    Gw-->>Pipe: write response
+    Pipe-->>Client: deserialize result
+
+    Note over Grain,Client: stream / observer push reuses the same open pipe
+    Grain-->>Gw: stream.OnNextAsync(msg)
+    Gw-->>Pipe: push message
+    Pipe-->>Client: observer.OnNextAsync(msg)
+```
+
 ### Transport options
 
 ```csharp

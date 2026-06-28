@@ -4,6 +4,42 @@ Quark is a **Native AOT-first, Orleans-compatible distributed actor framework** 
 
 It follows the Orleans mental model — Grain, Silo, Client, Placement, Persistence — while being built from the ground up for AOT compilation, per-call DI scoping, and lean memory footprints.
 
+## How the pieces fit
+
+A client calls grains through a generated proxy. In-process the proxy talks straight to the local
+invoker; remotely it serialises the call across the TCP gateway. On the silo, the activation table
+owns one long-lived shell per grain identity, and each call runs a freshly-constructed behavior POCO
+that reads and writes its state through the persistence, streaming, and reminder providers.
+
+```mermaid
+flowchart LR
+    subgraph ClientProc["Client process"]
+        APP[Your app code]
+        CC[IClusterClient]
+        PXY["GrainProxy<br/>(code-generated)"]
+    end
+    subgraph SiloProc["Silo process"]
+        GW["TCP Gateway<br/>GatewayMessagePump"]
+        DISP[MessageDispatcher]
+        INV[LocalGrainCallInvoker]
+        TBL[GrainActivationTable]
+        ACT["GrainActivation<br/>shell + mailbox"]
+        BEH["Behavior POCO<br/>IGrainBehavior"]
+        subgraph Providers
+            STO[(IGrainStorage)]
+            STR[IStreamProvider]
+            REM[IReminderService]
+        end
+    end
+    APP --> CC --> PXY
+    PXY -- "in-process" --> INV
+    PXY -- "serialized call" --> GW --> DISP --> INV
+    INV --> TBL --> ACT --> BEH
+    BEH --> STO
+    BEH --> STR
+    BEH --> REM
+```
+
 ## API compatibility tiers
 
 | Tier | Meaning |
