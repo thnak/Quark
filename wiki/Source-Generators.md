@@ -121,6 +121,7 @@ The generator emits a `BehaviorModel` for any class that:
 |---|---|
 | `QRK0010` | Behavior class does not implement any `IGrain`-derived interface |
 | `QRK0011` | Behavior class implements multiple `IGrain`-derived interfaces — ambiguous; add `[GrainBehavior("typeName")]` |
+| `QRK0023` | Behavior carries `[ImplicitStreamSubscription]` but the assembly does not reference `Quark.Streaming.InMemory` — auto-registration is skipped (warning) |
 
 ### State type detection
 
@@ -131,6 +132,7 @@ The generator scans all constructor parameters and emits scoped registrations au
 | `IActivationMemory<T>` | `ActivationMemoryAccessor<T>` backed by shell holder |
 | `IPersistentActivationMemory<T>` | `PersistentActivationMemoryAccessor<T>` backed by `IStorage<T>` |
 | `IManagedActivationMemory<T>` | `ManagedActivationMemoryAccessor<T>` backed by managed shell holder |
+| `IEagerActivationMemory<T>` | `AddEagerActivationMemory<T>()` (eager shell holder + accessor) |
 
 For `IManagedActivationMemory<T>`, the generated registration is:
 
@@ -141,7 +143,23 @@ services.AddScoped<IManagedActivationMemory<RingBuffer>>(static sp =>
           .Shell.GetOrCreateManagedHolder<RingBuffer>()));
 ```
 
-All three types are deduplicated across behaviors — if two behaviors in the same assembly share the same state type, only one registration is emitted.
+All memory types are deduplicated across behaviors — if two behaviors in the same assembly share the same state type, only one registration is emitted.
+
+### Implicit stream subscriptions
+
+For every `[ImplicitStreamSubscription("ns")]` on a behavior, the generator also emits the
+matching subscription registration into `AddMyAssemblyBehaviors()`:
+
+```csharp
+// behavior: [ImplicitStreamSubscription("chat")] sealed class RoomGrainBehavior ...
+services.AddImplicitStreamSubscription("chat", "RoomGrain");
+```
+
+The grain-type key honors `[GrainBehavior("key")]`; multiple `[ImplicitStreamSubscription]`
+attributes on one behavior each emit a line. Emission is **guarded**: if the assembly does not
+reference `Quark.Streaming.InMemory` (so `AddImplicitStreamSubscription` is unresolvable), the
+generator skips emission and reports **QRK0023** instead of emitting code that would not compile.
+Add a `Quark.Streaming.InMemory` reference to silence the warning and enable auto-wiring.
 
 ## SerializerGenerator
 

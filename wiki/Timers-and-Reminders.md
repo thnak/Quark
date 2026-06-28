@@ -86,6 +86,24 @@ _memory.Value.RefreshTimer?.Change(
     period:  TimeSpan.FromSeconds(60));
 ```
 
+### Diagnostics
+
+After each timer callback completes — successfully or with an error — the runtime fires
+`IQuarkDiagnosticListener.OnTimerFired(in TimerFiredEvent)`. The event carries the `GrainId`, the
+callback `Elapsed` time, and the `Exception` (null on success; `IsSuccess` is the convenience flag).
+Register a listener to surface slow or failing timers:
+
+```csharp
+services.AddQuarkDiagnostics<MyListener>();
+
+// in MyListener : IQuarkDiagnosticListener
+public void OnTimerFired(in TimerFiredEvent e)
+{
+    if (!e.IsSuccess)
+        _log.LogWarning(e.Exception, "Timer on {GrainId} threw after {Elapsed}", e.GrainId, e.Elapsed);
+}
+```
+
 ## Grain reminders
 
 Reminders are durable — they survive silo restarts and are stored in a backing store (in-memory or Redis). When a silo starts, it reloads all reminders for grains it owns and resumes firing them.

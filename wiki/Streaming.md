@@ -93,7 +93,32 @@ public sealed class AlertProcessorBehavior : IGrainBehavior, IAlertProcessorGrai
 }
 ```
 
-The runtime resolves the subscription when the matching stream receives its first message.
+The runtime resolves the subscription when the matching stream receives its first message: the
+in-memory provider looks the namespace up in the `ImplicitStreamSubscriptionRegistry`, then asks
+the silo's `LocalImplicitStreamActivator` to activate the grain whose key equals the stream key and
+deliver the message.
+
+### Registration
+
+Each namespace → grain-type mapping must be registered on the silo. The
+`BehaviorRegistrationGenerator` does this automatically: every `[ImplicitStreamSubscription("ns")]`
+emits an `AddImplicitStreamSubscription("ns", "GrainType")` call into `AddMyAssemblyBehaviors()`,
+so no manual wiring is needed.
+
+```csharp
+silo.Services.AddMemoryStreams("Alerts");
+silo.Services.AddMyAssemblyBehaviors();   // auto-registers the implicit subscription
+```
+
+To wire it by hand (or for a behavior outside the generated assembly):
+
+```csharp
+silo.Services.AddImplicitStreamSubscription("Alerts", "AlertProcessor");
+```
+
+> The generator emits this call only when the assembly references `Quark.Streaming.InMemory`.
+> Otherwise it skips emission and reports diagnostic **QRK0023** — add the reference to enable
+> auto-wiring. See [Source Generators](Source-Generators#implicit-stream-subscriptions).
 
 ## TCP client streams (`Quark.Client.Tcp`)
 

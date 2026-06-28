@@ -1,12 +1,12 @@
 # Persistence
 
-Quark offers five implemented persistence patterns and one planned pattern, from ephemeral in-memory state to full event sourcing.
+Quark offers six implemented persistence patterns, from ephemeral in-memory state to full event sourcing.
 
 | Pattern | Interface | Init timing | `.Value` access | Storage |
 |---|---|---|---|---|
 | In-memory | `IActivationMemory<T>` | `new()` sync | Sync | None |
 | Managed in-memory | `IManagedActivationMemory<T>` | Lazy — first `GetAsync()` | `await GetAsync()` | None |
-| Eager in-memory _(planned — [#27](https://github.com/thnak/Quark/issues/27))_ | `IEagerActivationMemory<T>` | Eager — before `OnActivateAsync` | Sync | None |
+| Eager in-memory | `IEagerActivationMemory<T>` | Eager — before `OnActivateAsync` | Sync | None |
 | Persistent activation | `IPersistentActivationMemory<T>` | `ReadStateAsync()` | Sync | `IGrainStorage` |
 | Named state injection | `[PersistentState] IPersistentState<T>` | `ReadStateAsync()` | `.State` | Named `IGrainStorage` |
 | Event sourcing | `JournaledGrain<TState,TEvent>` | Replay on activation | `State` | `ILogStorage` |
@@ -51,7 +51,7 @@ Key differences from `IActivationMemory<T>`:
 - Init is async and **lazy**: the factory runs only on the first `GetAsync()` call, not at activation time.
 - Access is always `await GetAsync()` — one async hop per call site.
 
-Key differences from `IEagerActivationMemory<T>` _(planned — see section 6)_:
+Key differences from `IEagerActivationMemory<T>` _(see section 6)_:
 
 - **Lazy vs. eager**: factory runs on first access, not during grain activation.
 - **Async vs. sync access**: `await GetAsync()` instead of `.Value`.
@@ -222,9 +222,7 @@ Register an `ILogStorage` provider (in-memory is provided):
 services.AddInMemoryLogStorage();
 ```
 
-## 6. Eager in-memory resource (`IEagerActivationMemory<T>`) — _planned_
-
-> **Status: planned.** Tracked in [issue #27](https://github.com/thnak/Quark/issues/27). This section documents the intended API; nothing described here is implemented yet.
+## 6. Eager in-memory resource (`IEagerActivationMemory<T>`)
 
 Fills the gap between `IActivationMemory<T>` (sync default-construct, no DI) and `IManagedActivationMemory<T>` (lazy, async access). Use when you need to **load a large or externally-sourced resource at grain activation time** and then access it **synchronously** on every call.
 
@@ -236,10 +234,10 @@ Key differences from `IManagedActivationMemory<T>`:
 - **Sync access**: `.Value` is available without `await` after activation.
 - **Full DI access**: the factory receives the scoped `IServiceProvider`, so repositories, options, and `ICallContext` are all available.
 
-### Planned API
+### API
 
 ```csharp
-public interface IEagerActivationMemory<T>
+public interface IEagerActivationMemory<T> where T : class
 {
     // Configure in the behavior constructor. The IServiceProvider is the
     // activation-scoped provider — resolve repositories or ICallContext from it.
@@ -254,7 +252,7 @@ public interface IEagerActivationMemory<T>
 }
 ```
 
-### Planned usage
+### Usage
 
 ```csharp
 public sealed class TimeSeriesBehavior : IGrainBehavior, ITimeSeriesGrain
@@ -279,17 +277,17 @@ public sealed class TimeSeriesBehavior : IGrainBehavior, ITimeSeriesGrain
 }
 ```
 
-### How it will work in the runtime
+### How it works in the runtime
 
-When `LocalGrainCallInvoker` creates a new `GrainActivation` it will:
+When `LocalGrainCallInvoker` creates a new `GrainActivation` it:
 
-1. Construct the behavior (behavior constructor fires → `Load(...)` registers the factory on the shell's `EagerActivationMemoryHolder<T>`).
-2. Call `RunEagerInitAsync(scopedServiceProvider, ct)` — discovers all `IEagerActivationMemoryHolder` instances in the memory bag and calls each factory.
-3. Call `OnActivateAsync` (if the behavior implements `IActivationLifecycle`).
+1. Constructs the behavior (behavior constructor fires → `Load(...)` registers the factory on the shell's `EagerActivationMemoryHolder<T>`).
+2. Calls `RunEagerInitAsync(scopedServiceProvider, ct)` — discovers all `IEagerActivationMemoryHolder` instances in the memory bag and calls each factory.
+3. Calls `OnActivateAsync` (if the behavior implements `IActivationLifecycle`).
 
-After step 2 `.Value` is available for the rest of the activation lifetime, including inside `OnActivateAsync`.
+After step 2 `.Value` is available for the rest of the activation lifetime, including inside `OnActivateAsync`. Accessing `.Value` before initialization (or when `Load` was never called) throws `InvalidOperationException`.
 
-### Planned registration
+### Registration
 
 ```csharp
 // Manual:

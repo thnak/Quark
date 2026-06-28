@@ -54,15 +54,19 @@ Auto-discovery via assembly scanning is not trim-safe. All providers — storage
 
 ## AOT analyzers
 
-`Quark.Analyzers` ships three analyzers that run during every build:
+`Quark.Analyzers` ships four AOT analyzers that run during every build:
 
 | Code | Rule | Severity |
 |---|---|---|
 | `QRK0001` | Dynamic type usage (`Type.GetType`, `MakeGenericType`, etc.) | Warning |
 | `QRK0002` | `Assembly.Load` / `Assembly.LoadFrom` | Warning |
 | `QRK0003` | `ISerializable`-based patterns | Error |
+| `QRK0004` | Instance `object.GetType()` whose result flows into a method argument — the runtime codec-dispatch pattern (e.g. `_codecs.TryGetGeneralizedCodec(item.GetType())`), which defeats trimming/AOT | Warning |
 
 These analyzers fire on any code in packages that set `EnableAotAnalyzer=true`.
+
+> `Quark.Analyzers` also ships data-isolation (`QRK0010`–`QRK0012`) and behavior-lifecycle
+> (`QRK0020`–`QRK0021`) analyzers; see their release notes in `AnalyzerReleases.Unshipped.md`.
 
 ## Native AOT smoke build
 
