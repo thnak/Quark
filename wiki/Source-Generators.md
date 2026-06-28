@@ -2,6 +2,62 @@
 
 `Quark.CodeGenerator` ships three Roslyn incremental generators. All generated code is AOT-safe — no reflection, no `MakeGenericType`, no runtime type lookups on hot paths.
 
+## What each generator emits
+
+Three inputs you write — a grain **interface**, a **behavior** class, and `[GenerateSerializer]`
+**state/DTO** types — drive three generators. Each input fans out to the artifacts the client and
+silo consume at runtime.
+
+```mermaid
+flowchart TB
+    subgraph You["Your code"]
+        IFACE["interface IMyGrain : IGrain"]
+        BEH["class MyBehavior :<br/>IGrainBehavior, IMyGrain"]
+        DTO["[GenerateSerializer]<br/>MyState"]
+    end
+    subgraph Gen["Quark.CodeGenerator"]
+        GPG[GrainProxyGenerator]
+        BRG[BehaviorRegistrationGenerator]
+        SG[SerializerGenerator]
+    end
+    IFACE --> GPG
+    BEH --> BRG
+    DTO --> SG
+
+    GPG --> PROXY["MyGrainProxy<br/>(client-side, implements IMyGrain)"]
+    GPG --> DISP["MyGrainProxy_TransportDispatcher<br/>(silo-side, .Instance)"]
+    BRG --> REG["AddMyAssemblyBehaviors()<br/>registers behavior + dispatcher + memory accessors"]
+    SG --> CODEC["MyStateCodec : IFieldCodec&lt;T&gt;"]
+    SG --> COPIER["MyStateCopier : IDeepCopier&lt;T&gt;"]
+
+    REG -. registers .-> DISP
+```
+
+## Grain ↔ proxy relationship at runtime
+
+The **proxy** (client) and the **transport dispatcher** (silo) are two halves of the same call. The
+proxy implements the grain interface and forwards each method as an *invokable* through an
+`IGrainCallInvoker`; over TCP the dispatcher reverses the serialization and re-invokes the real
+behavior locally.
+
+```mermaid
+flowchart LR
+    CALL["caller holds IMyGrain<br/>(actually MyGrainProxy)"]
+    CALL -->|"MethodAsync()"| PROXY[MyGrainProxy]
+    PROXY -->|"InvokeAsync(grainId, invokable)"| INV[IGrainCallInvoker]
+
+    INV -->|in-process| LOCAL[LocalGrainCallInvoker]
+    INV -->|remote| TCP[TcpGatewayCallInvoker]
+    TCP -. "serialized over TCP" .-> DISP["MyGrainProxy_TransportDispatcher<br/>(on the silo)"]
+    DISP --> LOCAL
+    LOCAL --> BEH["MyBehavior.MethodAsync()<br/>(the real grain code)"]
+```
+
+Both invokers reach the same `MyBehavior` — the proxy hides whether the grain is local or across the
+network. The pairing is by **grain type**: `AddGrainProxy<IMyGrain, MyGrainProxy>()` on the client and
+`AddGrainTransportDispatcher(new GrainType("MyGrain"), MyGrainProxy_TransportDispatcher.Instance)` on
+the silo (both emitted into the generated registration methods).
+
 ## GrainProxyGenerator
 
 For every `interface` that inherits `IGrain`, emits a `{InterfaceName[1..]}Proxy` class that:

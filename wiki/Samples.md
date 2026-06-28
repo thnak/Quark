@@ -175,3 +175,51 @@ When the server grain calls `stream.OnNextAsync(msg)`, the `GatewayMessagePump` 
 ### Spectre.Console UI
 
 The client uses [Spectre.Console](https://spectreconsole.net/) for colored terminal output. It is not a Quark dependency — replace with any console library.
+
+## Persistence ("Bank")
+
+A two-process silo + TCP client that puts five persistence / activation-memory patterns side by side, all keyed by the same account id. The best end-to-end reference for [Persistence](Persistence).
+
+**Source:** `samples/Persistence/`
+
+### Architecture
+
+```
+Bank.GrainInterfaces   — IAccountGrain, IProfileGrain, ILedgerGrain, IVaultGrain, IStatementGrain
+Bank.Grains            — five behaviors + state/events + eager/managed resources
+Bank.Server            — silo host: storage providers + generated registrations
+Bank.Client            — TCP gateway client + interactive loop
+```
+
+### Running
+
+```bash
+# Terminal 1 — Server (gateway on port 30005)
+dotnet run --project samples/Persistence/Bank.Server
+
+# Terminal 2 — Client
+dotnet run --project samples/Persistence/Bank.Client
+```
+
+Commands: `deposit/withdraw/balance` (activation memory), `profile/whoami` (named state), `credit/debit/ledger/history` (event sourcing), `vault/accrue/rate` (eager memory), `note/statement/close` (managed memory), `help`, `quit`.
+
+### Patterns demonstrated
+
+| Grain | Pattern | Mechanism |
+|---|---|---|
+| `IAccountGrain` | Persistent activation memory | `IPersistentActivationMemory<AccountState>` — shell-cached, write-through on `SaveAsync` |
+| `IProfileGrain` | Named persistent state | `[PersistentState("profile")] IPersistentState<ProfileState>` — per-call storage slot |
+| `ILedgerGrain` | Event sourcing | `JournaledGrain<LedgerState, LedgerEvent>` — append-only log replayed on activation |
+| `IVaultGrain` | Eager activation memory | `IEagerActivationMemory<RateSnapshot>` — DI-aware factory runs before `OnActivateAsync`, value read synchronously |
+| `IStatementGrain` | Managed activation memory | `IManagedActivationMemory<StatementBuffer>` — lazy async init, `Destroy` flush on deactivation |
+
+**Storage wiring (server):**
+
+```csharp
+silo.Services.AddInMemoryGrainStorage();                       // default IGrainStorage
+silo.Services.AddSingleton<ILogStorage, InMemoryLogStorage>(); // event log
+silo.Services.AddBankStateCopiers();                           // IDeepCopier<T> for stored state
+silo.Services.AddBankGrainsBehaviors();                        // generated registration
+```
+
+State written through `IGrainStorage` carries `[GenerateSerializer]` so the generator can emit the deep copier the provider uses to snapshot it. The event-sourced `LedgerState` needs no serializer — it is rebuilt from events. Swap `AddInMemoryGrainStorage()` for `AddRedisGrainStorage(...)` to persist across restarts with no grain-code changes. See the sample README for a full walkthrough.
