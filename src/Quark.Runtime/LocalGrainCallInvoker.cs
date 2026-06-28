@@ -246,6 +246,9 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     // -----------------------------------------------------------------------
 
+    internal Task EnsureActivatedAsync(GrainId grainId, CancellationToken cancellationToken = default)
+        => GetOrActivateAsync(grainId, cancellationToken);
+
     private static void BindScope(IServiceProvider sp, GrainActivation activation)
     {
         ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = activation;

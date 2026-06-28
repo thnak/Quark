@@ -16,6 +16,16 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
     private readonly ConcurrentDictionary<StreamId, List<Subscription>> _subs = new();
     private readonly ConcurrentDictionary<StreamId, List<(Guid SubId, IUntypedStreamObserver Observer)>> _untyped = new();
     private readonly ConcurrentDictionary<Guid, StreamId> _untypedIndex = new();
+    private readonly ImplicitStreamSubscriptionRegistry? _implicitRegistry;
+    private readonly IImplicitStreamActivator? _implicitActivator;
+
+    public StreamSubscriptionRegistry(
+        ImplicitStreamSubscriptionRegistry? implicitRegistry = null,
+        IImplicitStreamActivator? implicitActivator = null)
+    {
+        _implicitRegistry = implicitRegistry;
+        _implicitActivator = implicitActivator;
+    }
 
     public Guid Subscribe<T>(StreamId streamId, IAsyncObserver<T> observer)
     {
@@ -57,6 +67,15 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
     public async Task PublishAsync<T>(StreamId streamId, T item, StreamSequenceToken? token)
     {
+        // Ensure implicitly-subscribed grains are activated before fanning out so the
+        // first published item is delivered to a freshly-activated grain in the same call.
+        if (_implicitRegistry is not null && _implicitActivator is not null
+            && _implicitRegistry.TryGetGrainTypes(streamId.Namespace, out var grainTypeKeys))
+        {
+            foreach (string grainTypeKey in grainTypeKeys)
+                await _implicitActivator.EnsureActivatedAsync(grainTypeKey, streamId.Key).ConfigureAwait(false);
+        }
+
         if (_subs.TryGetValue(streamId, out var list))
         {
             List<Subscription> snapshot;

@@ -9,6 +9,7 @@ using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Streaming.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -91,6 +92,9 @@ public static class RuntimeServiceCollectionExtensions
 
         // Gateway client subscription table
         services.TryAddSingleton<GatewayClientSubscriptionTable>();
+
+        // Implicit stream subscription activator — wires publish→activate for [ImplicitStreamSubscription] grains
+        services.TryAddSingleton<IImplicitStreamActivator, LocalImplicitStreamActivator>();
 
         // Idle-timeout grain collector
         services.AddHostedService<GrainIdleCollector>();
