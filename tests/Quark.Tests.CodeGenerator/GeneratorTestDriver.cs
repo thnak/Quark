@@ -6,6 +6,8 @@ using Quark.Core.Abstractions.Grains;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Attributes;
+using Quark.Streaming.Abstractions;
+using Quark.Streaming.InMemory;
 
 namespace Quark.Tests.CodeGenerator;
 
@@ -53,6 +55,8 @@ internal static class GeneratorTestDriver
             .Append(MetadataReference.CreateFromFile(typeof(IGrainStorage).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(GenerateSerializerAttribute).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(ClientServiceCollectionExtensions).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(ImplicitStreamSubscriptionAttribute).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(InMemoryStreamingServiceCollectionExtensions).Assembly.Location))
             .GroupBy(static reference => reference.Display, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
             .ToImmutableArray();

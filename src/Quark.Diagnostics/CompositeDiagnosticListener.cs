@@ -87,4 +87,9 @@ public sealed class CompositeDiagnosticListener : IQuarkDiagnosticListener
     {
         foreach (var l in _listeners) l.OnObserverInvoked(in e);
     }
+
+    public void OnTimerFired(in TimerFiredEvent e)
+    {
+        foreach (var l in _listeners) l.OnTimerFired(in e);
+    }
 }

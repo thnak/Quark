@@ -203,23 +203,28 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
         _diagnostics.OnInvocationStart(new InvocationStartEvent(grainId, invokable.MethodId, isObserver: true));
         long startedAt = Stopwatch.GetTimestamp();
+        bool dispatched = false;
 
         try
         {
             if (_observerRegistry?.TryGet(grainId, out ObserverRegistry.ObserverEntry entry) == true)
             {
+                dispatched = true;
                 await invokable.Invoke(entry.Target).ConfigureAwait(false);
                 _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: true, Stopwatch.GetElapsedTime(startedAt), null));
+                _diagnostics.OnObserverInvoked(new ObserverInvokedEvent(grainId, invokable.MethodId, true, null));
                 return;
             }
 
             if (_tcpObserverTable?.TryGet(grainId, out Func<uint, ReadOnlyMemory<byte>, CancellationToken, Task>? writeBack) == true)
             {
+                dispatched = true;
                 var buffer = new System.Buffers.ArrayBufferWriter<byte>();
                 var writer = new Quark.Serialization.Abstractions.Buffers.CodecWriter(buffer);
                 invokable.Serialize(ref writer);
                 await writeBack!(invokable.MethodId, buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
                 _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: true, Stopwatch.GetElapsedTime(startedAt), null));
+                _diagnostics.OnObserverInvoked(new ObserverInvokedEvent(grainId, invokable.MethodId, true, null));
                 return;
             }
 
@@ -231,11 +236,18 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: true, Stopwatch.GetElapsedTime(startedAt), ex));
+            if (dispatched)
+            {
+                _diagnostics.OnObserverInvoked(new ObserverInvokedEvent(grainId, invokable.MethodId, false, ex));
+            }
             throw;
         }
     }
 
     // -----------------------------------------------------------------------
+
+    internal Task EnsureActivatedAsync(GrainId grainId, CancellationToken cancellationToken = default)
+        => GetOrActivateAsync(grainId, cancellationToken);
 
     private static void BindScope(IServiceProvider sp, GrainActivation activation)
     {
@@ -300,13 +312,13 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger,
             _diagnostics, _mailboxCapacity, _mailboxFullMode);
 
-        // Run OnActivateAsync lifecycle hook if the behavior implements IActivationLifecycle.
+        // Resolve behavior (ctor registers eager factories), init eager holders with the activation
+        // scope's SP, then call OnActivateAsync if IActivationLifecycle. Single scope — no double construction.
         await activation.PostAsync(async () =>
         {
             try
             {
-                await activation.RunLifecycleHookAsync(
-                    lifecycle => lifecycle.OnActivateAsync(ct)).ConfigureAwait(false);
+                await activation.RunActivationAsync(ct).ConfigureAwait(false);
                 activation.MarkActive();
             }
             catch

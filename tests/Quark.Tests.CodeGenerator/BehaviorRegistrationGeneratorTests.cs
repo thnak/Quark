@@ -348,6 +348,169 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     // -----------------------------------------------------------------------
+    // IEagerActivationMemory<T> injection (#76)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Generates_IEagerActivationMemory_Registration()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public sealed class ConnectionPool { }
+
+                              public interface IGatewayGrain : IGrainWithStringKey
+                              {
+                                  Task SendAsync();
+                              }
+
+                              public sealed class GatewayBehavior : IGrainBehavior, IGatewayGrain
+                              {
+                                  public GatewayBehavior(IEagerActivationMemory<ConnectionPool> pool) { }
+                                  public Task SendAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("AddEagerActivationMemory<global::Demo.ConnectionPool>(services)", generated);
+    }
+
+    [Fact]
+    public void Deduplicates_Eager_State_Registrations_Across_Behaviors()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public sealed class SharedPool { }
+
+                              public interface IAlpha3Grain : IGrainWithStringKey { Task RunAsync(); }
+                              public interface IBeta3Grain  : IGrainWithStringKey { Task RunAsync(); }
+
+                              public sealed class Alpha3Behavior : IGrainBehavior, IAlpha3Grain
+                              {
+                                  public Alpha3Behavior(IEagerActivationMemory<SharedPool> m) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+
+                              public sealed class Beta3Behavior : IGrainBehavior, IBeta3Grain
+                              {
+                                  public Beta3Behavior(IEagerActivationMemory<SharedPool> m) { }
+                                  public Task RunAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        int count = CountOccurrences(generated, "AddEagerActivationMemory<global::Demo.SharedPool>(services)");
+        Assert.Equal(1, count);
+    }
+
+    // -----------------------------------------------------------------------
+    // [ImplicitStreamSubscription] auto-registration (#75)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Generates_AddImplicitStreamSubscription_For_Attributed_Behavior()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Streaming.Abstractions;
+
+                              namespace Demo;
+
+                              public interface IRoomGrain : IGrainWithStringKey { Task PingAsync(); }
+
+                              [ImplicitStreamSubscription("chat")]
+                              public sealed class RoomBehavior : IGrainBehavior, IRoomGrain
+                              {
+                                  public Task PingAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("AddImplicitStreamSubscription(services,", generated);
+        Assert.Contains("\"chat\", \"RoomGrain\"", generated);
+    }
+
+    [Fact]
+    public void Generates_Multiple_ImplicitStreamSubscriptions_Per_Behavior()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Streaming.Abstractions;
+
+                              namespace Demo;
+
+                              public interface IMultiGrain : IGrainWithStringKey { Task PingAsync(); }
+
+                              [ImplicitStreamSubscription("ns-a")]
+                              [ImplicitStreamSubscription("ns-b")]
+                              public sealed class MultiBehavior : IGrainBehavior, IMultiGrain
+                              {
+                                  public Task PingAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("\"ns-a\", \"MultiGrain\"", generated);
+        Assert.Contains("\"ns-b\", \"MultiGrain\"", generated);
+        Assert.Equal(2, CountOccurrences(generated, "AddImplicitStreamSubscription(services,"));
+    }
+
+    [Fact]
+    public void ImplicitStreamSubscription_Respects_GrainBehavior_Attribute_Key()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Streaming.Abstractions;
+
+                              namespace Demo;
+
+                              public interface IRoomGrain : IGrainWithStringKey { Task PingAsync(); }
+
+                              [GrainBehavior("room-type")]
+                              [ImplicitStreamSubscription("chat")]
+                              public sealed class RoomBehavior : IGrainBehavior, IRoomGrain
+                              {
+                                  public Task PingAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("\"chat\", \"room-type\"", generated);
+    }
+
+    // -----------------------------------------------------------------------
     // [PersistentState] IPersistentState<T> injection
     // -----------------------------------------------------------------------
 

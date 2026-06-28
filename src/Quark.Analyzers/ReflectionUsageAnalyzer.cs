@@ -45,9 +45,21 @@ public sealed class ReflectionUsageAnalyzer : DiagnosticAnalyzer
         true,
         helpLinkUri: "https://github.com/thnak/Quark/docs/aot.md");
 
+    // QRK0004 — instance GetType() flowing into a method argument (runtime codec dispatch)
+    public static readonly DiagnosticDescriptor RuntimeGetTypeForCodecDispatch = new(
+        "QRK0004",
+        "Instance GetType() used to drive runtime dispatch",
+        "'{0}' calls object.GetType() at runtime to select a codec or dispatch target. " +
+        "This is incompatible with Native AOT. Use typeof(T) at the call site, or annotate " +
+        "the containing method with [RequiresDynamicCode].",
+        "Quark.AOT",
+        DiagnosticSeverity.Warning,
+        true,
+        helpLinkUri: "https://github.com/thnak/Quark/docs/aot.md");
+
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(DynamicTypeResolution, DynamicAssemblyLoad, ISerializableUsage);
+        ImmutableArray.Create(DynamicTypeResolution, DynamicAssemblyLoad, ISerializableUsage, RuntimeGetTypeForCodecDispatch);
 
     /// <inheritdoc />
     public override void Initialize(AnalysisContext context)
@@ -107,5 +119,31 @@ public sealed class ReflectionUsageAnalyzer : DiagnosticAnalyzer
                 invocation.Syntax.GetLocation(),
                 $"Assembly.{methodName}"));
         }
+
+        // Detect instance object.GetType() whose result flows into a method argument.
+        // This covers codec-dispatch patterns like: _codecs.TryGetGeneralizedCodec(item.GetType())
+        // Suppressed when the containing method is already annotated with [RequiresDynamicCode].
+        if (methodName == "GetType" &&
+            !method.IsStatic &&
+            method.ContainingType?.SpecialType == SpecialType.System_Object &&
+            ctx.Operation.Parent is IArgumentOperation &&
+            !HasRequiresDynamicCode(ctx.ContainingSymbol))
+        {
+            ctx.ReportDiagnostic(Diagnostic.Create(
+                RuntimeGetTypeForCodecDispatch,
+                invocation.Syntax.GetLocation(),
+                "object.GetType()"));
+        }
+    }
+
+    private static bool HasRequiresDynamicCode(ISymbol symbol)
+    {
+        foreach (AttributeData attr in symbol.GetAttributes())
+        {
+            if (attr.AttributeClass?.ToDisplayString() ==
+                "System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute")
+                return true;
+        }
+        return false;
     }
 }

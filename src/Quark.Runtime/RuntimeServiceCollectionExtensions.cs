@@ -9,6 +9,7 @@ using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Streaming.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -92,6 +93,9 @@ public static class RuntimeServiceCollectionExtensions
         // Gateway client subscription table
         services.TryAddSingleton<GatewayClientSubscriptionTable>();
 
+        // Implicit stream subscription activator — wires publish→activate for [ImplicitStreamSubscription] grains
+        services.TryAddSingleton<IImplicitStreamActivator, LocalImplicitStreamActivator>();
+
         // Idle-timeout grain collector
         services.AddHostedService<GrainIdleCollector>();
 
@@ -143,6 +147,24 @@ public static class RuntimeServiceCollectionExtensions
             new ManagedActivationMemoryAccessor<T>(
                 sp.GetRequiredService<IActivationShellAccessor>()
                   .Shell.GetOrCreateManagedHolder<T>()));
+        return services;
+    }
+
+    /// <summary>
+    ///     Registers a scoped <see cref="IEagerActivationMemory{T}" /> backed by the activation shell.
+    ///     The resource is initialized eagerly at activation time — after the behavior constructor fires
+    ///     (which registers the factory via <c>Load()</c>) but before <c>OnActivateAsync</c>.
+    ///     The factory receives the activation scope's <see cref="IServiceProvider"/>.
+    ///     Cleanup runs after <c>OnDeactivateAsync</c>. NOT persisted to storage.
+    /// </summary>
+    public static IServiceCollection AddEagerActivationMemory<T>(
+        this IServiceCollection services)
+        where T : class
+    {
+        services.AddScoped<IEagerActivationMemory<T>>(static sp =>
+            new EagerActivationMemoryAccessor<T>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateEagerHolder<T>()));
         return services;
     }
 

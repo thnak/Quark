@@ -24,13 +24,20 @@ dotnet test Quark.slnx
 dotnet test tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj
 dotnet test tests/Quark.Tests.CodeGenerator/Quark.Tests.CodeGenerator.csproj
 dotnet test tests/Quark.Tests.Integration/Quark.Tests.Integration.csproj
+dotnet test tests/Quark.Tests.Fault/Quark.Tests.Fault.csproj                       # fault-injection unit tests
+dotnet test tests/Quark.Tests.Fault.Integration/Quark.Tests.Fault.Integration.csproj
 
 # Run a single test by name
 dotnet test tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj --filter "FullyQualifiedName~GrainCallIntegrationTests"
 
 # Native AOT smoke build (Linux)
 dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r linux-x64 /p:PublishAot=true
+
+# Run a sample end-to-end (each sample has its own server + client exe)
+dotnet run --project samples/Adventure/Adventure.Server    # then Adventure.Client in another shell
 ```
+
+Runnable samples live under `samples/` — `Adventure` (text adventure), `ChatRoom` (TCP gateway + observers), and `Streaming` (in-memory + TCP stream push). They are the best end-to-end usage references; `samples/Adventure/Adventure.slnx` opens that sample standalone.
 
 .NET SDK version is pinned to `10.0.201` in `global.json`. Package versions are managed centrally in `Directory.Packages.props`; do not add `Version=` attributes to individual `<PackageReference>` elements.
 
@@ -44,6 +51,7 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 | `Quark.Serialization.Abstractions` | `IFieldCodec<T>`, `IDeepCopier<T>`, `CodecWriter`/`CodecReader` (ZigZag+LEB128), `[GenerateSerializer]`/`[Id]`/`[Alias]` |
 | `Quark.Transport.Abstractions` | `ITransport`, `ITransportListener`, `ITransportConnection` (IDuplexPipe), `MessageEnvelope` |
 | `Quark.Core` | `ISiloBuilder`, `IClientBuilder`, `UseQuark()`/`UseQuarkClient()` host-builder extensions |
+| `Quark.Server` | Server meta-package — pulls in `Quark.Runtime`+`Quark.Core` for hosting silos |
 | `Quark.Runtime` | Silo-side runtime: `GrainActivation` (shell+mailbox), `GrainActivationTable`, `LocalGrainCallInvoker`, `SiloHostedService`, `GatewayMessagePump`, `GrainIdleCollector`, placement, clustering |
 | `Quark.Client` | `LocalClusterClient`, `LocalGrainFactory`, proxy/observer factory registries |
 | `Quark.Client.Tcp` | `TcpGatewayClusterClient`, `TcpGatewayGrainFactory`, TCP client stream push |
@@ -60,6 +68,8 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 | `Quark.Transactions` | `ITransactionalState<T>`, `[Transaction]`, `TransactionOption`, 2PC coordinator |
 | `Quark.CodeGenerator` | Roslyn incremental generators: `GrainProxyGenerator`, `BehaviorRegistrationGenerator`, `SerializerGenerator` |
 | `Quark.Analyzers` | AOT-safety Roslyn analyzers (QRK0001–QRK0003: dynamic type, Assembly.Load, ISerializable) |
+| `Quark.Diagnostics.Abstractions` | `IQuarkDiagnosticListener` (no-op-default event sink), `DiagnosticOptions`, `QuarkInstruments`, structured event structs (grain lifecycle, invocation, mailbox/stuck, connection, observer) |
+| `Quark.Diagnostics` | `AddQuarkDiagnostics<TListener>()`, `CompositeDiagnosticListener`, `StuckGrainDetector` (deadlock surface) |
 | `Quark.Testing` | `TestCluster`/`TestSilo`/`TestClient` in-process test harness |
 
 ### Engine model — key concepts
@@ -247,6 +257,17 @@ public Task DepositAsync(decimal amount) => _state.PerformUpdate(s => s.Balance 
 })
 ```
 
+## Diagnostics
+
+Structured observability hook for the runtime — distinct from OpenTelemetry tracing. Implement `IQuarkDiagnosticListener` (every method has a no-op default, so override only what you need) and register it:
+
+```csharp
+services.AddQuarkDiagnostics<MyListener>();   // typed listener
+services.AddQuarkStuckGrainDetector();         // emits OnMailboxStuck past DiagnosticOptions.StuckThreshold
+```
+
+Events are passed by `in` ref structs (grain lifecycle, invocation start/end, mailbox enqueue/stuck/resolved, connection accept/close, message dispatch, observer register/invoke). Multiple listeners are fanned out via `CompositeDiagnosticListener`. `StuckGrainDetector` is the deadlock-surfacing tool: it reports grains whose mailbox work item runs past the threshold.
+
 ## AOT / trim constraints
 
 Every production package has `IsTrimmable=true` and `EnableAotAnalyzer=true` (set in `Directory.Build.props`). New code must:
@@ -281,3 +302,11 @@ var grain = cluster.Client.GetGrain<IMyGrain>("key");
 Tests requiring Redis use Testcontainers (`Testcontainers` package, `Quark.Tests.Integration`). Skip integration tests when infrastructure is unavailable via `[Trait("category","integration")]`.
 
 In test projects, hand-write invokers and proxies rather than running the code generators — simpler and avoids circular project references.
+
+**Fault tests** (`Quark.Tests.Fault`) wire a `GrainActivationTable` directly through a `FaultFixture` with a `FaultScenarioHolder`, injecting failures (storage errors, timeouts) to exercise error paths without a full silo. `Quark.Tests.Fault.Integration` runs the same scenarios over a real cluster.
+
+## Reference docs
+
+- `wiki/` — narrative guides (`Architecture`, `Clustering-and-Transport`, `Serialization`, `Persistence`, `Streaming`, `Source-Generators`, `Orleans-Migration`, `AOT-and-Trim`, `Samples`).
+- `FEATURES.md` — Orleans feature-parity tracker (phases + per-feature status); design specs live under `docs/superpowers/specs/`.
+- `docs/aot.md` — AOT/trim deep dive. `data-isolation-spec.md` — multi-tenant data isolation design.

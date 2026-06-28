@@ -15,7 +15,10 @@ namespace Quark.CodeGenerator;
 ///         <item><c>AddGrainTransportDispatcher(grainType, Proxy_TransportDispatcher.Instance)</c></item>
 ///         <item>Scoped <c>IActivationMemory&lt;T&gt;</c> accessor per distinct TState</item>
 ///         <item>Scoped <c>IPersistentActivationMemory&lt;T&gt;</c> accessor per distinct TState</item>
+///         <item>Scoped <c>IManagedActivationMemory&lt;T&gt;</c> accessor per distinct resource type</item>
+///         <item>Scoped <c>IEagerActivationMemory&lt;T&gt;</c> accessor per distinct resource type</item>
 ///         <item>Scoped <c>IPersistentState&lt;T&gt;</c> via <c>[PersistentState("name","provider")]</c></item>
+///         <item><c>AddImplicitStreamSubscription(namespace, grainType)</c> per <c>[ImplicitStreamSubscription]</c></item>
 ///     </list>
 /// </summary>
 [Generator(LanguageNames.CSharp)]
@@ -30,6 +33,10 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
     private const string IPersistentActivationMemoryName = "IPersistentActivationMemory";
     private const string IManagedActivationMemoryNs = "Quark.Core.Abstractions.Hosting";
     private const string IManagedActivationMemoryName = "IManagedActivationMemory";
+    private const string IEagerActivationMemoryNs = "Quark.Core.Abstractions.Hosting";
+    private const string IEagerActivationMemoryName = "IEagerActivationMemory";
+    private const string ImplicitStreamSubscriptionAttributeFqn = "Quark.Streaming.Abstractions.ImplicitStreamSubscriptionAttribute";
+    private const string InMemoryStreamingExtensionsFqn = "Quark.Streaming.InMemory.InMemoryStreamingServiceCollectionExtensions";
     private const string IPersistentStateNs = "Quark.Persistence.Abstractions";
     private const string IPersistentStateName = "IPersistentState";
     private const string PersistentStateAttributeFqn = "Quark.Persistence.Abstractions.PersistentStateAttribute";
@@ -57,6 +64,14 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         messageFormat: "'{0}' is used as IPersistentState<T> with different (stateName, providerName) combinations in this assembly. Use distinct state types for each logical slot.",
         category: "Quark.CodeGenerator",
         defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    internal static readonly DiagnosticDescriptor ImplicitStreamSubscriptionNoProvider = new(
+        id: "QRK0023",
+        title: "[ImplicitStreamSubscription] auto-registration skipped",
+        messageFormat: "'{0}' is marked [ImplicitStreamSubscription] but this assembly does not reference Quark.Streaming.InMemory. Auto-registration was skipped — reference the package or call AddImplicitStreamSubscription(...) manually.",
+        category: "Quark.CodeGenerator",
+        defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
     /// <inheritdoc />
@@ -111,11 +126,11 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
 
         INamedTypeSymbol grainIface = grainIfaces[0];
 
-        ImmutableArray<Diagnostic> diagnostics = ImmutableArray<Diagnostic>.Empty;
+        var diagList = new List<Diagnostic>();
         if (grainIfaces.Count > 1)
         {
             Location location = type.Locations.FirstOrDefault() ?? Location.None;
-            diagnostics = ImmutableArray.Create(
+            diagList.Add(
                 Diagnostic.Create(AmbiguousGrainInterface, location, type.Name, grainIface.Name));
         }
 
@@ -145,6 +160,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         var inMemory = new List<string>();
         var persistent = new List<string>();
         var managed = new List<string>();
+        var eager = new List<string>();
         var persistentSlots = new List<PersistentStateSlot>();
 
         foreach (IMethodSymbol ctor in type.Constructors)
@@ -166,6 +182,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
                     persistent.Add(tArgFqn);
                 else if (paramNs == IManagedActivationMemoryNs && named.Name == IManagedActivationMemoryName)
                     managed.Add(tArgFqn);
+                else if (paramNs == IEagerActivationMemoryNs && named.Name == IEagerActivationMemoryName)
+                    eager.Add(tArgFqn);
                 else if (paramNs == IPersistentStateNs && named.Name == IPersistentStateName)
                 {
                     foreach (AttributeData attr in param.GetAttributes())
@@ -184,6 +202,29 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             }
         }
 
+        // [ImplicitStreamSubscription("ns")] on the behavior class (AllowMultiple = true).
+        var implicitNamespaces = new List<string>();
+        foreach (AttributeData attr in type.GetAttributes())
+        {
+            if (attr.AttributeClass?.ToDisplayString() == ImplicitStreamSubscriptionAttributeFqn &&
+                attr.ConstructorArguments.Length == 1 &&
+                attr.ConstructorArguments[0].Value is string ns &&
+                !string.IsNullOrWhiteSpace(ns))
+            {
+                implicitNamespaces.Add(ns);
+            }
+        }
+
+        // AddImplicitStreamSubscription lives in Quark.Streaming.InMemory. If the attribute is
+        // present but that package isn't referenced, we cannot emit a compilable call — warn and skip.
+        if (implicitNamespaces.Count > 0 &&
+            ctx.SemanticModel.Compilation.GetTypeByMetadataName(InMemoryStreamingExtensionsFqn) is null)
+        {
+            Location loc = type.Locations.FirstOrDefault() ?? Location.None;
+            diagList.Add(Diagnostic.Create(ImplicitStreamSubscriptionNoProvider, loc, type.Name));
+            implicitNamespaces.Clear();
+        }
+
         return new BehaviorModel(
             behaviorFqn: behaviorFqn,
             grainInterfaceFqn: grainIfaceFqn,
@@ -192,8 +233,10 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             inMemoryStateTypes: inMemory.Distinct().ToImmutableArray(),
             persistentStateTypes: persistent.Distinct().ToImmutableArray(),
             managedStateTypes: managed.Distinct().ToImmutableArray(),
+            eagerStateTypes: eager.Distinct().ToImmutableArray(),
+            implicitStreamNamespaces: implicitNamespaces.Distinct().ToImmutableArray(),
             persistentStateSlots: persistentSlots.Distinct().ToImmutableArray(),
-            diagnostics: diagnostics);
+            diagnostics: diagList.ToImmutableArray());
     }
 
     private static string GetGrainTypeName(INamedTypeSymbol behavior, INamedTypeSymbol grainIface)
@@ -252,6 +295,18 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             .SelectMany(static m => m.ManagedStateTypes)
             .Distinct()
             .OrderBy(static s => s)
+            .ToList();
+        List<string> eagerStates = valid
+            .SelectMany(static m => m.EagerStateTypes)
+            .Distinct()
+            .OrderBy(static s => s)
+            .ToList();
+        List<(string Namespace, string GrainTypeKey)> implicitSubscriptions = valid
+            .SelectMany(static m => m.ImplicitStreamNamespaces
+                .Select(ns => (Namespace: ns, GrainTypeKey: m.GrainTypeName)))
+            .Distinct()
+            .OrderBy(static x => x.Namespace, StringComparer.Ordinal)
+            .ThenBy(static x => x.GrainTypeKey, StringComparer.Ordinal)
             .ToList();
 
         // Collect [PersistentState] IPersistentState<T> slots; detect conflicts (same T, different name/provider).
@@ -322,6 +377,19 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"            new global::Quark.Persistence.Abstractions.ManagedActivationMemoryAccessor<{tArg}>(");
             sb.AppendLine($"                sp.GetRequiredService<global::Quark.Runtime.IActivationShellAccessor>()");
             sb.AppendLine($"                  .Shell.GetOrCreateManagedHolder<{tArg}>()));");
+        }
+
+        if (eagerStates.Count > 0) sb.AppendLine();
+        foreach (string tArg in eagerStates)
+        {
+            sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddEagerActivationMemory<{tArg}>(services);");
+        }
+
+        if (implicitSubscriptions.Count > 0) sb.AppendLine();
+        foreach ((string ns, string grainTypeKey) in implicitSubscriptions)
+        {
+            sb.AppendLine($"        global::Quark.Streaming.InMemory.InMemoryStreamingServiceCollectionExtensions.AddImplicitStreamSubscription(services,");
+            sb.AppendLine($"            \"{ns}\", \"{grainTypeKey}\");");
         }
 
         if (persistentSlots.Count > 0) sb.AppendLine();
@@ -414,6 +482,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             InMemoryStateTypes = ImmutableArray<string>.Empty;
             PersistentStateTypes = ImmutableArray<string>.Empty;
             ManagedStateTypes = ImmutableArray<string>.Empty;
+            EagerStateTypes = ImmutableArray<string>.Empty;
+            ImplicitStreamNamespaces = ImmutableArray<string>.Empty;
             PersistentStateSlots = ImmutableArray<PersistentStateSlot>.Empty;
         }
 
@@ -425,6 +495,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             ImmutableArray<string> inMemoryStateTypes,
             ImmutableArray<string> persistentStateTypes,
             ImmutableArray<string> managedStateTypes,
+            ImmutableArray<string> eagerStateTypes,
+            ImmutableArray<string> implicitStreamNamespaces,
             ImmutableArray<PersistentStateSlot> persistentStateSlots,
             ImmutableArray<Diagnostic> diagnostics)
         {
@@ -435,6 +507,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             InMemoryStateTypes = inMemoryStateTypes;
             PersistentStateTypes = persistentStateTypes;
             ManagedStateTypes = managedStateTypes;
+            EagerStateTypes = eagerStateTypes;
+            ImplicitStreamNamespaces = implicitStreamNamespaces;
             PersistentStateSlots = persistentStateSlots;
             Diagnostics = diagnostics;
         }
@@ -447,6 +521,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         public ImmutableArray<string> InMemoryStateTypes { get; }
         public ImmutableArray<string> PersistentStateTypes { get; }
         public ImmutableArray<string> ManagedStateTypes { get; }
+        public ImmutableArray<string> EagerStateTypes { get; }
+        public ImmutableArray<string> ImplicitStreamNamespaces { get; }
         public ImmutableArray<PersistentStateSlot> PersistentStateSlots { get; }
         public ImmutableArray<Diagnostic> Diagnostics { get; }
     }

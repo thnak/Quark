@@ -44,4 +44,9 @@ public interface IQuarkDiagnosticListener
     void OnObserverRegistered(in ObserverRegisteredEvent e) { }
     void OnObserverDeregistered(in ObserverDeregisteredEvent e) { }
     void OnObserverInvoked(in ObserverInvokedEvent e) { }
+
+    // ── Timers ───────────────────────────────────────────────────────────────
+
+    /// <summary>Called after a grain timer callback completes (successfully or with error).</summary>
+    void OnTimerFired(in TimerFiredEvent e) { }
 }
