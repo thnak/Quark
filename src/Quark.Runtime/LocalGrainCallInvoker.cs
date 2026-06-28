@@ -312,13 +312,13 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger,
             _diagnostics, _mailboxCapacity, _mailboxFullMode);
 
-        // Run OnActivateAsync lifecycle hook if the behavior implements IActivationLifecycle.
+        // Resolve behavior (ctor registers eager factories), init eager holders with the activation
+        // scope's SP, then call OnActivateAsync if IActivationLifecycle. Single scope — no double construction.
         await activation.PostAsync(async () =>
         {
             try
             {
-                await activation.RunLifecycleHookAsync(
-                    lifecycle => lifecycle.OnActivateAsync(ct)).ConfigureAwait(false);
+                await activation.RunActivationAsync(ct).ConfigureAwait(false);
                 activation.MarkActive();
             }
             catch

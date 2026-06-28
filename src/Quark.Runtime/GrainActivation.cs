@@ -150,6 +150,19 @@ public sealed class GrainActivation : IAsyncDisposable
     // Discriminator type so managed holders and state holders never share a key.
     private sealed class ManagedKey<T>;
 
+    // Discriminator type so eager holders cannot collide with state or managed holders.
+    private sealed class EagerKey<T>;
+
+    /// <summary>
+    ///     Returns or creates the <see cref="EagerActivationMemoryHolder{T}" /> for the given resource type.
+    ///     One holder per (activation, T). Automatically disposed after <c>OnDeactivateAsync</c> completes.
+    ///     The holder is initialized at activation time, before <c>OnActivateAsync</c>.
+    /// </summary>
+    public EagerActivationMemoryHolder<T> GetOrCreateEagerHolder<T>() where T : class
+        => (EagerActivationMemoryHolder<T>)_memoryBag.GetOrAdd(
+            typeof(EagerKey<T>),
+            static _ => new EagerActivationMemoryHolder<T>());
+
     /// <summary>
     ///     Gets or creates an activation-scoped singleton of type <typeparamref name="T" />.
     ///     The factory is invoked at most once per activation lifetime.
@@ -419,6 +432,32 @@ public sealed class GrainActivation : IAsyncDisposable
         if (behavior is IActivationLifecycle lifecycle)
         {
             await hook(lifecycle).ConfigureAwait(false);
+        }
+    }
+
+    // Runs the full activation sequence in a single scope:
+    // 1. Bind shell accessor + call context.
+    // 2. Resolve behavior (ctor fires; any IEagerActivationMemory<T>.Load() calls register factories).
+    // 3. Initialize all eager holders with the scoped SP BEFORE OnActivateAsync.
+    // 4. Call OnActivateAsync if the behavior implements IActivationLifecycle.
+    internal async Task RunActivationAsync(CancellationToken ct)
+    {
+        using IServiceScope scope = _root.CreateScope();
+        IServiceProvider sp = scope.ServiceProvider;
+        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = this;
+        sp.GetRequiredService<ICallContextSetter>().Set(GrainId);
+        IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(GrainType);
+        await RunEagerInitAsync(sp, ct).ConfigureAwait(false);
+        if (behavior is IActivationLifecycle lifecycle)
+            await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task RunEagerInitAsync(IServiceProvider scopedServices, CancellationToken ct)
+    {
+        foreach (object obj in _memoryBag.Values)
+        {
+            if (obj is IEagerActivationMemoryHolder holder)
+                await holder.InitAsync(scopedServices, ct).ConfigureAwait(false);
         }
     }
 

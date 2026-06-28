@@ -151,6 +151,24 @@ public static class RuntimeServiceCollectionExtensions
     }
 
     /// <summary>
+    ///     Registers a scoped <see cref="IEagerActivationMemory{T}" /> backed by the activation shell.
+    ///     The resource is initialized eagerly at activation time — after the behavior constructor fires
+    ///     (which registers the factory via <c>Load()</c>) but before <c>OnActivateAsync</c>.
+    ///     The factory receives the activation scope's <see cref="IServiceProvider"/>.
+    ///     Cleanup runs after <c>OnDeactivateAsync</c>. NOT persisted to storage.
+    /// </summary>
+    public static IServiceCollection AddEagerActivationMemory<T>(
+        this IServiceCollection services)
+        where T : class
+    {
+        services.AddScoped<IEagerActivationMemory<T>>(static sp =>
+            new EagerActivationMemoryAccessor<T>(
+                sp.GetRequiredService<IActivationShellAccessor>()
+                  .Shell.GetOrCreateEagerHolder<T>()));
+        return services;
+    }
+
+    /// <summary>
     ///     Registers a transport dispatcher for the specified grain type.
     /// </summary>
     public static IServiceCollection AddGrainTransportDispatcher(
