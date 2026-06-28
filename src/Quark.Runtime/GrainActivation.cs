@@ -172,7 +172,28 @@ public sealed class GrainActivation : IAsyncDisposable
             throw new InvalidOperationException("Cannot register a timer on a deactivating or inactive grain.");
         }
 
-        var timer = new GrainTimer<TState>(callback, state, options, PostAsync);
+        GrainId capturedId = GrainId;
+        IQuarkDiagnosticListener capturedDiagnostics = _diagnostics;
+        Func<TState, CancellationToken, Task> instrumented = async (s, ct) =>
+        {
+            long start = Stopwatch.GetTimestamp();
+            Exception? error = null;
+            try
+            {
+                await callback(s, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+                throw;
+            }
+            finally
+            {
+                capturedDiagnostics.OnTimerFired(new TimerFiredEvent(capturedId, Stopwatch.GetElapsedTime(start), error));
+            }
+        };
+
+        var timer = new GrainTimer<TState>(instrumented, state, options, PostAsync);
         lock (_timersLock) { _timers.Add(timer); }
         return timer;
     }

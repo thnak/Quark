@@ -24,6 +24,7 @@ public sealed class DiagnosticCollector : IQuarkDiagnosticListener
     private readonly ConcurrentQueue<ObserverRegisteredEvent> _observerRegistered = new();
     private readonly ConcurrentQueue<ObserverDeregisteredEvent> _observerDeregistered = new();
     private readonly ConcurrentQueue<ObserverInvokedEvent> _observerInvoked = new();
+    private readonly ConcurrentQueue<TimerFiredEvent> _timerFired = new();
 
     public IReadOnlyCollection<GrainActivatingEvent> GrainActivating => _grainActivating;
     public IReadOnlyCollection<GrainActivatedEvent> GrainActivated => _grainActivated;
@@ -40,6 +41,7 @@ public sealed class DiagnosticCollector : IQuarkDiagnosticListener
     public IReadOnlyCollection<ObserverRegisteredEvent> ObserverRegistered => _observerRegistered;
     public IReadOnlyCollection<ObserverDeregisteredEvent> ObserverDeregistered => _observerDeregistered;
     public IReadOnlyCollection<ObserverInvokedEvent> ObserverInvoked => _observerInvoked;
+    public IReadOnlyCollection<TimerFiredEvent> TimerFired => _timerFired;
 
     void IQuarkDiagnosticListener.OnGrainActivating(in GrainActivatingEvent e) => _grainActivating.Enqueue(e);
     void IQuarkDiagnosticListener.OnGrainActivated(in GrainActivatedEvent e) => _grainActivated.Enqueue(e);
@@ -56,6 +58,7 @@ public sealed class DiagnosticCollector : IQuarkDiagnosticListener
     void IQuarkDiagnosticListener.OnObserverRegistered(in ObserverRegisteredEvent e) => _observerRegistered.Enqueue(e);
     void IQuarkDiagnosticListener.OnObserverDeregistered(in ObserverDeregisteredEvent e) => _observerDeregistered.Enqueue(e);
     void IQuarkDiagnosticListener.OnObserverInvoked(in ObserverInvokedEvent e) => _observerInvoked.Enqueue(e);
+    void IQuarkDiagnosticListener.OnTimerFired(in TimerFiredEvent e) => _timerFired.Enqueue(e);
 
     /// <summary>Clears all collected events.</summary>
     public void Reset()
@@ -75,6 +78,7 @@ public sealed class DiagnosticCollector : IQuarkDiagnosticListener
         _observerRegistered.Clear();
         _observerDeregistered.Clear();
         _observerInvoked.Clear();
+        _timerFired.Clear();
     }
 
     /// <summary>
