@@ -227,6 +227,40 @@ public sealed class GrainProxyGeneratorTests
         Assert.Contains("global::Demo.ByteStatus _ret = (global::Demo.ByteStatus)reader.ReadByte();", generated);
     }
 
+    [Fact]
+    public void Preserves_Nullable_Reference_Type_In_Return_Type()
+    {
+        // Regression test for https://github.com/thnak/Quark/issues/83
+        // The proxy generator was dropping '?' from nullable reference type return values,
+        // causing the generated proxy method signature to not match the interface.
+        const string source = """
+                              #nullable enable
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public class MonsterInfo { }
+
+                              public interface IMonsterGrain : IGrainWithStringKey
+                              {
+                                  Task<MonsterInfo?> GetInfoAsync();
+                                  Task<string?> GetNameAsync();
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = Assert.Single(result.GeneratedSources);
+
+        // The proxy method and invokable struct must preserve the nullable '?' annotation.
+        // MonsterInfo? → fully qualified user type with '?'
+        Assert.Contains("global::Demo.MonsterInfo?>", generated);
+        // string? → built-in keyword alias is preserved (UseSpecialTypes means 'string' not 'System.String')
+        Assert.Contains("global::System.Threading.Tasks.Task<string?>", generated);
+    }
+
     private static void AssertNoErrors(ImmutableArray<Diagnostic> diagnostics)
     {
         Diagnostic[] errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();

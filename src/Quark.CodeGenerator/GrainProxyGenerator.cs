@@ -26,6 +26,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     private const string IGrainWithGuidKeyFqn    = "Quark.Core.Abstractions.Grains.IGrainWithGuidKey";
     private const string IGrainWithIntegerKeyFqn = "Quark.Core.Abstractions.Grains.IGrainWithIntegerKey";
 
+    // Like FullyQualifiedFormat but also emits the '?' suffix for nullable reference types,
+    // so that proxy method signatures and field declarations faithfully mirror the interface.
+    private static readonly SymbolDisplayFormat FullyQualifiedNullableFormat =
+        SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
+            SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -96,7 +102,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             }
 
             // Determine return style: Task, Task<T>, ValueTask, ValueTask<T>
-            string retType = method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            string retType = method.ReturnType.ToDisplayString(FullyQualifiedNullableFormat);
             bool isTask = false;
             bool isTaskOfT = false;
             bool isValueTask = false;
@@ -114,7 +120,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 isTaskOfT = true;
                 ITypeSymbol retArgType = nts.TypeArguments[0];
-                taskResultType = retArgType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                taskResultType = retArgType.ToDisplayString(FullyQualifiedNullableFormat);
                 returnModel = BuildReturnModel(retArgType);
             }
             else if (retName == "System.Threading.Tasks.ValueTask")
@@ -126,7 +132,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 isValueTaskOfT = true;
                 ITypeSymbol retArgType = nvts.TypeArguments[0];
-                taskResultType = retArgType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                taskResultType = retArgType.ToDisplayString(FullyQualifiedNullableFormat);
                 returnModel = BuildReturnModel(retArgType);
             }
 
@@ -154,7 +160,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         return new InterfaceModel(
             ns,
-            iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            iface.ToDisplayString(FullyQualifiedNullableFormat),
             proxySuffix,
             methods,
             isObserver);
@@ -168,7 +174,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     {
         ITypeSymbol type = param.Type;
         string name = param.Name;
-        string fqTypeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        string fqTypeName = type.ToDisplayString(FullyQualifiedNullableFormat);
 
         // ---- Clone strategy ------------------------------------------------
 
@@ -200,22 +206,22 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                     if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
                     {
                         elementFqTypeName = genericNamed.TypeArguments[0]
-                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            .ToDisplayString(FullyQualifiedNullableFormat);
                         cloneKind = CloneKind.NewList;
                     }
                     else if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
                     {
                         elementFqTypeName = genericNamed.TypeArguments[0]
-                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            .ToDisplayString(FullyQualifiedNullableFormat);
                         valueFqTypeName = genericNamed.TypeArguments[1]
-                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            .ToDisplayString(FullyQualifiedNullableFormat);
                         cloneKind = CloneKind.NewDictionary;
                     }
                 }
                 else if (type is IArrayTypeSymbol arrayType)
                 {
                     elementFqTypeName = arrayType.ElementType
-                        .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        .ToDisplayString(FullyQualifiedNullableFormat);
                     cloneKind = CloneKind.NewArray;
                 }
                 else if (HasAttribute(type, GenerateSerializerFqn) && type is INamedTypeSymbol gsNamed)
@@ -248,7 +254,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
     private static ParameterModel BuildReturnModel(ITypeSymbol retType)
     {
-        string fqTypeName = retType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        string fqTypeName = retType.ToDisplayString(FullyQualifiedNullableFormat);
         var serInfo = DetermineSerializeKind(retType);
 
         string? elementFqTypeName = null;
@@ -256,17 +262,17 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         if (retType is IArrayTypeSymbol arrType)
         {
-            elementFqTypeName = arrType.ElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            elementFqTypeName = arrType.ElementType.ToDisplayString(FullyQualifiedNullableFormat);
         }
         else if (retType is INamedTypeSymbol nts && nts.IsGenericType)
         {
             string def = nts.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
-                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(FullyQualifiedNullableFormat);
             else if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
             {
-                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                valueFqTypeName = nts.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(FullyQualifiedNullableFormat);
+                valueFqTypeName = nts.TypeArguments[1].ToDisplayString(FullyQualifiedNullableFormat);
             }
         }
 
