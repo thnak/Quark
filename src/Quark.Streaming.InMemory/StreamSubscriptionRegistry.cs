@@ -29,22 +29,33 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
     public Guid Subscribe<T>(StreamId streamId, IAsyncObserver<T> observer)
     {
-        var list = _subs.GetOrAdd(streamId, _ => []);
+        List<Subscription> list = _subs.GetOrAdd(streamId, _ => []);
         var sub = new Subscription
         {
             Id = Guid.NewGuid(),
             OnNext = (item, token) => observer.OnNextAsync((T)item, token),
-            OnError = ex => observer.OnErrorAsync(ex),
-            OnCompleted = () => observer.OnCompletedAsync()
+            OnError = observer.OnErrorAsync,
+            OnCompleted = observer.OnCompletedAsync
         };
-        lock (list) list.Add(sub);
+        lock (list)
+        {
+            list.Add(sub);
+        }
+
         return sub.Id;
     }
 
     public void Unsubscribe(StreamId streamId, Guid subscriptionId)
     {
-        if (!_subs.TryGetValue(streamId, out var list)) return;
-        lock (list) list.RemoveAll(s => s.Id == subscriptionId);
+        if (!_subs.TryGetValue(streamId, out List<Subscription>? list))
+        {
+            return;
+        }
+
+        lock (list)
+        {
+            list.RemoveAll(s => s.Id == subscriptionId);
+        }
     }
 
     public Guid SubscribeUntyped(StreamId streamId, IUntypedStreamObserver observer)
@@ -60,9 +71,15 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
     public void UnsubscribeUntyped(Guid subId)
     {
-        if (!_untypedIndex.TryRemove(subId, out var streamId)) return;
-        if (_untyped.TryGetValue(streamId, out var list))
+        if (!_untypedIndex.TryRemove(subId, out StreamId streamId))
+        {
+            return;
+        }
+
+        if (_untyped.TryGetValue(streamId, out List<(Guid SubId, IUntypedStreamObserver Observer)>? list))
+        {
             lock (list) { list.RemoveAll(x => x.SubId == subId); }
+        }
     }
 
     public async Task PublishAsync<T>(StreamId streamId, T item, StreamSequenceToken? token)
@@ -70,26 +87,33 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         // Ensure implicitly-subscribed grains are activated before fanning out so the
         // first published item is delivered to a freshly-activated grain in the same call.
         if (_implicitRegistry is not null && _implicitActivator is not null
-            && _implicitRegistry.TryGetGrainTypes(streamId.Namespace, out var grainTypeKeys))
+            && _implicitRegistry.TryGetGrainTypes(streamId.Namespace, out IReadOnlyList<string> grainTypeKeys))
         {
             foreach (string grainTypeKey in grainTypeKeys)
                 await _implicitActivator.EnsureActivatedAsync(grainTypeKey, streamId.Key).ConfigureAwait(false);
         }
 
-        if (_subs.TryGetValue(streamId, out var list))
+        if (_subs.TryGetValue(streamId, out List<Subscription>? list))
         {
             List<Subscription> snapshot;
-            lock (list) snapshot = [..list];
+            lock (list)
+            {
+                snapshot = [..list];
+            }
+
             List<Exception>? errors = null;
-            foreach (var sub in snapshot)
+            foreach (Subscription sub in snapshot)
             {
                 try { await sub.OnNext(item!, token).ConfigureAwait(false); }
                 catch (Exception ex) { (errors ??= []).Add(ex); }
             }
-            if (errors is { Count: > 0 }) throw new AggregateException(errors);
+            if (errors is { Count: > 0 })
+            {
+                throw new AggregateException(errors);
+            }
         }
 
-        if (_untyped.TryGetValue(streamId, out var untypedList))
+        if (_untyped.TryGetValue(streamId, out List<(Guid SubId, IUntypedStreamObserver Observer)>? untypedList))
         {
             List<(Guid, IUntypedStreamObserver)> snapshot;
             lock (untypedList) { snapshot = [..untypedList]; }
@@ -100,11 +124,19 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
     public async Task PublishErrorAsync(StreamId streamId, Exception ex)
     {
-        if (!_subs.TryGetValue(streamId, out var list)) return;
+        if (!_subs.TryGetValue(streamId, out List<Subscription>? list))
+        {
+            return;
+        }
+
         List<Subscription> snapshot;
-        lock (list) snapshot = [..list];
+        lock (list)
+        {
+            snapshot = [..list];
+        }
+
         List<Exception>? errors = null;
-        foreach (var sub in snapshot)
+        foreach (Subscription sub in snapshot)
         {
             try { await sub.OnError(ex).ConfigureAwait(false); }
             catch (Exception e) { (errors ??= []).Add(e); }
@@ -114,15 +146,26 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
     public async Task PublishCompletedAsync(StreamId streamId)
     {
-        if (!_subs.TryGetValue(streamId, out var list)) return;
+        if (!_subs.TryGetValue(streamId, out List<Subscription>? list))
+        {
+            return;
+        }
+
         List<Subscription> snapshot;
-        lock (list) snapshot = [..list];
+        lock (list)
+        {
+            snapshot = [..list];
+        }
+
         List<Exception>? errors = null;
-        foreach (var sub in snapshot)
+        foreach (Subscription sub in snapshot)
         {
             try { await sub.OnCompleted().ConfigureAwait(false); }
             catch (Exception ex) { (errors ??= []).Add(ex); }
         }
-        if (errors is { Count: > 0 }) throw new AggregateException(errors);
+        if (errors is { Count: > 0 })
+        {
+            throw new AggregateException(errors);
+        }
     }
 }

@@ -151,9 +151,13 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     <see cref="ManagedActivationMemoryHolder{T}.Destroy" /> to configure lifecycle delegates.
     /// </summary>
     public ManagedActivationMemoryHolder<T> GetOrCreateManagedHolder<T>() where T : class
-        => (ManagedActivationMemoryHolder<T>)_memoryBag.GetOrAdd(
+    {
+        return (ManagedActivationMemoryHolder<T>)_memoryBag.GetOrAdd(
             typeof(ManagedKey<T>),
-            static _ => new ManagedActivationMemoryHolder<T>());
+            ValueFactory);
+
+        static object ValueFactory(Type _) => new ManagedActivationMemoryHolder<T>();
+    }
 
     // Discriminator type so managed holders and state holders never share a key.
     private sealed class ManagedKey<T>;
@@ -167,9 +171,13 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     The holder is initialized at activation time, before <c>OnActivateAsync</c>.
     /// </summary>
     public EagerActivationMemoryHolder<T> GetOrCreateEagerHolder<T>() where T : class
-        => (EagerActivationMemoryHolder<T>)_memoryBag.GetOrAdd(
+    {
+        return (EagerActivationMemoryHolder<T>)_memoryBag.GetOrAdd(
             typeof(EagerKey<T>),
-            static _ => new EagerActivationMemoryHolder<T>());
+            ValueFactory);
+
+        static object ValueFactory(Type _) => new EagerActivationMemoryHolder<T>();
+    }
 
     /// <summary>
     ///     Gets or creates an activation-scoped singleton of type <typeparamref name="T" />.
@@ -177,7 +185,11 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     Use for services that must be shared across all per-call scopes of the same activation.
     /// </summary>
     public T GetOrCreate<T>(Func<T> factory) where T : class
-        => (T)_memoryBag.GetOrAdd(typeof(T), _ => factory());
+    {
+        return (T)_memoryBag.GetOrAdd(typeof(T), ValueFactory);
+
+        object ValueFactory(Type _) => factory();
+    }
 
     /// <summary>
     ///     Registers a grain-scoped timer. The timer posts callbacks through this grain's mailbox.
