@@ -94,8 +94,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             IServiceProvider sp = scope.ServiceProvider;
             try
             {
-                BindScope(sp, activation);
-                IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType);
+                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
                 TResult result = await invokable.Invoke(behavior).ConfigureAwait(false);
                 if (_copierProvider?.TryGetCopier<TResult>() is { } copier)
                 {
@@ -160,8 +159,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             IServiceProvider sp = scope.ServiceProvider;
             try
             {
-                BindScope(sp, activation);
-                IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType);
+                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
                 await invokable.Invoke(behavior).ConfigureAwait(false);
                 tcs.TrySetResult(null);
             }
@@ -248,12 +246,6 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     internal Task EnsureActivatedAsync(GrainId grainId, CancellationToken cancellationToken = default)
         => GetOrActivateAsync(grainId, cancellationToken);
-
-    private static void BindScope(IServiceProvider sp, GrainActivation activation)
-    {
-        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = activation;
-        sp.GetRequiredService<ICallContextSetter>().Set(activation.GrainId);
-    }
 
     private IGrainCallInvoker? TryRouteRemote(GrainId grainId)
     {

@@ -447,9 +447,7 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         using IServiceScope scope = _root.CreateScope();
         IServiceProvider sp = scope.ServiceProvider;
-        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = this;
-        sp.GetRequiredService<ICallContextSetter>().Set(GrainId);
-        IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(GrainType);
+        IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, this, ct).ConfigureAwait(false);
         await RunEagerInitAsync(sp, ct).ConfigureAwait(false);
         if (behavior is IActivationLifecycle lifecycle)
         {
