@@ -36,7 +36,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private int _pendingWorkCount;    // work items queued but not yet executing
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
-    private readonly Channel<Func<Task>> _queue;
+    private readonly Channel<Func<ValueTask>> _queue;
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
 
@@ -66,11 +66,11 @@ public sealed class GrainActivation : IAsyncDisposable
     // A bounded mailbox caps the work a single grain can queue. We always create bounded channels in
     // FullMode.Wait; RejectWhenFull is enforced in PostAsync via TryWrite so a rejection raises a
     // clean MailboxFullException rather than silently dropping work.
-    private static Channel<Func<Task>> CreateQueue(int capacity)
+    private static Channel<Func<ValueTask>> CreateQueue(int capacity)
         => capacity <= 0
-            ? Channel.CreateUnbounded<Func<Task>>(
+            ? Channel.CreateUnbounded<Func<ValueTask>>(
                 new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false })
-            : Channel.CreateBounded<Func<Task>>(
+            : Channel.CreateBounded<Func<ValueTask>>(
                 new BoundedChannelOptions(capacity)
                 {
                     SingleReader = true,
@@ -335,7 +335,7 @@ public sealed class GrainActivation : IAsyncDisposable
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var ctx = ExecutionContext.Capture();
 
-        Func<Task> dispatched;
+        Func<ValueTask> dispatched;
         if (ctx is null)
         {
             dispatched = async () =>
@@ -376,7 +376,7 @@ public sealed class GrainActivation : IAsyncDisposable
         await tcs.Task.ConfigureAwait(false);
     }
 
-    private async Task RunDeactivationAsync(DeactivationReason reason)
+    private async ValueTask RunDeactivationAsync(DeactivationReason reason)
     {
         _diagnostics.OnGrainDeactivating(new GrainDeactivatingEvent(GrainId, reason));
         DisposeTimers();
@@ -422,13 +422,16 @@ public sealed class GrainActivation : IAsyncDisposable
         }
     }
 
-    internal async Task RunLifecycleHookAsync(Func<IActivationLifecycle, Task> hook)
+    internal async Task RunLifecycleHookAsync(
+        Func<IActivationLifecycle, Task> hook,
+        CancellationToken cancellationToken = default)
     {
         using IServiceScope scope = _root.CreateScope();
         IServiceProvider sp = scope.ServiceProvider;
-        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = this;
-        sp.GetRequiredService<ICallContextSetter>().Set(GrainId);
-        IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(GrainType);
+        IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(
+            sp,
+            this,
+            cancellationToken).ConfigureAwait(false);
         if (behavior is IActivationLifecycle lifecycle)
         {
             await hook(lifecycle).ConfigureAwait(false);
@@ -449,7 +452,9 @@ public sealed class GrainActivation : IAsyncDisposable
         IGrainBehavior behavior = sp.GetRequiredService<IBehaviorResolver>().Resolve(GrainType);
         await RunEagerInitAsync(sp, ct).ConfigureAwait(false);
         if (behavior is IActivationLifecycle lifecycle)
+        {
             await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+        }
     }
 
     private async Task RunEagerInitAsync(IServiceProvider scopedServices, CancellationToken ct)
@@ -457,7 +462,9 @@ public sealed class GrainActivation : IAsyncDisposable
         foreach (object obj in _memoryBag.Values)
         {
             if (obj is IEagerActivationMemoryHolder holder)
+            {
                 await holder.InitAsync(scopedServices, ct).ConfigureAwait(false);
+            }
         }
     }
 
@@ -477,7 +484,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
     private async Task RunLoopAsync(CancellationToken ct)
     {
-        await foreach (Func<Task> work in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        await foreach (Func<ValueTask> work in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
         {
             Interlocked.Decrement(ref _pendingWorkCount);
             Interlocked.Exchange(ref _workItemStartedAt, Stopwatch.GetTimestamp());

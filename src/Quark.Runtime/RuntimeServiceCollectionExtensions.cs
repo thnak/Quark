@@ -43,6 +43,7 @@ public static class RuntimeServiceCollectionExtensions
 
         // Activation table
         services.TryAddSingleton<GrainActivationTable>();
+        services.TryAddSingleton<IGrainScopeInitializerRegistry, GrainScopeInitializerRegistry>();
 
         // Per-call scope services — one instance per IServiceScope created per grain call
         services.TryAddScoped<ActivationShellAccessor>();
@@ -121,14 +122,30 @@ public static class RuntimeServiceCollectionExtensions
     {
         services.AddTransient<TBehavior>();
 
-        // Determine grain type key from [GrainBehavior] attribute or interface name
-        string key = typeof(TBehavior).GetCustomAttributes(typeof(GrainBehaviorAttribute), false)
-            is GrainBehaviorAttribute[] { Length: > 0 } attrs
-            ? attrs[0].BehaviorId
-            : typeof(TInterface).Name.StartsWith('I') ? typeof(TInterface).Name[1..] : typeof(TInterface).Name;
+        string key = GetGrainTypeKey<TInterface, TBehavior>();
 
         services.AddSingleton<IGrainBehaviorRegistration>(
             new GrainBehaviorRegistration(new GrainType(key), typeof(TBehavior)));
+
+        return services;
+    }
+
+    /// <summary>
+    ///     Registers a delegate that configures this grain type's per-call scope before
+    ///     the behavior instance and its scoped dependencies are resolved.
+    /// </summary>
+    public static IServiceCollection AddGrainScopeInitializer<TInterface, [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
+        this IServiceCollection services,
+        GrainScopeInitializer initializer)
+        where TInterface : IGrain
+        where TBehavior : class, IGrainBehavior, TInterface
+    {
+        ArgumentNullException.ThrowIfNull(initializer);
+
+        string key = GetGrainTypeKey<TInterface, TBehavior>();
+        services.AddSingleton<IGrainScopeInitializerRegistration>(
+            new GrainScopeInitializerRegistration(new GrainType(key), initializer));
 
         return services;
     }
@@ -204,4 +221,24 @@ public static class RuntimeServiceCollectionExtensions
     {
         public void Apply(TransportGrainDispatcherRegistry registry) => registry.Register(grainType, dispatcher);
     }
+
+    internal interface IGrainScopeInitializerRegistration
+    {
+        void Apply(IGrainScopeInitializerRegistry registry);
+    }
+
+    private sealed class GrainScopeInitializerRegistration(GrainType grainType, GrainScopeInitializer initializer)
+        : IGrainScopeInitializerRegistration
+    {
+        public void Apply(IGrainScopeInitializerRegistry registry) => registry.Register(grainType, initializer);
+    }
+
+    private static string GetGrainTypeKey<TInterface, [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>()
+        where TInterface : IGrain
+        where TBehavior : class, IGrainBehavior, TInterface
+        => typeof(TBehavior).GetCustomAttributes(typeof(GrainBehaviorAttribute), false)
+            is GrainBehaviorAttribute[] { Length: > 0 } attrs
+            ? attrs[0].BehaviorId
+            : typeof(TInterface).Name.StartsWith('I') ? typeof(TInterface).Name[1..] : typeof(TInterface).Name;
 }

@@ -44,6 +44,8 @@ public sealed class SiloHostedService : IHostedService
 
         // Apply deferred grain-type registrations (AddGrainBehavior<TInterface, TBehavior> calls).
         ApplyGrainRegistrations();
+        // Apply deferred per-call scope initializers (AddGrainScopeInitializer<TInterface, TBehavior> calls).
+        ApplyScopeInitializerRegistrations();
         // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
         ApplyTransportDispatcherRegistrations();
 
@@ -96,8 +98,7 @@ public sealed class SiloHostedService : IHostedService
 
     private void ApplyGrainRegistrations()
     {
-        var typeRegistry = _services.GetService(typeof(GrainTypeRegistry)) as GrainTypeRegistry;
-        if (typeRegistry is null)
+        if (_services.GetService(typeof(GrainTypeRegistry)) is not GrainTypeRegistry typeRegistry)
         {
             return;
         }
@@ -110,9 +111,7 @@ public sealed class SiloHostedService : IHostedService
 
     private void ApplyTransportDispatcherRegistrations()
     {
-        var dispatcherRegistry =
-            _services.GetService(typeof(TransportGrainDispatcherRegistry)) as TransportGrainDispatcherRegistry;
-        if (dispatcherRegistry is null)
+        if (_services.GetService(typeof(TransportGrainDispatcherRegistry)) is not TransportGrainDispatcherRegistry dispatcherRegistry)
         {
             return;
         }
@@ -120,6 +119,19 @@ public sealed class SiloHostedService : IHostedService
         foreach (RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainTransportDispatcherRegistration>())
         {
             reg.Apply(dispatcherRegistry);
+        }
+    }
+
+    private void ApplyScopeInitializerRegistrations()
+    {
+        if (_services.GetService(typeof(IGrainScopeInitializerRegistry)) is not IGrainScopeInitializerRegistry registry)
+        {
+            return;
+        }
+
+        foreach (RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration>())
+        {
+            reg.Apply(registry);
         }
     }
 }
