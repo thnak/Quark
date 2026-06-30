@@ -6,7 +6,7 @@ internal sealed class GrainTimer<TState> : IGrainTimer
 {
     private readonly Func<TState, CancellationToken, Task> _callback;
     private readonly bool _interleave;
-    private readonly Func<Func<Task>, ValueTask> _post;
+    private readonly Func<Func<ValueTask>, ValueTask> _post;
     private readonly TState _state;
     private readonly Timer _timer;
     private int _pending;
@@ -16,7 +16,7 @@ internal sealed class GrainTimer<TState> : IGrainTimer
         Func<TState, CancellationToken, Task> callback,
         TState state,
         GrainTimerCreationOptions options,
-        Func<Func<Task>, ValueTask> postToQueue)
+        Func<Func<ValueTask>, ValueTask> postToQueue)
     {
         _callback = callback;
         _state = state;

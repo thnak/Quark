@@ -57,9 +57,9 @@ public sealed class GrainActivationLifecycleTests
         var id = new GrainId(new GrainType("MyGrain"), "1");
         await using var activation = MakeActivation(id);
         var results = new List<int>();
-        await activation.PostAsync(() => { results.Add(1); return Task.CompletedTask; });
-        await activation.PostAsync(() => { results.Add(2); return Task.CompletedTask; });
-        await activation.PostAsync(() => { results.Add(3); return Task.CompletedTask; });
+        await activation.PostAsync(() => { results.Add(1); return ValueTask.CompletedTask; });
+        await activation.PostAsync(() => { results.Add(2); return ValueTask.CompletedTask; });
+        await activation.PostAsync(() => { results.Add(3); return ValueTask.CompletedTask; });
         Assert.Equal([1, 2, 3], results);
     }
 

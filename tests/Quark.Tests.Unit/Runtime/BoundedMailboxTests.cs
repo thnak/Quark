@@ -40,12 +40,12 @@ public sealed class BoundedMailboxTests
         await started.Task; // reader is now blocked, mailbox buffer is empty
 
         // Fill the bounded buffer to capacity (these never run — reader is blocked).
-        _ = grain.PostAsync(() => Task.CompletedTask);
-        _ = grain.PostAsync(() => Task.CompletedTask);
+        _ = grain.PostAsync(() => ValueTask.CompletedTask);
+        _ = grain.PostAsync(() => ValueTask.CompletedTask);
 
         // The next post overflows the buffer and must be rejected.
         await Assert.ThrowsAsync<MailboxFullException>(
-            () => grain.PostAsync(() => Task.CompletedTask).AsTask());
+            () => grain.PostAsync(() => ValueTask.CompletedTask).AsTask());
 
         release.SetResult();
     }
@@ -67,7 +67,7 @@ public sealed class BoundedMailboxTests
         // With capacity 0 the queue is unbounded; queueing far more than any cap must not throw.
         for (int i = 0; i < 1000; i++)
         {
-            _ = grain.PostAsync(() => Task.CompletedTask);
+            _ = grain.PostAsync(() => ValueTask.CompletedTask);
         }
 
         release.SetResult();
