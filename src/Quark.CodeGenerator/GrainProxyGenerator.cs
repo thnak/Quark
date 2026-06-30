@@ -26,6 +26,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     private const string IGrainWithGuidKeyFqn    = "Quark.Core.Abstractions.Grains.IGrainWithGuidKey";
     private const string IGrainWithIntegerKeyFqn = "Quark.Core.Abstractions.Grains.IGrainWithIntegerKey";
 
+    // Like FullyQualifiedFormat but also emits the '?' suffix for nullable reference types,
+    // so that proxy method signatures and field declarations faithfully mirror the interface.
+    private static readonly SymbolDisplayFormat FullyQualifiedNullableFormat =
+        SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
+            SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -96,7 +102,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             }
 
             // Determine return style: Task, Task<T>, ValueTask, ValueTask<T>
-            string retType = method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            string retType = method.ReturnType.ToDisplayString(FullyQualifiedNullableFormat);
             bool isTask = false;
             bool isTaskOfT = false;
             bool isValueTask = false;
@@ -114,7 +120,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 isTaskOfT = true;
                 ITypeSymbol retArgType = nts.TypeArguments[0];
-                taskResultType = retArgType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                taskResultType = retArgType.ToDisplayString(FullyQualifiedNullableFormat);
                 returnModel = BuildReturnModel(retArgType);
             }
             else if (retName == "System.Threading.Tasks.ValueTask")
@@ -126,7 +132,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 isValueTaskOfT = true;
                 ITypeSymbol retArgType = nvts.TypeArguments[0];
-                taskResultType = retArgType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                taskResultType = retArgType.ToDisplayString(FullyQualifiedNullableFormat);
                 returnModel = BuildReturnModel(retArgType);
             }
 
@@ -154,7 +160,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         return new InterfaceModel(
             ns,
-            iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            iface.ToDisplayString(FullyQualifiedNullableFormat),
             proxySuffix,
             methods,
             isObserver);
@@ -168,7 +174,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
     {
         ITypeSymbol type = param.Type;
         string name = param.Name;
-        string fqTypeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        string fqTypeName = type.ToDisplayString(FullyQualifiedNullableFormat);
 
         // ---- Clone strategy ------------------------------------------------
 
@@ -200,22 +206,22 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                     if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
                     {
                         elementFqTypeName = genericNamed.TypeArguments[0]
-                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            .ToDisplayString(FullyQualifiedNullableFormat);
                         cloneKind = CloneKind.NewList;
                     }
                     else if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
                     {
                         elementFqTypeName = genericNamed.TypeArguments[0]
-                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            .ToDisplayString(FullyQualifiedNullableFormat);
                         valueFqTypeName = genericNamed.TypeArguments[1]
-                            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            .ToDisplayString(FullyQualifiedNullableFormat);
                         cloneKind = CloneKind.NewDictionary;
                     }
                 }
                 else if (type is IArrayTypeSymbol arrayType)
                 {
                     elementFqTypeName = arrayType.ElementType
-                        .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        .ToDisplayString(FullyQualifiedNullableFormat);
                     cloneKind = CloneKind.NewArray;
                 }
                 else if (HasAttribute(type, GenerateSerializerFqn) && type is INamedTypeSymbol gsNamed)
@@ -248,7 +254,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
     private static ParameterModel BuildReturnModel(ITypeSymbol retType)
     {
-        string fqTypeName = retType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        string fqTypeName = retType.ToDisplayString(FullyQualifiedNullableFormat);
         var serInfo = DetermineSerializeKind(retType);
 
         string? elementFqTypeName = null;
@@ -256,17 +262,17 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         if (retType is IArrayTypeSymbol arrType)
         {
-            elementFqTypeName = arrType.ElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            elementFqTypeName = arrType.ElementType.ToDisplayString(FullyQualifiedNullableFormat);
         }
         else if (retType is INamedTypeSymbol { IsGenericType: true } nts)
         {
             string def = nts.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
-                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(FullyQualifiedNullableFormat);
             else if (def == "System.Collections.Generic.Dictionary<TKey, TValue>")
             {
-                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                valueFqTypeName = nts.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                elementFqTypeName = nts.TypeArguments[0].ToDisplayString(FullyQualifiedNullableFormat);
+                valueFqTypeName = nts.TypeArguments[1].ToDisplayString(FullyQualifiedNullableFormat);
             }
         }
 
@@ -329,7 +335,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
             {
                 var elemInfo = DetermineSerializeKind(namedList.TypeArguments[0]);
-                if (elemInfo.Kind != SerializeKind.Fallback)
+                if (elemInfo.Kind != SerializeKind.Fallback && elemInfo.Kind != SerializeKind.Enum)
                     return new SerializeInfo(SerializeKind.List,
                         elementKind: elemInfo.Kind,
                         elementCopierFq: elemInfo.CopierFq);
@@ -339,7 +345,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 var keyInfo = DetermineSerializeKind(namedList.TypeArguments[0]);
                 var valInfo = DetermineSerializeKind(namedList.TypeArguments[1]);
-                if (keyInfo.Kind != SerializeKind.Fallback && valInfo.Kind != SerializeKind.Fallback)
+                if (keyInfo.Kind != SerializeKind.Fallback && keyInfo.Kind != SerializeKind.Enum
+                    && valInfo.Kind != SerializeKind.Fallback && valInfo.Kind != SerializeKind.Enum)
                     return new SerializeInfo(SerializeKind.Dictionary,
                         elementKind: keyInfo.Kind,
                         valueKind: valInfo.Kind,
@@ -352,7 +359,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         if (type is IArrayTypeSymbol arr)
         {
             var elemInfo = DetermineSerializeKind(arr.ElementType);
-            if (elemInfo.Kind != SerializeKind.Fallback)
+            if (elemInfo.Kind != SerializeKind.Fallback && elemInfo.Kind != SerializeKind.Enum)
                 return new SerializeInfo(SerializeKind.Array,
                     elementKind: elemInfo.Kind,
                     elementCopierFq: elemInfo.CopierFq);
@@ -396,6 +403,26 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 if (iface.ToDisplayString() == IGrainObserverFqn)
                     return new SerializeInfo(SerializeKind.GrainObserverRef);
             }
+        }
+
+        // Enum types — write/read as their underlying integral type with a cast.
+        // ElementKind stores the underlying primitive SerializeKind.
+        if (type.TypeKind == TypeKind.Enum && type is INamedTypeSymbol enumNamedType)
+        {
+            SpecialType underlyingSpecial = enumNamedType.EnumUnderlyingType?.SpecialType ?? SpecialType.System_Int32;
+            SerializeKind underlyingKind = underlyingSpecial switch
+            {
+                SpecialType.System_Byte    => SerializeKind.UInt8,
+                SpecialType.System_SByte   => SerializeKind.Int8,
+                SpecialType.System_Int16   => SerializeKind.Int16,
+                SpecialType.System_UInt16  => SerializeKind.UInt16,
+                SpecialType.System_Int32   => SerializeKind.Int32,
+                SpecialType.System_UInt32  => SerializeKind.UInt32,
+                SpecialType.System_Int64   => SerializeKind.Int64,
+                SpecialType.System_UInt64  => SerializeKind.UInt64,
+                _                          => SerializeKind.Int32
+            };
+            return new SerializeInfo(SerializeKind.Enum, elementKind: underlyingKind);
         }
 
         return new SerializeInfo(SerializeKind.Fallback);
@@ -460,6 +487,36 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.GrainObserverRef =>
                 $"factory!.GetObserverRef<{fqTypeName}>(global::Quark.Core.Abstractions.Identity.GrainId.Create(new global::Quark.Core.Abstractions.Identity.GrainType(reader.ReadString()), reader.ReadString()))",
             _ => $"({fqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
+        };
+
+    // Emits write expression for an enum value: casts to underlying integral type then writes it.
+    private static string GetEnumWriteExpr(SerializeKind underlyingKind, string valueExpr)
+        => underlyingKind switch
+        {
+            SerializeKind.UInt8  => $"writer.WriteByte((byte){valueExpr});",
+            SerializeKind.Int8   => $"writer.WriteInt32((int)(sbyte){valueExpr});",
+            SerializeKind.Int16  => $"writer.WriteInt32((int)(short){valueExpr});",
+            SerializeKind.UInt16 => $"writer.WriteVarUInt32((uint)(ushort){valueExpr});",
+            SerializeKind.Int32  => $"writer.WriteInt32((int){valueExpr});",
+            SerializeKind.UInt32 => $"writer.WriteVarUInt32((uint){valueExpr});",
+            SerializeKind.Int64  => $"writer.WriteInt64((long){valueExpr});",
+            SerializeKind.UInt64 => $"writer.WriteVarUInt64((ulong){valueExpr});",
+            _                    => $"writer.WriteInt32((int){valueExpr});"
+        };
+
+    // Emits read expression for an enum value: reads the underlying integral type then casts.
+    private static string GetEnumReadExpr(SerializeKind underlyingKind, string enumFqTypeName)
+        => underlyingKind switch
+        {
+            SerializeKind.UInt8  => $"({enumFqTypeName})reader.ReadByte()",
+            SerializeKind.Int8   => $"({enumFqTypeName})(sbyte)reader.ReadInt32()",
+            SerializeKind.Int16  => $"({enumFqTypeName})(short)reader.ReadInt32()",
+            SerializeKind.UInt16 => $"({enumFqTypeName})(ushort)reader.ReadVarUInt32()",
+            SerializeKind.Int32  => $"({enumFqTypeName})reader.ReadInt32()",
+            SerializeKind.UInt32 => $"({enumFqTypeName})reader.ReadVarUInt32()",
+            SerializeKind.Int64  => $"({enumFqTypeName})reader.ReadInt64()",
+            SerializeKind.UInt64 => $"({enumFqTypeName})reader.ReadVarUInt64()",
+            _                    => $"({enumFqTypeName})reader.ReadInt32()"
         };
 
     private static bool HasAttribute(ITypeSymbol type, string fqAttributeName)
@@ -807,6 +864,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 sb.AppendLine($"{indent}}}");
                 break;
             }
+            case SerializeKind.Enum:
+            {
+                string writeExpr = GetEnumWriteExpr(p.ElementSerializeKind, fieldExpr);
+                sb.AppendLine($"{indent}{writeExpr}");
+                break;
+            }
             default:
             {
                 string writeExpr = GetWriteExpr(p.SerializeKind, fieldExpr, p.CopierFqTypeName, p.FqTypeName);
@@ -868,6 +931,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 sb.AppendLine($"{indent}    for (uint __i = 0; __i < __n_{p.Name}; __i++)");
                 sb.AppendLine($"{indent}        _{p.Name}[{keyReadExpr}] = {valReadExpr};");
                 sb.AppendLine($"{indent}}}");
+                break;
+            }
+            case SerializeKind.Enum:
+            {
+                string readExpr = GetEnumReadExpr(p.ElementSerializeKind, fqType);
+                sb.AppendLine($"{indent}{fqType} _{p.Name} = {readExpr};");
                 break;
             }
             default:
@@ -1086,6 +1155,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         GrainRefGuid,
         GrainRefInteger,
         GrainObserverRef,
+        Enum,
         Fallback
     }
 

@@ -1,0 +1,9 @@
+<Solution>
+    <Project Path="Realm.Common/Realm.Common.csproj"/>
+    <Project Path="Realm.GrainInterfaces/Realm.GrainInterfaces.csproj"/>
+    <Project Path="Realm.Grains/Realm.Grains.csproj"/>
+    <Project Path="Realm.Content/Realm.Content.csproj"/>
+    <Project Path="Realm.Server/Realm.Server.csproj"/>
+    <Project Path="Realm.Client/Realm.Client.csproj"/>
+    <Project Path="Realm.Tests/Realm.Tests.csproj"/>
+</Solution>

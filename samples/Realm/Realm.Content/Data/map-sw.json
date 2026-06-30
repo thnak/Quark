@@ -1,0 +1,21 @@
+{
+  "id": "map-sw",
+  "name": "Southwest Vale",
+  "width": 20,
+  "height": 20,
+  "grid": {
+    "blockedCoords": [
+      [10, 3], [11, 3], [10, 4],
+      [7, 10], [7, 11]
+    ]
+  },
+  "spawnPoints": [
+    { "x": 15, "y": 3 }
+  ],
+  "neighbors": {
+    "north": "map-nw",
+    "south": null,
+    "east": "map-se",
+    "west": null
+  }
+}

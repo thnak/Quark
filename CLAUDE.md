@@ -305,6 +305,16 @@ In test projects, hand-write invokers and proxies rather than running the code g
 
 **Fault tests** (`Quark.Tests.Fault`) wire a `GrainActivationTable` directly through a `FaultFixture` with a `FaultScenarioHolder`, injecting failures (storage errors, timeouts) to exercise error paths without a full silo. `Quark.Tests.Fault.Integration` runs the same scenarios over a real cluster.
 
+## Authoring skills (read before writing grain code)
+
+Verified, copy-paste-ready templates for common Quark authoring tasks live in `.claude/skills/`. Consult the relevant one BEFORE re-deriving boilerplate from samples — it is faster and matches house style:
+
+- `quark-writing-grains` — interface + POCO behavior + state + serialization + DI registration
+- `quark-streaming` — publish/subscribe, codecs, client stream push
+- `quark-persistence` — the 5 state patterns + storage providers
+- `quark-host-setup` — silo/client wiring, placement, timers, reminders, transactions
+- `quark-testing` — TestCluster harness + manual (hand-wired) registration
+
 ## Reference docs
 
 - `wiki/` — narrative guides (`Architecture`, `Clustering-and-Transport`, `Serialization`, `Persistence`, `Streaming`, `Source-Generators`, `Orleans-Migration`, `AOT-and-Trim`, `Samples`).

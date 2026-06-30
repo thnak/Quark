@@ -97,7 +97,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                var (serKind, copierFq) = GetMemberSerializeInfo(memberType);
+                var (serKind, copierFq, underlyingKind) = GetMemberSerializeInfo(memberType);
 
                 members.Add(new MemberModel(
                     id,
@@ -105,7 +105,8 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                     memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     isProperty,
                     serKind,
-                    copierFq));
+                    copierFq,
+                    underlyingKind));
             }
         }
 
@@ -122,7 +123,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             typeSymbol.IsValueType);
     }
 
-    private static (MemberSerializeKind kind, string? copierFq) GetMemberSerializeInfo(ITypeSymbol type)
+    private static (MemberSerializeKind kind, string? copierFq, MemberSerializeKind underlyingKind) GetMemberSerializeInfo(ITypeSymbol type)
     {
         MemberSerializeKind kind = type.SpecialType switch
         {
@@ -142,15 +143,15 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             _                          => MemberSerializeKind.Fallback
         };
 
-        if (kind != MemberSerializeKind.Fallback) return (kind, null);
+        if (kind != MemberSerializeKind.Fallback) return (kind, null, MemberSerializeKind.Fallback);
 
         // Guid
         if (type.ToDisplayString() == "System.Guid")
-            return (MemberSerializeKind.Guid, null);
+            return (MemberSerializeKind.Guid, null, MemberSerializeKind.Fallback);
 
         // DateTimeOffset
         if (type.ToDisplayString() == "System.DateTimeOffset")
-            return (MemberSerializeKind.DateTimeOffset, null);
+            return (MemberSerializeKind.DateTimeOffset, null, MemberSerializeKind.Fallback);
 
         // [GenerateSerializer] — emit {TypeName}Copier.WriteStatic / ReadStatic
         if (type is INamedTypeSymbol named)
@@ -162,12 +163,30 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                     string nsPrefix = named.ContainingNamespace.IsGlobalNamespace
                         ? "global::"
                         : $"global::{named.ContainingNamespace.ToDisplayString()}.";
-                    return (MemberSerializeKind.GeneratedCodec, $"{nsPrefix}{named.Name}Copier");
+                    return (MemberSerializeKind.GeneratedCodec, $"{nsPrefix}{named.Name}Copier", MemberSerializeKind.Fallback);
                 }
             }
         }
 
-        return (MemberSerializeKind.Fallback, null);
+        // Enum types — write/read as their underlying integral type with a cast.
+        if (type.TypeKind == TypeKind.Enum && type is INamedTypeSymbol enumNamedType)
+        {
+            MemberSerializeKind underlyingKind = (enumNamedType.EnumUnderlyingType?.SpecialType ?? SpecialType.System_Int32) switch
+            {
+                SpecialType.System_Byte    => MemberSerializeKind.UInt8,
+                SpecialType.System_SByte   => MemberSerializeKind.Int8,
+                SpecialType.System_Int16   => MemberSerializeKind.Int16,
+                SpecialType.System_UInt16  => MemberSerializeKind.UInt16,
+                SpecialType.System_Int32   => MemberSerializeKind.Int32,
+                SpecialType.System_UInt32  => MemberSerializeKind.UInt32,
+                SpecialType.System_Int64   => MemberSerializeKind.Int64,
+                SpecialType.System_UInt64  => MemberSerializeKind.UInt64,
+                _                          => MemberSerializeKind.Int32
+            };
+            return (MemberSerializeKind.Enum, null, underlyingKind);
+        }
+
+        return (MemberSerializeKind.Fallback, null, MemberSerializeKind.Fallback);
     }
 
     // -----------------------------------------------------------------------
@@ -428,6 +447,18 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             MemberSerializeKind.Guid    => $"writer.WriteRaw({val}.ToByteArray());",
             MemberSerializeKind.DateTimeOffset => $"writer.WriteInt64({val}.Ticks); writer.WriteInt64({val}.Offset.Ticks);",
             MemberSerializeKind.GeneratedCodec => $"{member.CopierFqTypeName}.WriteStatic(ref writer, {val});",
+            MemberSerializeKind.Enum => member.UnderlyingKind switch
+            {
+                MemberSerializeKind.UInt8  => $"writer.WriteByte((byte){val});",
+                MemberSerializeKind.Int8   => $"writer.WriteInt32((int)(sbyte){val});",
+                MemberSerializeKind.Int16  => $"writer.WriteInt32((int)(short){val});",
+                MemberSerializeKind.UInt16 => $"writer.WriteVarUInt32((uint)(ushort){val});",
+                MemberSerializeKind.Int32  => $"writer.WriteInt32((int){val});",
+                MemberSerializeKind.UInt32 => $"writer.WriteVarUInt32((uint){val});",
+                MemberSerializeKind.Int64  => $"writer.WriteInt64((long){val});",
+                MemberSerializeKind.UInt64 => $"writer.WriteVarUInt64((ulong){val});",
+                _                          => $"writer.WriteInt32((int){val});"
+            },
             _ => $"global::Quark.Runtime.GrainMessageSerializer.WriteValue(writer, {val});"
         };
         sb.AppendLine($"        {expr}");
@@ -452,6 +483,18 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             MemberSerializeKind.Guid    => "new global::System.Guid(reader.ReadRaw(16))",
             MemberSerializeKind.DateTimeOffset => "new global::System.DateTimeOffset(reader.ReadInt64(), global::System.TimeSpan.FromTicks(reader.ReadInt64()))",
             MemberSerializeKind.GeneratedCodec => $"{member.CopierFqTypeName}.ReadStatic(ref reader)!",
+            MemberSerializeKind.Enum => member.UnderlyingKind switch
+            {
+                MemberSerializeKind.UInt8  => $"({member.FqTypeName})reader.ReadByte()",
+                MemberSerializeKind.Int8   => $"({member.FqTypeName})(sbyte)reader.ReadInt32()",
+                MemberSerializeKind.Int16  => $"({member.FqTypeName})(short)reader.ReadInt32()",
+                MemberSerializeKind.UInt16 => $"({member.FqTypeName})(ushort)reader.ReadVarUInt32()",
+                MemberSerializeKind.Int32  => $"({member.FqTypeName})reader.ReadInt32()",
+                MemberSerializeKind.UInt32 => $"({member.FqTypeName})reader.ReadVarUInt32()",
+                MemberSerializeKind.Int64  => $"({member.FqTypeName})reader.ReadInt64()",
+                MemberSerializeKind.UInt64 => $"({member.FqTypeName})reader.ReadVarUInt64()",
+                _                          => $"({member.FqTypeName})reader.ReadInt32()"
+            },
             _ => $"({member.FqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
         };
         sb.AppendLine($"            {member.Name} = {readExpr},");
@@ -483,6 +526,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         Float, Double,
         String, Guid, DateTimeOffset,
         GeneratedCodec,
+        Enum,
         Fallback
     }
 
@@ -492,7 +536,8 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         string fqTypeName,
         bool isProperty,
         MemberSerializeKind serializeKind = MemberSerializeKind.Fallback,
-        string? copierFqTypeName = null)
+        string? copierFqTypeName = null,
+        MemberSerializeKind underlyingKind = MemberSerializeKind.Fallback)
     {
         public uint Id { get; } = id;
         public string Name { get; } = name;
@@ -500,5 +545,6 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         public bool IsProperty { get; } = isProperty;
         public MemberSerializeKind SerializeKind { get; } = serializeKind;
         public string? CopierFqTypeName { get; } = copierFqTypeName;
+        public MemberSerializeKind UnderlyingKind { get; } = underlyingKind;
     }
 }

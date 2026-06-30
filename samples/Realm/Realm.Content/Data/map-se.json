@@ -1,0 +1,21 @@
+{
+  "id": "map-se",
+  "name": "Southeast Lake Shore",
+  "width": 20,
+  "height": 20,
+  "grid": {
+    "blockedCoords": [
+      [7, 12], [8, 12], [7, 13],
+      [14, 7]
+    ]
+  },
+  "spawnPoints": [
+    { "x": 15, "y": 15 }
+  ],
+  "neighbors": {
+    "north": "map-ne",
+    "south": null,
+    "east": null,
+    "west": "map-sw"
+  }
+}
