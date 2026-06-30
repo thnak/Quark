@@ -12,11 +12,11 @@ Living checklist mirroring the phased plan. Check items off as merged. Do not st
 
 ## Phase 1 — Map authority (the core)
 
-- [ ] `IMapGrain` + `MapBehavior` with `IActivationMemory<MapRuntime>`, `[HashBasedPlacement]`
-- [ ] Tile-grid load on activation; `TryMoveAsync` collision/occupancy/bounds authority
-- [ ] `EnterAsync` / `LeaveAsync` roster management
-- [ ] Map tick via `RegisterGrainTimer` (no NPCs yet — flush empty)
-- [ ] Tests: collision, occupancy, bounds, enter/leave
+- [x] `IMapGrain` + `MapBehavior` with `IActivationMemory<MapRuntime>`, `[HashBasedPlacement]`
+- [x] Tile-grid load on activation; `TryMoveAsync` collision/occupancy/bounds authority
+- [x] `EnterAsync` / `LeaveAsync` roster management
+- [x] Map tick via `RegisterGrainTimer` (no NPCs yet — flush empty)
+- [x] Tests: collision, occupancy, bounds, enter/leave
 
 ## Phase 2 — Players & persistence
 

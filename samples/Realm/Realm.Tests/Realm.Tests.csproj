@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Realm.Grains/Realm.Grains.csproj"/>
+    <ProjectReference Include="../Realm.GrainInterfaces/Realm.GrainInterfaces.csproj"/>
+    <ProjectReference Include="../Realm.Common/Realm.Common.csproj"/>
+    <ProjectReference Include="../Realm.Content/Realm.Content.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Testing/Quark.Testing.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Client/Quark.Client.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Runtime/Quark.Runtime.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Persistence.Abstractions/Quark.Persistence.Abstractions.csproj"/>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+    <PackageReference Include="xunit"/>
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../Realm.Content/Data/*.json" Link="Data/%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

@@ -51,5 +51,6 @@
         <Project Path="samples/Realm/Realm.Content/Realm.Content.csproj"/>
         <Project Path="samples/Realm/Realm.Server/Realm.Server.csproj"/>
         <Project Path="samples/Realm/Realm.Client/Realm.Client.csproj"/>
+        <Project Path="samples/Realm/Realm.Tests/Realm.Tests.csproj"/>
     </Folder>
 </Solution>

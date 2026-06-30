@@ -5,4 +5,5 @@
     <Project Path="Realm.Content/Realm.Content.csproj"/>
     <Project Path="Realm.Server/Realm.Server.csproj"/>
     <Project Path="Realm.Client/Realm.Client.csproj"/>
+    <Project Path="Realm.Tests/Realm.Tests.csproj"/>
 </Solution>
