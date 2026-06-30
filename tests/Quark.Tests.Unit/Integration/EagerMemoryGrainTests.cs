@@ -59,16 +59,16 @@ public sealed class EagerResourceGrainProxy : IEagerResourceGrain
     }
 
     public Task<string> GetLoadedByIdAsync()
-        => _invoker.InvokeAsync<EagerResource_GetLoadedByIdInvokable, string>(_grainId, new EagerResource_GetLoadedByIdInvokable());
+        => _invoker.InvokeAsync<EagerResource_GetLoadedByIdInvokable, string>(_grainId, new EagerResource_GetLoadedByIdInvokable()).AsTask();
 
     public Task<int> GetInitCountAsync()
-        => _invoker.InvokeAsync<EagerResource_GetInitCountInvokable, int>(_grainId, new EagerResource_GetInitCountInvokable());
+        => _invoker.InvokeAsync<EagerResource_GetInitCountInvokable, int>(_grainId, new EagerResource_GetInitCountInvokable()).AsTask();
 
     public Task<bool> WasValueAvailableInOnActivateAsync()
-        => _invoker.InvokeAsync<EagerResource_WasValueAvailableInvokable, bool>(_grainId, new EagerResource_WasValueAvailableInvokable());
+        => _invoker.InvokeAsync<EagerResource_WasValueAvailableInvokable, bool>(_grainId, new EagerResource_WasValueAvailableInvokable()).AsTask();
 
     public Task SelfDestructAsync()
-        => _invoker.InvokeVoidAsync(_grainId, new EagerResource_SelfDestructInvokable());
+        => _invoker.InvokeVoidAsync(_grainId, new EagerResource_SelfDestructInvokable()).AsTask();
 }
 
 // ---------------------------------------------------------------------------

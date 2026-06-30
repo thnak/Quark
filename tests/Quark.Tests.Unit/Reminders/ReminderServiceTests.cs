@@ -142,19 +142,19 @@ public sealed class ReminderServiceTests
             get { lock (_lock) { return _voidCalls.ToList(); } }
         }
 
-        public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
+        public ValueTask<TResult> InvokeAsync<TInvokable, TResult>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
             where TInvokable : struct, IGrainInvokable<TResult>
             => throw new NotImplementedException();
 
-        public Task InvokeVoidAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
+        public ValueTask InvokeVoidAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
             where TInvokable : struct, IGrainVoidInvokable
         {
             string? reminderName = ((object)invokable) is ReceiveReminderInvokable r ? r.ReminderName : null;
             lock (_lock) { _voidCalls.Add((grainId, invokable.MethodId, reminderName)); }
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task InvokeObserverAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
+        public ValueTask InvokeObserverAsync<TInvokable>(GrainId grainId, TInvokable invokable, CancellationToken ct = default)
             where TInvokable : struct, IObserverVoidInvokable
             => throw new NotImplementedException();
     }

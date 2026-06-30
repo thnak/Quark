@@ -163,7 +163,7 @@ public sealed class IdleTimeoutIntegrationTests
             => new(grainId, invoker);
 
         public Task PingAsync()
-            => _invoker.InvokeVoidAsync(_grainId, new IdleGrain_PingInvokable());
+            => _invoker.InvokeVoidAsync(_grainId, new IdleGrain_PingInvokable()).AsTask();
     }
 
     // ----- DelayGrain: calls DelayDeactivation, should NOT be collected -----
@@ -223,6 +223,6 @@ public sealed class IdleTimeoutIntegrationTests
             => new(grainId, invoker);
 
         public Task PingAndDelayAsync()
-            => _invoker.InvokeVoidAsync(_grainId, new DelayGrain_PingInvokable());
+            => _invoker.InvokeVoidAsync(_grainId, new DelayGrain_PingInvokable()).AsTask();
     }
 }

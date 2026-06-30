@@ -175,10 +175,10 @@ public sealed class TransactionIntegrationTests
             => new(grainId, invoker);
 
         public Task DepositAsync(decimal amount)
-            => _invoker.InvokeVoidAsync(_grainId, new AccountGrain_DepositInvokable(amount));
+            => _invoker.InvokeVoidAsync(_grainId, new AccountGrain_DepositInvokable(amount)).AsTask();
 
         public Task<decimal> GetBalanceAsync()
             => _invoker.InvokeAsync<AccountGrain_GetBalanceInvokable, decimal>(
-                _grainId, new AccountGrain_GetBalanceInvokable());
+                _grainId, new AccountGrain_GetBalanceInvokable()).AsTask();
     }
 }

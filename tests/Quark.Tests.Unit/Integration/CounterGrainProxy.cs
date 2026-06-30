@@ -18,14 +18,14 @@ public sealed class CounterGrainProxy : ICounterGrain, IGrainProxyActivator<Coun
         => new(grainId, invoker);
 
     public Task<long> IncrementAsync()
-        => _invoker.InvokeAsync<CounterBehavior_IncrementInvokable, long>(_grainId, new CounterBehavior_IncrementInvokable());
+        => _invoker.InvokeAsync<CounterBehavior_IncrementInvokable, long>(_grainId, new CounterBehavior_IncrementInvokable()).AsTask();
 
     public Task<long> GetValueAsync()
-        => _invoker.InvokeAsync<CounterBehavior_GetValueInvokable, long>(_grainId, new CounterBehavior_GetValueInvokable());
+        => _invoker.InvokeAsync<CounterBehavior_GetValueInvokable, long>(_grainId, new CounterBehavior_GetValueInvokable()).AsTask();
 
     public Task ResetAsync()
-        => _invoker.InvokeVoidAsync(_grainId, new CounterBehavior_ResetInvokable());
+        => _invoker.InvokeVoidAsync(_grainId, new CounterBehavior_ResetInvokable()).AsTask();
 
     public Task SelfDestructAsync()
-        => _invoker.InvokeVoidAsync(_grainId, new CounterBehavior_SelfDestructInvokable());
+        => _invoker.InvokeVoidAsync(_grainId, new CounterBehavior_SelfDestructInvokable()).AsTask();
 }

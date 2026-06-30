@@ -137,7 +137,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             }
 
             var parameters = method.Parameters
-                .Select(p => BuildParameterModel(p))
+                .Select(BuildParameterModel)
                 .ToList();
 
             methods.Add(new MethodModel(
@@ -188,7 +188,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         {
             // IReadOnly* interfaces — no clone needed
             bool isReadOnly = false;
-            if (type is INamedTypeSymbol readOnlyNamed && readOnlyNamed.IsGenericType)
+            if (type is INamedTypeSymbol { IsGenericType: true } readOnlyNamed)
             {
                 string def = readOnlyNamed.ConstructedFrom.ToDisplayString();
                 if (def is "System.Collections.Generic.IReadOnlyList<T>"
@@ -200,7 +200,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
             if (!isReadOnly)
             {
-                if (type is INamedTypeSymbol genericNamed && genericNamed.IsGenericType)
+                if (type is INamedTypeSymbol { IsGenericType: true } genericNamed)
                 {
                     string def = genericNamed.ConstructedFrom.ToDisplayString();
                     if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
@@ -264,7 +264,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         {
             elementFqTypeName = arrType.ElementType.ToDisplayString(FullyQualifiedNullableFormat);
         }
-        else if (retType is INamedTypeSymbol nts && nts.IsGenericType)
+        else if (retType is INamedTypeSymbol { IsGenericType: true } nts)
         {
             string def = nts.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
@@ -325,11 +325,11 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             return new SerializeInfo(SerializeKind.DateTimeOffset);
 
         // byte[] — array of System.Byte
-        if (type is IArrayTypeSymbol byteArr && byteArr.ElementType.SpecialType == SpecialType.System_Byte)
+        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
             return new SerializeInfo(SerializeKind.Bytes);
 
         // Generic collections — List<T> / IList<T>
-        if (type is INamedTypeSymbol namedList && namedList.IsGenericType)
+        if (type is INamedTypeSymbol { IsGenericType: true } namedList)
         {
             string def = namedList.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
@@ -967,14 +967,14 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         if (m.IsObserver)
         {
             // Observer methods are always treated as void (fire-and-forget via InvokeObserverAsync).
+            // InvokeObserverAsync returns ValueTask; adapt to the declared interface return type.
             if (method.IsTask)
             {
-                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate});");
+                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate}).AsTask();");
             }
             else if (method.IsValueTask)
             {
-                sb.AppendLine(
-                    $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeObserverAsync(_grainId, {structCreate}));");
+                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate});");
             }
             else
             {
@@ -984,22 +984,25 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         }
         else if (method.IsTask)
         {
-            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate});");
+            // InvokeVoidAsync returns ValueTask; adapt to Task for the grain interface.
+            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate}).AsTask();");
         }
         else if (method.IsTaskOfT)
         {
+            // InvokeAsync returns ValueTask<T>; adapt to Task<T> for the grain interface.
             sb.AppendLine(
-                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate});");
+                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate}).AsTask();");
         }
         else if (method.IsValueTask)
         {
-            sb.AppendLine(
-                $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, {structCreate}));");
+            // InvokeVoidAsync returns ValueTask — return directly.
+            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate});");
         }
         else if (method.IsValueTaskOfT)
         {
+            // InvokeAsync returns ValueTask<T> — return directly.
             sb.AppendLine(
-                $"        return new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>(_invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate}));");
+                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate});");
         }
         else
         {

@@ -9,7 +9,6 @@ using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Buffers;
-using Quark.Transport.Abstractions;
 using Quark.Transport.Tcp;
 using Xunit;
 
@@ -168,7 +167,7 @@ public sealed class EnumRoundTripIntegrationTests : IAsyncLifetime
 
         public Task<TaskPriority> EchoAsync(TaskPriority priority)
             => _invoker.InvokeAsync<EnumGrainProxy_EchoAsyncInvokable, TaskPriority>(
-                _grainId, new EnumGrainProxy_EchoAsyncInvokable(priority));
+                _grainId, new EnumGrainProxy_EchoAsyncInvokable(priority)).AsTask();
     }
 
     // =========================================================================

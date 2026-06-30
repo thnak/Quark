@@ -165,11 +165,11 @@ file sealed class TestWorldGrainProxy : IWorldGrain, IGrainProxyActivator<TestWo
 
     public Task<PlayerSpawn> LoginAsync(string playerId)
         => _invoker.InvokeAsync<PWorld_LoginInvokable, PlayerSpawn>(
-               _grainId, new PWorld_LoginInvokable(playerId));
+               _grainId, new PWorld_LoginInvokable(playerId)).AsTask();
 
     public Task<MapDescriptor> GetMapAsync(string mapId)
         => _invoker.InvokeAsync<PWorld_GetMapInvokable, MapDescriptor>(
-               _grainId, new PWorld_GetMapInvokable(mapId));
+               _grainId, new PWorld_GetMapInvokable(mapId)).AsTask();
 }
 
 file sealed class TestMapGrainProxy : IMapGrain, IGrainProxyActivator<TestMapGrainProxy>
@@ -188,18 +188,18 @@ file sealed class TestMapGrainProxy : IMapGrain, IGrainProxyActivator<TestMapGra
 
     public Task<EnterResult> EnterAsync(string entityId, Coord at, EntityKind kind)
         => _invoker.InvokeAsync<PMap_EnterInvokable, EnterResult>(
-               _grainId, new PMap_EnterInvokable(entityId, at, kind));
+               _grainId, new PMap_EnterInvokable(entityId, at, kind)).AsTask();
 
     public Task LeaveAsync(string entityId)
-        => _invoker.InvokeVoidAsync(_grainId, new PMap_LeaveInvokable(entityId));
+        => _invoker.InvokeVoidAsync(_grainId, new PMap_LeaveInvokable(entityId)).AsTask();
 
     public Task<MoveResult> TryMoveAsync(string entityId, Direction dir)
         => _invoker.InvokeAsync<PMap_TryMoveInvokable, MoveResult>(
-               _grainId, new PMap_TryMoveInvokable(entityId, dir));
+               _grainId, new PMap_TryMoveInvokable(entityId, dir)).AsTask();
 
     public Task<MapSnapshot> SnapshotAsync()
         => _invoker.InvokeAsync<PMap_SnapshotInvokable, MapSnapshot>(
-               _grainId, new PMap_SnapshotInvokable());
+               _grainId, new PMap_SnapshotInvokable()).AsTask();
 }
 
 file sealed class TestPlayerGrainProxy : IPlayerGrain, IGrainProxyActivator<TestPlayerGrainProxy>
@@ -217,13 +217,13 @@ file sealed class TestPlayerGrainProxy : IPlayerGrain, IGrainProxyActivator<Test
         => new(grainId, invoker);
 
     public Task LoginAsync()
-        => _invoker.InvokeVoidAsync(_grainId, new PPlayer_LoginInvokable());
+        => _invoker.InvokeVoidAsync(_grainId, new PPlayer_LoginInvokable()).AsTask();
 
     public Task MoveAsync(Direction dir)
-        => _invoker.InvokeVoidAsync(_grainId, new PPlayer_MoveInvokable(dir));
+        => _invoker.InvokeVoidAsync(_grainId, new PPlayer_MoveInvokable(dir)).AsTask();
 
     public Task LogoutAsync()
-        => _invoker.InvokeVoidAsync(_grainId, new PPlayer_LogoutInvokable());
+        => _invoker.InvokeVoidAsync(_grainId, new PPlayer_LogoutInvokable()).AsTask();
 }
 
 // ── Invokables ────────────────────────────────────────────────────────────────

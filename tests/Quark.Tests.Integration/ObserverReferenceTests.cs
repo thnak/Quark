@@ -101,7 +101,7 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
             => new(grainId, invoker);
 
         public Task OnEventAsync(string message)
-            => _invoker.InvokeObserverAsync(_grainId, new EventObserverProxy_OnEventAsyncInvokable(message));
+            => _invoker.InvokeObserverAsync(_grainId, new EventObserverProxy_OnEventAsyncInvokable(message)).AsTask();
     }
 
     // -----------------------------------------------------------------------
@@ -207,14 +207,14 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
 
         public Task<int> IncrementViaSelfRefAsync()
             => _invoker.InvokeAsync<EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable, int>(
-                _grainId, new EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable());
+                _grainId, new EventSourceGrainProxy_IncrementViaSelfRefAsyncInvokable()).AsTask();
 
         public Task PublishAsync(string message, IEventObserver observer)
-            => _invoker.InvokeVoidAsync(_grainId, new EventSourceGrainProxy_PublishAsyncInvokable(message, observer));
+            => _invoker.InvokeVoidAsync(_grainId, new EventSourceGrainProxy_PublishAsyncInvokable(message, observer)).AsTask();
 
         public Task<int> GetCountAsync()
             => _invoker.InvokeAsync<EventSourceGrainProxy_GetCountAsyncInvokable, int>(
-                _grainId, new EventSourceGrainProxy_GetCountAsyncInvokable());
+                _grainId, new EventSourceGrainProxy_GetCountAsyncInvokable()).AsTask();
     }
 
     // -----------------------------------------------------------------------
@@ -313,9 +313,9 @@ public sealed class ObserverReferenceTests : IAsyncLifetime
         {
             private IGrainCallInvoker? _inner;
             public void SetInvoker(IGrainCallInvoker invoker) => _inner = invoker;
-            public Task<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainInvokable<TResult> => _inner!.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
-            public Task InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainVoidInvokable => _inner!.InvokeVoidAsync<TInvokable>(id, invokable, ct);
-            public Task InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IObserverVoidInvokable => _inner!.InvokeObserverAsync<TInvokable>(id, invokable, ct);
+            public ValueTask<TResult> InvokeAsync<TInvokable, TResult>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainInvokable<TResult> => _inner!.InvokeAsync<TInvokable, TResult>(id, invokable, ct);
+            public ValueTask InvokeVoidAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IGrainVoidInvokable => _inner!.InvokeVoidAsync<TInvokable>(id, invokable, ct);
+            public ValueTask InvokeObserverAsync<TInvokable>(GrainId id, TInvokable invokable, CancellationToken ct = default) where TInvokable : struct, IObserverVoidInvokable => _inner!.InvokeObserverAsync<TInvokable>(id, invokable, ct);
         }
     }
 }

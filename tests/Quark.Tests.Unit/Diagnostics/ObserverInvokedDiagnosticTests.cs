@@ -46,7 +46,7 @@ public sealed class ObserverInvokedDiagnosticTests
 
         var boom = new InvalidOperationException("boom");
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => invoker.InvokeObserverAsync(observerId, new StubInvokable(3u, _ => throw boom)));
+            () => invoker.InvokeObserverAsync(observerId, new StubInvokable(3u, _ => throw boom)).AsTask());
 
         Assert.Single(listener.Events);
         ObserverInvokedEvent evt = listener.Events[0];
@@ -64,7 +64,7 @@ public sealed class ObserverInvokedDiagnosticTests
         GrainId observerId = GrainId.Create(new GrainType("observer:IFoo"), "missing");
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => invoker.InvokeObserverAsync(observerId, new StubInvokable(0u, _ => { })));
+            () => invoker.InvokeObserverAsync(observerId, new StubInvokable(0u, _ => { })).AsTask());
 
         Assert.Empty(listener.Events);
     }

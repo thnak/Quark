@@ -15,5 +15,5 @@ public sealed class WorkerGrainProxy : IWorkerGrain
     }
 
     public Task<WorkerStatus> DoWorkAsync()
-        => _invoker.InvokeAsync<WorkerGrain_DoWorkInvokable, WorkerStatus>(_grainId, new WorkerGrain_DoWorkInvokable());
+        => _invoker.InvokeAsync<WorkerGrain_DoWorkInvokable, WorkerStatus>(_grainId, new WorkerGrain_DoWorkInvokable()).AsTask();
 }
