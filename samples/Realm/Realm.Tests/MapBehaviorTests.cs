@@ -203,18 +203,18 @@ file sealed class MapGrainProxy : IMapGrain, IGrainProxyActivator<MapGrainProxy>
 
     public Task<EnterResult> EnterAsync(string entityId, Coord at, EntityKind kind)
         => _invoker.InvokeAsync<MapBehavior_EnterInvokable, EnterResult>(
-               _grainId, new MapBehavior_EnterInvokable(entityId, at, kind));
+               _grainId, new MapBehavior_EnterInvokable(entityId, at, kind)).AsTask();
 
     public Task LeaveAsync(string entityId)
-        => _invoker.InvokeVoidAsync(_grainId, new MapBehavior_LeaveInvokable(entityId));
+        => _invoker.InvokeVoidAsync(_grainId, new MapBehavior_LeaveInvokable(entityId)).AsTask();
 
     public Task<MoveResult> TryMoveAsync(string entityId, Direction dir)
         => _invoker.InvokeAsync<MapBehavior_TryMoveInvokable, MoveResult>(
-               _grainId, new MapBehavior_TryMoveInvokable(entityId, dir));
+               _grainId, new MapBehavior_TryMoveInvokable(entityId, dir)).AsTask();
 
     public Task<MapSnapshot> SnapshotAsync()
         => _invoker.InvokeAsync<MapBehavior_SnapshotInvokable, MapSnapshot>(
-               _grainId, new MapBehavior_SnapshotInvokable());
+               _grainId, new MapBehavior_SnapshotInvokable()).AsTask();
 }
 
 // ── Invokables ────────────────────────────────────────────────────────────────

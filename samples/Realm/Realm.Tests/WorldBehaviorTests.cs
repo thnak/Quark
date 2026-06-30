@@ -86,11 +86,11 @@ file sealed class WorldGrainProxy : IWorldGrain, IGrainProxyActivator<WorldGrain
 
     public Task<PlayerSpawn> LoginAsync(string playerId)
         => _invoker.InvokeAsync<WorldBehavior_LoginAsyncInvokable, PlayerSpawn>(
-               _grainId, new WorldBehavior_LoginAsyncInvokable(playerId));
+               _grainId, new WorldBehavior_LoginAsyncInvokable(playerId)).AsTask();
 
     public Task<MapDescriptor> GetMapAsync(string mapId)
         => _invoker.InvokeAsync<WorldBehavior_GetMapAsyncInvokable, MapDescriptor>(
-               _grainId, new WorldBehavior_GetMapAsyncInvokable(mapId));
+               _grainId, new WorldBehavior_GetMapAsyncInvokable(mapId)).AsTask();
 }
 
 // ── Invokables ────────────────────────────────────────────────────────────────
