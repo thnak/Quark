@@ -22,8 +22,7 @@ namespace Quark.Runtime;
 public sealed class GrainActivation : IAsyncDisposable
 {
     // One pooled MailboxWorkItem cached per thread; avoids per-call heap allocation on the hot path.
-    [ThreadStatic]
-    private static MailboxWorkItem? t_cachedItem;
+    [ThreadStatic] private static MailboxWorkItem? _tCachedItem;
 
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger<GrainActivation> _logger;
@@ -37,9 +36,9 @@ public sealed class GrainActivation : IAsyncDisposable
     private Func<Task>? _onDeactivated;
     private long _lastAccessedTicks;
     private long _deactivationNotBeforeTicks;
-    private long _activatedAtTicks;   // Stopwatch ticks when MarkActive() is called
-    private long _workItemStartedAt;  // Stopwatch ticks when a work item starts executing; 0 = idle
-    private int _pendingWorkCount;    // work items queued but not yet executing
+    private long _activatedAtTicks; // Stopwatch ticks when MarkActive() is called
+    private long _workItemStartedAt; // Stopwatch ticks when a work item starts executing; 0 = idle
+    private int _pendingWorkCount; // work items queued but not yet executing
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
     // Stored so Deactivate() can post a fire-and-forget item without creating a capturing lambda.
@@ -196,7 +195,16 @@ public sealed class GrainActivation : IAsyncDisposable
 
         GrainId capturedId = GrainId;
         IQuarkDiagnosticListener capturedDiagnostics = _diagnostics;
-        Func<TState, CancellationToken, Task> instrumented = async (s, ct) =>
+
+        var timer = new GrainTimer<TState>(Instrumented, state, options, PostAsync);
+        lock (_timersLock)
+        {
+            _timers.Add(timer);
+        }
+
+        return timer;
+
+        async Task Instrumented(TState s, CancellationToken ct)
         {
             long start = Stopwatch.GetTimestamp();
             Exception? error = null;
@@ -213,11 +221,7 @@ public sealed class GrainActivation : IAsyncDisposable
             {
                 capturedDiagnostics.OnTimerFired(new TimerFiredEvent(capturedId, Stopwatch.GetElapsedTime(start), error));
             }
-        };
-
-        var timer = new GrainTimer<TState>(instrumented, state, options, PostAsync);
-        lock (_timersLock) { _timers.Add(timer); }
-        return timer;
+        }
     }
 
     /// <summary>
@@ -341,8 +345,8 @@ public sealed class GrainActivation : IAsyncDisposable
         _diagnostics.OnMailboxEnqueued(new MailboxEnqueuedEvent(GrainId, depth));
 
         // Rent from the thread-local pool; fall back to allocation on miss.
-        MailboxWorkItem item = t_cachedItem ?? new MailboxWorkItem();
-        t_cachedItem = null;
+        MailboxWorkItem item = _tCachedItem ?? new MailboxWorkItem();
+        _tCachedItem = null;
         item.Initialize(workItem, ExecutionContext.Capture());
 
         if (_mailboxFullMode == MailboxFullMode.RejectWhenFull && _mailboxCapacity > 0)
@@ -378,13 +382,14 @@ public sealed class GrainActivation : IAsyncDisposable
         DisposeTimers();
         try
         {
-            await RunLifecycleHookAsync(
-                lifecycle => lifecycle.OnDeactivateAsync(reason, CancellationToken.None)).ConfigureAwait(false);
+            await RunLifecycleHookAsync(lifecycle => lifecycle.OnDeactivateAsync(reason, CancellationToken.None))
+                .ConfigureAwait(false);
         }
         catch (Exception e)
         {
             _logger.LogWarning(e, "Error running OnDeactivateAsync lifecycle hook for {GrainId}", GrainId);
         }
+
         await DisposeManagedHoldersAsync().ConfigureAwait(false);
         _status = GrainActivationStatus.Inactive;
         _queue.Writer.TryComplete();
@@ -470,6 +475,7 @@ public sealed class GrainActivation : IAsyncDisposable
             timers = [.. _timers];
             _timers.Clear();
         }
+
         foreach (IGrainTimer t in timers)
         {
             t.Dispose();
@@ -516,27 +522,27 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         private ManualResetValueTaskSourceCore<bool> _core;
 
-        internal Func<ValueTask>? WorkItem;
-        internal ExecutionContext? Context;
+        private Func<ValueTask>? _workItem;
+        private ExecutionContext? _context;
 
         // Bridge slot: ExecutionContext.Run is synchronous, so the static callback stores the
         // resulting ValueTask here and we await it after Run() returns.
-        internal ValueTask PendingVt;
+        private ValueTask _pendingVt;
 
         private bool _isFireAndForget;
 
         // Static callback: receives 'this' as state — no closure object allocated.
-        private static readonly ContextCallback s_runInContext = static s =>
+        private static readonly ContextCallback SRunInContext = static s =>
         {
             var self = (MailboxWorkItem)s!;
-            self.PendingVt = self.WorkItem!();
+            self._pendingVt = self._workItem!();
         };
 
         /// <summary>Prepare for an awaited (pooled) work item. Resets the MVTSC for reuse.</summary>
         internal void Initialize(Func<ValueTask> work, ExecutionContext? ctx)
         {
-            WorkItem = work;
-            Context = ctx;
+            _workItem = work;
+            _context = ctx;
             _isFireAndForget = false;
             _core.Reset();
         }
@@ -547,8 +553,8 @@ public sealed class GrainActivation : IAsyncDisposable
         /// </summary>
         internal void InitFireAndForget(Func<ValueTask> work)
         {
-            WorkItem = work;
-            Context = null;
+            _workItem = work;
+            _context = null;
             _isFireAndForget = true;
         }
 
@@ -558,10 +564,12 @@ public sealed class GrainActivation : IAsyncDisposable
         /// </summary>
         internal void ReturnOnEnqueueFailure()
         {
-            WorkItem = null;
-            Context = null;
-            if (!_isFireAndForget && t_cachedItem is null)
-                t_cachedItem = this;
+            _workItem = null;
+            _context = null;
+            if (!_isFireAndForget && _tCachedItem is null)
+            {
+                _tCachedItem = this;
+            }
         }
 
         /// <summary>Awaitable signal that completes when <see cref="ExecuteAsync"/> finishes.</summary>
@@ -576,37 +584,44 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             try
             {
-                if (Context is null)
+                if (_context is null)
                 {
-                    await WorkItem!().ConfigureAwait(false);
+                    await _workItem!().ConfigureAwait(false);
                 }
                 else
                 {
-                    ExecutionContext.Run(Context, s_runInContext, this);
-                    await PendingVt.ConfigureAwait(false);
-                    PendingVt = default;
+                    ExecutionContext.Run(_context, SRunInContext, this);
+                    await _pendingVt.ConfigureAwait(false);
+                    _pendingVt = default;
                 }
 
                 if (!_isFireAndForget)
+                {
                     _core.SetResult(true);
                     // SetResult may run the caller's continuation synchronously (and thus GetResult),
                     // but pool return is deferred to the finally block below — after SetResult returns.
+                }
             }
             catch (Exception ex)
             {
                 if (_isFireAndForget)
+                {
                     throw; // let RunLoopAsync catch and log it
+                }
+
                 _core.SetException(ex);
             }
             finally
             {
                 // Clear state and return to pool. Runs after SetResult/SetException completes
                 // (including any synchronous continuations), so no concurrent renter sees stale state.
-                WorkItem = null;
-                Context = null;
-                PendingVt = default;
-                if (!_isFireAndForget && t_cachedItem is null)
-                    t_cachedItem = this;
+                _workItem = null;
+                _context = null;
+                _pendingVt = default;
+                if (!_isFireAndForget && _tCachedItem is null)
+                {
+                    _tCachedItem = this;
+                }
             }
         }
 
