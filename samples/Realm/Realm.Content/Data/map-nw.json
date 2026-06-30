@@ -1,0 +1,22 @@
+{
+  "id": "map-nw",
+  "name": "Northwest Clearing",
+  "width": 20,
+  "height": 20,
+  "grid": {
+    "blockedCoords": [
+      [5, 5], [5, 6], [6, 5],
+      [12, 2], [12, 3], [13, 2]
+    ]
+  },
+  "spawnPoints": [
+    { "x": 3, "y": 3 },
+    { "x": 15, "y": 8 }
+  ],
+  "neighbors": {
+    "north": null,
+    "south": "map-sw",
+    "east": "map-ne",
+    "west": null
+  }
+}

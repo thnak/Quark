@@ -45,5 +45,11 @@
         <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.Grains/Streaming.Simple.Grains.csproj"/>
         <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.SiloHost/Streaming.Simple.SiloHost.csproj"/>
         <Project Path="samples/Streaming/Streaming.Simple/Streaming.Simple.Client/Streaming.Simple.Client.csproj"/>
+        <Project Path="samples/Realm/Realm.Common/Realm.Common.csproj"/>
+        <Project Path="samples/Realm/Realm.GrainInterfaces/Realm.GrainInterfaces.csproj"/>
+        <Project Path="samples/Realm/Realm.Grains/Realm.Grains.csproj"/>
+        <Project Path="samples/Realm/Realm.Content/Realm.Content.csproj"/>
+        <Project Path="samples/Realm/Realm.Server/Realm.Server.csproj"/>
+        <Project Path="samples/Realm/Realm.Client/Realm.Client.csproj"/>
     </Folder>
 </Solution>
