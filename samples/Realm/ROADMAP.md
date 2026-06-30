@@ -20,10 +20,10 @@ Living checklist mirroring the phased plan. Check items off as merged. Do not st
 
 ## Phase 2 — Players & persistence
 
-- [ ] `IWorldGrain` + `WorldBehavior`: map registry, `LoginAsync` → start spawn
-- [ ] `IPlayerGrain` + `PlayerBehavior`: `LoginAsync` / `MoveAsync` / `LogoutAsync`
-- [ ] `IPersistentActivationMemory<PlayerState>` save/load; `AddInMemoryGrainStorage()`
-- [ ] Tests: login→spawn, persistence round-trip across deactivation
+- [x] `IWorldGrain` + `WorldBehavior`: map registry, `LoginAsync` → start spawn
+- [x] `IPlayerGrain` + `PlayerBehavior`: `LoginAsync` / `MoveAsync` / `LogoutAsync`
+- [x] `IPersistentActivationMemory<PlayerState>` save/load; `AddInMemoryGrainStorage()`
+- [x] Tests: login→spawn, persistence round-trip across deactivation
 
 ## Phase 3 — AoI broadcast & scene transitions
 

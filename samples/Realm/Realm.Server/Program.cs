@@ -7,6 +7,7 @@ using Quark.Streaming.InMemory;
 using Quark.Transport.Tcp;
 using Realm.Common;
 using Realm.Content;
+using Realm.Grains;
 
 IHost host = Host.CreateDefaultBuilder(args)
     .UseQuark(silo =>
@@ -19,6 +20,9 @@ IHost host = Host.CreateDefaultBuilder(args)
         silo.Services.AddMemoryStreams(RealmConstants.StreamProvider);
 
         silo.Services.AddRealmContent();
+        silo.Services.AddRealmCommonCopiers();
+        silo.Services.AddRealmGrainStateCopiers();
+        silo.Services.AddRealmGrainsBehaviors();
     })
     .UseQuarkClient(client =>
     {
