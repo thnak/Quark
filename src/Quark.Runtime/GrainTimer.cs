@@ -70,16 +70,18 @@ internal sealed class GrainTimer<TState> : IGrainTimer
         if (!postTask.IsCompletedSuccessfully)
         {
             Task __ = postTask.AsTask().ContinueWith(
-                _ =>
-                {
-                    if (!_interleave)
-                    {
-                        Interlocked.Exchange(ref _pending, 0);
-                    }
-                },
+                ContinuationFunction,
                 CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+        }
+    }
+
+    private void ContinuationFunction(Task _)
+    {
+        if (!_interleave)
+        {
+            Interlocked.Exchange(ref _pending, 0);
         }
     }
 }

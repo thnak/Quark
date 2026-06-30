@@ -32,10 +32,8 @@ public sealed class TcpClientStreamProvider : IStreamProvider
     public IAsyncStream<T> GetStream<T>(StreamId streamId)
     {
         return (IAsyncStream<T>)_streams.GetOrAdd((streamId, typeof(T)),
-            _ => new TcpClientStream<T>(
-                streamId,
-                _connection,
-                _dispatcher,
-                _codecProvider.GetRequiredCodec<T>()));
+            ValueFactory);
+
+        object ValueFactory((StreamId, Type) _) => new TcpClientStream<T>(streamId, _connection, _dispatcher, _codecProvider.GetRequiredCodec<T>());
     }
 }
