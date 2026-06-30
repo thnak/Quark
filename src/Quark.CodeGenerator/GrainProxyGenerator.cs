@@ -329,7 +329,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
             {
                 var elemInfo = DetermineSerializeKind(namedList.TypeArguments[0]);
-                if (elemInfo.Kind != SerializeKind.Fallback)
+                if (elemInfo.Kind != SerializeKind.Fallback && elemInfo.Kind != SerializeKind.Enum)
                     return new SerializeInfo(SerializeKind.List,
                         elementKind: elemInfo.Kind,
                         elementCopierFq: elemInfo.CopierFq);
@@ -339,7 +339,8 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             {
                 var keyInfo = DetermineSerializeKind(namedList.TypeArguments[0]);
                 var valInfo = DetermineSerializeKind(namedList.TypeArguments[1]);
-                if (keyInfo.Kind != SerializeKind.Fallback && valInfo.Kind != SerializeKind.Fallback)
+                if (keyInfo.Kind != SerializeKind.Fallback && keyInfo.Kind != SerializeKind.Enum
+                    && valInfo.Kind != SerializeKind.Fallback && valInfo.Kind != SerializeKind.Enum)
                     return new SerializeInfo(SerializeKind.Dictionary,
                         elementKind: keyInfo.Kind,
                         valueKind: valInfo.Kind,
@@ -352,7 +353,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         if (type is IArrayTypeSymbol arr)
         {
             var elemInfo = DetermineSerializeKind(arr.ElementType);
-            if (elemInfo.Kind != SerializeKind.Fallback)
+            if (elemInfo.Kind != SerializeKind.Fallback && elemInfo.Kind != SerializeKind.Enum)
                 return new SerializeInfo(SerializeKind.Array,
                     elementKind: elemInfo.Kind,
                     elementCopierFq: elemInfo.CopierFq);
@@ -396,6 +397,26 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 if (iface.ToDisplayString() == IGrainObserverFqn)
                     return new SerializeInfo(SerializeKind.GrainObserverRef);
             }
+        }
+
+        // Enum types — write/read as their underlying integral type with a cast.
+        // ElementKind stores the underlying primitive SerializeKind.
+        if (type.TypeKind == TypeKind.Enum && type is INamedTypeSymbol enumNamedType)
+        {
+            SpecialType underlyingSpecial = enumNamedType.EnumUnderlyingType?.SpecialType ?? SpecialType.System_Int32;
+            SerializeKind underlyingKind = underlyingSpecial switch
+            {
+                SpecialType.System_Byte    => SerializeKind.UInt8,
+                SpecialType.System_SByte   => SerializeKind.Int8,
+                SpecialType.System_Int16   => SerializeKind.Int16,
+                SpecialType.System_UInt16  => SerializeKind.UInt16,
+                SpecialType.System_Int32   => SerializeKind.Int32,
+                SpecialType.System_UInt32  => SerializeKind.UInt32,
+                SpecialType.System_Int64   => SerializeKind.Int64,
+                SpecialType.System_UInt64  => SerializeKind.UInt64,
+                _                          => SerializeKind.Int32
+            };
+            return new SerializeInfo(SerializeKind.Enum, elementKind: underlyingKind);
         }
 
         return new SerializeInfo(SerializeKind.Fallback);
@@ -460,6 +481,36 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             SerializeKind.GrainObserverRef =>
                 $"factory!.GetObserverRef<{fqTypeName}>(global::Quark.Core.Abstractions.Identity.GrainId.Create(new global::Quark.Core.Abstractions.Identity.GrainType(reader.ReadString()), reader.ReadString()))",
             _ => $"({fqTypeName})global::Quark.Runtime.GrainMessageSerializer.ReadArg(ref reader)!"
+        };
+
+    // Emits write expression for an enum value: casts to underlying integral type then writes it.
+    private static string GetEnumWriteExpr(SerializeKind underlyingKind, string valueExpr)
+        => underlyingKind switch
+        {
+            SerializeKind.UInt8  => $"writer.WriteByte((byte){valueExpr});",
+            SerializeKind.Int8   => $"writer.WriteInt32((int)(sbyte){valueExpr});",
+            SerializeKind.Int16  => $"writer.WriteInt32((int)(short){valueExpr});",
+            SerializeKind.UInt16 => $"writer.WriteVarUInt32((uint)(ushort){valueExpr});",
+            SerializeKind.Int32  => $"writer.WriteInt32((int){valueExpr});",
+            SerializeKind.UInt32 => $"writer.WriteVarUInt32((uint){valueExpr});",
+            SerializeKind.Int64  => $"writer.WriteInt64((long){valueExpr});",
+            SerializeKind.UInt64 => $"writer.WriteVarUInt64((ulong){valueExpr});",
+            _                    => $"writer.WriteInt32((int){valueExpr});"
+        };
+
+    // Emits read expression for an enum value: reads the underlying integral type then casts.
+    private static string GetEnumReadExpr(SerializeKind underlyingKind, string enumFqTypeName)
+        => underlyingKind switch
+        {
+            SerializeKind.UInt8  => $"({enumFqTypeName})reader.ReadByte()",
+            SerializeKind.Int8   => $"({enumFqTypeName})(sbyte)reader.ReadInt32()",
+            SerializeKind.Int16  => $"({enumFqTypeName})(short)reader.ReadInt32()",
+            SerializeKind.UInt16 => $"({enumFqTypeName})(ushort)reader.ReadVarUInt32()",
+            SerializeKind.Int32  => $"({enumFqTypeName})reader.ReadInt32()",
+            SerializeKind.UInt32 => $"({enumFqTypeName})reader.ReadVarUInt32()",
+            SerializeKind.Int64  => $"({enumFqTypeName})reader.ReadInt64()",
+            SerializeKind.UInt64 => $"({enumFqTypeName})reader.ReadVarUInt64()",
+            _                    => $"({enumFqTypeName})reader.ReadInt32()"
         };
 
     private static bool HasAttribute(ITypeSymbol type, string fqAttributeName)
@@ -807,6 +858,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 sb.AppendLine($"{indent}}}");
                 break;
             }
+            case SerializeKind.Enum:
+            {
+                string writeExpr = GetEnumWriteExpr(p.ElementSerializeKind, fieldExpr);
+                sb.AppendLine($"{indent}{writeExpr}");
+                break;
+            }
             default:
             {
                 string writeExpr = GetWriteExpr(p.SerializeKind, fieldExpr, p.CopierFqTypeName, p.FqTypeName);
@@ -868,6 +925,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
                 sb.AppendLine($"{indent}    for (uint __i = 0; __i < __n_{p.Name}; __i++)");
                 sb.AppendLine($"{indent}        _{p.Name}[{keyReadExpr}] = {valReadExpr};");
                 sb.AppendLine($"{indent}}}");
+                break;
+            }
+            case SerializeKind.Enum:
+            {
+                string readExpr = GetEnumReadExpr(p.ElementSerializeKind, fqType);
+                sb.AppendLine($"{indent}{fqType} _{p.Name} = {readExpr};");
                 break;
             }
             default:
@@ -1083,6 +1146,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         GrainRefGuid,
         GrainRefInteger,
         GrainObserverRef,
+        Enum,
         Fallback
     }
 

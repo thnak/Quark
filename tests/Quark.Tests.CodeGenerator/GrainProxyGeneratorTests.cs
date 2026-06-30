@@ -161,6 +161,72 @@ public sealed class GrainProxyGeneratorTests
             callerSource);
     }
 
+    [Fact]
+    public void Generates_Correct_ReadWrite_For_Enum_Parameter_And_Return()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public enum Priority { Low = 0, Normal = 1, High = 2 }
+
+                              public interface ITaskGrain : IGrainWithStringKey
+                              {
+                                  Task<Priority> GetPriorityAsync();
+                                  Task SetPriorityAsync(Priority priority);
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = Assert.Single(result.GeneratedSources);
+
+        // Enum parameter write: cast to underlying int and write
+        Assert.Contains("writer.WriteInt32((int)_priority);", generated);
+        // Enum parameter deserialize: read int and cast to enum type
+        Assert.Contains("global::Demo.Priority _priority = (global::Demo.Priority)reader.ReadInt32();", generated);
+        // Return value write in transport dispatcher
+        Assert.Contains("writer.WriteInt32((int)_ret);", generated);
+        // DeserializeResult: read int and cast to enum type
+        Assert.Contains("global::Demo.Priority _ret = (global::Demo.Priority)reader.ReadInt32();", generated);
+        // Must not fall back to boxed WriteValue/ReadArg for enum types
+        Assert.DoesNotContain("WriteValue(writer, _priority)", generated);
+        Assert.DoesNotContain("ReadArg(ref reader)", generated);
+    }
+
+    [Fact]
+    public void Generates_Correct_ReadWrite_For_Byte_Backed_Enum()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public enum ByteStatus : byte { Off = 0, On = 1 }
+
+                              public interface IStatusGrain : IGrainWithStringKey
+                              {
+                                  Task SetStatusAsync(ByteStatus status);
+                                  Task<ByteStatus> GetStatusAsync();
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = Assert.Single(result.GeneratedSources);
+
+        // Byte-backed enum: write as byte, read as byte with cast
+        Assert.Contains("writer.WriteByte((byte)_status);", generated);
+        Assert.Contains("global::Demo.ByteStatus _status = (global::Demo.ByteStatus)reader.ReadByte();", generated);
+        Assert.Contains("writer.WriteByte((byte)_ret);", generated);
+        Assert.Contains("global::Demo.ByteStatus _ret = (global::Demo.ByteStatus)reader.ReadByte();", generated);
+    }
+
     private static void AssertNoErrors(ImmutableArray<Diagnostic> diagnostics)
     {
         Diagnostic[] errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();

@@ -72,6 +72,37 @@ public sealed class SerializerGeneratorTests
         Assert.Empty(result.GeneratedSources);
     }
 
+    [Fact]
+    public void Generates_Correct_ReadWrite_For_Enum_Member_In_Dto()
+    {
+        const string source = """
+                              using Quark.Serialization.Abstractions.Attributes;
+
+                              namespace Demo;
+
+                              public enum Priority { Low = 0, Normal = 1, High = 2 }
+
+                              [GenerateSerializer]
+                              public sealed class TaskDto
+                              {
+                                  [Id(0)] public string? Name { get; set; }
+                                  [Id(1)] public Priority Level { get; set; }
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new SerializerGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = Assert.Single(result.GeneratedSources);
+
+        // WriteStatic: enum field written as cast-to-int
+        Assert.Contains("writer.WriteInt32((int)value.Level);", generated);
+        // ReadStatic: read int and cast back to enum type
+        Assert.Contains("Level = (global::Demo.Priority)reader.ReadInt32(),", generated);
+        // Must not fall back to boxed WriteValue/ReadArg for the enum member
+        Assert.DoesNotContain("WriteValue(writer, value.Level)", generated);
+    }
+
     private static void AssertNoErrors(ImmutableArray<Diagnostic> diagnostics)
     {
         Diagnostic[] errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
