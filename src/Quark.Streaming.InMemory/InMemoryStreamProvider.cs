@@ -17,5 +17,9 @@ public sealed class InMemoryStreamProvider : IStreamProvider
     public string Name { get; }
 
     public IAsyncStream<T> GetStream<T>(StreamId streamId)
-        => (IAsyncStream<T>)_streams.GetOrAdd((streamId, typeof(T)), _ => new InMemoryStream<T>(streamId, _registry));
+    {
+        return (IAsyncStream<T>)_streams.GetOrAdd((streamId, typeof(T)), ValueFactory);
+
+        object ValueFactory((StreamId StreamId, Type ElementType) _) => new InMemoryStream<T>(streamId, _registry);
+    }
 }

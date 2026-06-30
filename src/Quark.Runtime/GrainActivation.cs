@@ -241,8 +241,13 @@ public sealed class GrainActivation : IAsyncDisposable
         _queue.Writer.TryWrite(item);
 
         _ = _processingLoop.ContinueWith(
-            _ => _onDeactivated?.Invoke() ?? Task.CompletedTask,
+            ContinuationFunction,
             TaskScheduler.Default).Unwrap();
+    }
+
+    private Task ContinuationFunction(Task _)
+    {
+        return _onDeactivated?.Invoke() ?? Task.CompletedTask;
     }
 
     // Instance method reference used by Deactivate() to avoid an allocating lambda closure.
@@ -299,7 +304,7 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             try
             {
-                await PostAsync(() => RunDeactivationAsync(DeactivationReason.ShuttingDown)).ConfigureAwait(false);
+                await PostAsync(WorkItem).ConfigureAwait(false);
             }
             catch
             {
@@ -318,6 +323,11 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         _cts.Dispose();
+    }
+
+    private ValueTask WorkItem()
+    {
+        return RunDeactivationAsync(DeactivationReason.ShuttingDown);
     }
 
     // -----------------------------------------------------------------------
@@ -382,7 +392,9 @@ public sealed class GrainActivation : IAsyncDisposable
         DisposeTimers();
         try
         {
-            await RunLifecycleHookAsync(lifecycle => lifecycle.OnDeactivateAsync(reason, CancellationToken.None))
+            Task Hook(IActivationLifecycle lifecycle) => lifecycle.OnDeactivateAsync(reason, CancellationToken.None);
+
+            await RunLifecycleHookAsync(Hook)
                 .ConfigureAwait(false);
         }
         catch (Exception e)
