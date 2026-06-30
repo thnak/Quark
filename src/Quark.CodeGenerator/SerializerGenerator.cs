@@ -82,12 +82,12 @@ public sealed class SerializerGenerator : IIncrementalGenerator
 
                 ITypeSymbol memberType;
                 bool isProperty;
-                if (member is IPropertySymbol prop && !prop.IsStatic && prop.SetMethod is not null)
+                if (member is IPropertySymbol { IsStatic: false, SetMethod: not null } prop)
                 {
                     memberType = prop.Type;
                     isProperty = true;
                 }
-                else if (member is IFieldSymbol field && !field.IsStatic && !field.IsReadOnly)
+                else if (member is IFieldSymbol { IsStatic: false, IsReadOnly: false } field)
                 {
                     memberType = field.Type;
                     isProperty = false;

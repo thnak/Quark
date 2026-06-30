@@ -131,7 +131,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             }
 
             var parameters = method.Parameters
-                .Select(p => BuildParameterModel(p))
+                .Select(BuildParameterModel)
                 .ToList();
 
             methods.Add(new MethodModel(
@@ -182,7 +182,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         {
             // IReadOnly* interfaces — no clone needed
             bool isReadOnly = false;
-            if (type is INamedTypeSymbol readOnlyNamed && readOnlyNamed.IsGenericType)
+            if (type is INamedTypeSymbol { IsGenericType: true } readOnlyNamed)
             {
                 string def = readOnlyNamed.ConstructedFrom.ToDisplayString();
                 if (def is "System.Collections.Generic.IReadOnlyList<T>"
@@ -194,7 +194,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
             if (!isReadOnly)
             {
-                if (type is INamedTypeSymbol genericNamed && genericNamed.IsGenericType)
+                if (type is INamedTypeSymbol { IsGenericType: true } genericNamed)
                 {
                     string def = genericNamed.ConstructedFrom.ToDisplayString();
                     if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
@@ -258,7 +258,7 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         {
             elementFqTypeName = arrType.ElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         }
-        else if (retType is INamedTypeSymbol nts && nts.IsGenericType)
+        else if (retType is INamedTypeSymbol { IsGenericType: true } nts)
         {
             string def = nts.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
@@ -319,11 +319,11 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
             return new SerializeInfo(SerializeKind.DateTimeOffset);
 
         // byte[] — array of System.Byte
-        if (type is IArrayTypeSymbol byteArr && byteArr.ElementType.SpecialType == SpecialType.System_Byte)
+        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
             return new SerializeInfo(SerializeKind.Bytes);
 
         // Generic collections — List<T> / IList<T>
-        if (type is INamedTypeSymbol namedList && namedList.IsGenericType)
+        if (type is INamedTypeSymbol { IsGenericType: true } namedList)
         {
             string def = namedList.ConstructedFrom.ToDisplayString();
             if (def is "System.Collections.Generic.List<T>" or "System.Collections.Generic.IList<T>")
