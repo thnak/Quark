@@ -231,15 +231,15 @@ public sealed class MembershipOracleTests
 
     private sealed class StubInvoker : IGrainCallInvoker
     {
-        public Task<TResult> InvokeAsync<TInvokable, TResult>(
+        public ValueTask<TResult> InvokeAsync<TInvokable, TResult>(
             GrainId grainId, TInvokable invokable, CancellationToken cancellationToken = default)
             where TInvokable : struct, IGrainInvokable<TResult> => throw new NotSupportedException();
 
-        public Task InvokeVoidAsync<TInvokable>(
+        public ValueTask InvokeVoidAsync<TInvokable>(
             GrainId grainId, TInvokable invokable, CancellationToken cancellationToken = default)
             where TInvokable : struct, IGrainVoidInvokable => throw new NotSupportedException();
 
-        public Task InvokeObserverAsync<TInvokable>(
+        public ValueTask InvokeObserverAsync<TInvokable>(
             GrainId grainId, TInvokable invokable, CancellationToken cancellationToken = default)
             where TInvokable : struct, IObserverVoidInvokable => throw new NotSupportedException();
     }

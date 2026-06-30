@@ -212,7 +212,7 @@ public sealed class StreamingIntegrationTests
 
         public Task<int> GetLastValueAsync()
             => _invoker.InvokeAsync<StreamListenerGrain_GetLastValueInvokable, int>(
-                _grainId, new StreamListenerGrain_GetLastValueInvokable());
+                _grainId, new StreamListenerGrain_GetLastValueInvokable()).AsTask();
     }
 
     // Implicit subscription grain stubs
@@ -290,6 +290,6 @@ public sealed class StreamingIntegrationTests
 
         public Task<int> GetReceivedAsync()
             => _invoker.InvokeAsync<ImplicitListenerGrain_GetReceivedInvokable, int>(
-                _grainId, new ImplicitListenerGrain_GetReceivedInvokable());
+                _grainId, new ImplicitListenerGrain_GetReceivedInvokable()).AsTask();
     }
 }

@@ -285,7 +285,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
             => new(grainId, invoker);
         public Task<string> Ping(string message)
             => _invoker.InvokeAsync<PingGrainProxy_PingInvokable, string>(
-                _grainId, new PingGrainProxy_PingInvokable(message));
+                _grainId, new PingGrainProxy_PingInvokable(message)).AsTask();
     }
 
     private sealed class TrackerGrainProxy
@@ -303,10 +303,10 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
             => new(grainId, invoker);
         public Task SetSource(ISourceGrain source)
             => _invoker.InvokeVoidAsync<TrackerGrainProxy_SetSourceInvokable>(
-                _grainId, new TrackerGrainProxy_SetSourceInvokable(source));
+                _grainId, new TrackerGrainProxy_SetSourceInvokable(source)).AsTask();
         public Task<string> GetSourceName()
             => _invoker.InvokeAsync<TrackerGrainProxy_GetSourceNameInvokable, string>(
-                _grainId, new());
+                _grainId, new()).AsTask();
     }
 
     private sealed class SourceGrainProxy
@@ -323,7 +323,7 @@ public sealed class GatewayIntegrationTests : IAsyncLifetime
         public static SourceGrainProxy Create(GrainId grainId, IGrainCallInvoker invoker)
             => new(grainId, invoker);
         public Task<string> GetName()
-            => _invoker.InvokeAsync<SourceGrainProxy_GetNameInvokable, string>(_grainId, new());
+            => _invoker.InvokeAsync<SourceGrainProxy_GetNameInvokable, string>(_grainId, new()).AsTask();
     }
 
     // =========================================================================

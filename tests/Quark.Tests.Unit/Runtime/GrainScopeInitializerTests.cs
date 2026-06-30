@@ -102,7 +102,7 @@ public sealed class GrainScopeInitializerTests
         var grainId = new GrainId(new GrainType("InitializableGrain"), "tenant-missing/order-3");
 
         InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            invoker.InvokeAsync<GetTenantInvokable, string>(grainId, new GetTenantInvokable(), CancellationToken.None));
+            invoker.InvokeAsync<GetTenantInvokable, string>(grainId, new GetTenantInvokable(), CancellationToken.None).AsTask());
 
         Assert.Equal("tenant unavailable", ex.Message);
         Assert.False(provider.GetRequiredService<GrainActivationTable>().TryGetActivation(grainId, out _));

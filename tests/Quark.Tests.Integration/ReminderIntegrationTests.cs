@@ -249,17 +249,17 @@ public sealed class ReminderIntegrationTests
             => new(grainId, invoker);
 
         public Task RegisterReminderAsync(string name, TimeSpan dueTime, TimeSpan period)
-            => invoker.InvokeVoidAsync(grainId, new ReminderTestGrainProxy_RegisterReminderAsyncInvokable(name, dueTime, period));
+            => invoker.InvokeVoidAsync(grainId, new ReminderTestGrainProxy_RegisterReminderAsyncInvokable(name, dueTime, period)).AsTask();
 
         public Task UnregisterReminderAsync(string name)
-            => invoker.InvokeVoidAsync(grainId, new ReminderTestGrainProxy_UnregisterReminderAsyncInvokable(name));
+            => invoker.InvokeVoidAsync(grainId, new ReminderTestGrainProxy_UnregisterReminderAsyncInvokable(name)).AsTask();
 
         public Task<int> GetReceiveCountAsync()
             => invoker.InvokeAsync<ReminderTestGrainProxy_GetReceiveCountAsyncInvokable, int>(
-                grainId, new ReminderTestGrainProxy_GetReceiveCountAsyncInvokable());
+                grainId, new ReminderTestGrainProxy_GetReceiveCountAsyncInvokable()).AsTask();
 
         public Task<IReadOnlyList<IGrainReminder>> GetReminderListAsync()
             => invoker.InvokeAsync<ReminderTestGrainProxy_GetReminderListAsyncInvokable, IReadOnlyList<IGrainReminder>>(
-                grainId, new ReminderTestGrainProxy_GetReminderListAsyncInvokable());
+                grainId, new ReminderTestGrainProxy_GetReminderListAsyncInvokable()).AsTask();
     }
 }

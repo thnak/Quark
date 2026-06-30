@@ -64,7 +64,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc />
-    public async Task<TResult> InvokeAsync<TInvokable, TResult>(
+    public async ValueTask<TResult> InvokeAsync<TInvokable, TResult>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -86,37 +86,28 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         long startedAt = Stopwatch.GetTimestamp();
 
         GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
-        var tcs = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        await activation.PostAsync(async () =>
-        {
-            using IServiceScope scope = _services.CreateScope();
-            IServiceProvider sp = scope.ServiceProvider;
-            try
-            {
-                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
-                TResult result = await invokable.Invoke(behavior).ConfigureAwait(false);
-                if (_copierProvider?.TryGetCopier<TResult>() is { } copier)
-                {
-                    result = copier.DeepCopy(result, new CopyContext());
-                }
-
-                tcs.TrySetResult(result);
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-        }).ConfigureAwait(false);
+        TResult result = default!;
 
         try
         {
-            TResult r = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await activation.PostAsync(async () =>
+            {
+                using IServiceScope scope = _services.CreateScope();
+                IServiceProvider sp = scope.ServiceProvider;
+                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
+                TResult r = await invokable.Invoke(behavior).ConfigureAwait(false);
+                if (_copierProvider?.TryGetCopier<TResult>() is { } copier)
+                {
+                    r = copier.DeepCopy(r, new CopyContext());
+                }
+                result = r;
+            }).ConfigureAwait(false);
+
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: false, elapsed, null));
             QuarkInstruments.GrainInvocations.Add(1, new KeyValuePair<string, object?>("grain_type", grainId.Type.Value));
             QuarkInstruments.GrainInvocationDuration.Record(elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("grain_type", grainId.Type.Value));
-            return r;
+            return result;
         }
         catch (Exception ex)
         {
@@ -129,7 +120,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc />
-    public async Task InvokeVoidAsync<TInvokable>(
+    public async ValueTask InvokeVoidAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -151,27 +142,17 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         long startedAt = Stopwatch.GetTimestamp();
 
         GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
-        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        await activation.PostAsync(async () =>
-        {
-            using IServiceScope scope = _services.CreateScope();
-            IServiceProvider sp = scope.ServiceProvider;
-            try
-            {
-                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
-                await invokable.Invoke(behavior).ConfigureAwait(false);
-                tcs.TrySetResult(null);
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-        }).ConfigureAwait(false);
 
         try
         {
-            await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await activation.PostAsync(async () =>
+            {
+                using IServiceScope scope = _services.CreateScope();
+                IServiceProvider sp = scope.ServiceProvider;
+                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
+                await invokable.Invoke(behavior).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: false, elapsed, null));
             QuarkInstruments.GrainInvocations.Add(1, new KeyValuePair<string, object?>("grain_type", grainId.Type.Value));
@@ -188,7 +169,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc />
-    public async Task InvokeObserverAsync<TInvokable>(
+    public async ValueTask InvokeObserverAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)

@@ -27,7 +27,7 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         _observerRegistry = observerRegistry;
     }
 
-    public async Task<TResult> InvokeAsync<TInvokable, TResult>(
+    public async ValueTask<TResult> InvokeAsync<TInvokable, TResult>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -51,7 +51,7 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         return invokable.DeserializeResult(ref resultReader);
     }
 
-    public async Task InvokeVoidAsync<TInvokable>(
+    public async ValueTask InvokeVoidAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -72,7 +72,7 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         }
     }
 
-    public Task InvokeObserverAsync<TInvokable>(
+    public ValueTask InvokeObserverAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -80,7 +80,7 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
     {
         if (_observerRegistry?.TryGet(grainId, out ObserverRegistry.ObserverEntry entry) == true)
         {
-            return invokable.Invoke(entry.Target).AsTask();
+            return invokable.Invoke(entry.Target);
         }
 
         throw new NotSupportedException(

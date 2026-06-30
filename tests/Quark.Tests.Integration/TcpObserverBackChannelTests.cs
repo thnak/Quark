@@ -412,7 +412,7 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
         public Task PositionUpdated(string position)
         {
             Console.Error.WriteLine($"[DBG] PositionObserverProxy.PositionUpdated({position}) invoker={_invoker.GetType().Name}");
-            var t = _invoker.InvokeObserverAsync(_grainId, new PositionObserverProxy_PositionUpdatedInvokable(position));
+            Task t = _invoker.InvokeObserverAsync(_grainId, new PositionObserverProxy_PositionUpdatedInvokable(position)).AsTask();
             Console.Error.WriteLine($"[DBG] InvokeObserverAsync returned task Status={t.Status}");
             return t;
         }
@@ -532,9 +532,9 @@ public sealed class TcpObserverBackChannelTests : IAsyncLifetime
         public static VehicleGrainProxy Create(GrainId grainId, IGrainCallInvoker invoker)
             => new(grainId, invoker);
         public Task Subscribe(IPositionObserver observer)
-            => _invoker.InvokeVoidAsync(_grainId, new VehicleGrainProxy_SubscribeInvokable(observer));
+            => _invoker.InvokeVoidAsync(_grainId, new VehicleGrainProxy_SubscribeInvokable(observer)).AsTask();
         public Task UpdatePosition(string position)
-            => _invoker.InvokeVoidAsync(_grainId, new VehicleGrainProxy_UpdatePositionInvokable(position));
+            => _invoker.InvokeVoidAsync(_grainId, new VehicleGrainProxy_UpdatePositionInvokable(position)).AsTask();
     }
 
     // =========================================================================

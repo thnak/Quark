@@ -13,7 +13,7 @@ public interface IGrainCallInvoker
     ///     AOT-safe typed overload: invokes a grain method that returns <see cref="Task{TResult}" />
     ///     or <see cref="ValueTask{TResult}" /> via a strongly-typed invokable struct.
     /// </summary>
-    Task<TResult> InvokeAsync<TInvokable, TResult>(
+    ValueTask<TResult> InvokeAsync<TInvokable, TResult>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -23,7 +23,7 @@ public interface IGrainCallInvoker
     ///     AOT-safe typed overload: invokes a grain method that returns <see cref="Task" />
     ///     or <see cref="ValueTask" /> via a strongly-typed invokable struct.
     /// </summary>
-    Task InvokeVoidAsync<TInvokable>(
+    ValueTask InvokeVoidAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)
@@ -34,7 +34,7 @@ public interface IGrainCallInvoker
     ///     invokable struct.  The runtime looks up the observer's target CLR object by
     ///     <paramref name="grainId" /> and calls <c>invokable.Invoke(target)</c> directly.
     /// </summary>
-    Task InvokeObserverAsync<TInvokable>(
+    ValueTask InvokeObserverAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
         CancellationToken cancellationToken = default)

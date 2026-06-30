@@ -15,14 +15,14 @@ public sealed class ManagedBufferGrainProxy : IManagedBufferGrain
     }
 
     public Task<long> GetInitCountAsync()
-        => _invoker.InvokeAsync<ManagedBuffer_GetInitCountInvokable, long>(_grainId, new ManagedBuffer_GetInitCountInvokable());
+        => _invoker.InvokeAsync<ManagedBuffer_GetInitCountInvokable, long>(_grainId, new ManagedBuffer_GetInitCountInvokable()).AsTask();
 
     public Task<string> GetDataAsync()
-        => _invoker.InvokeAsync<ManagedBuffer_GetDataInvokable, string>(_grainId, new ManagedBuffer_GetDataInvokable());
+        => _invoker.InvokeAsync<ManagedBuffer_GetDataInvokable, string>(_grainId, new ManagedBuffer_GetDataInvokable()).AsTask();
 
     public Task SetDataAsync(string value)
-        => _invoker.InvokeVoidAsync(_grainId, new ManagedBuffer_SetDataInvokable(value));
+        => _invoker.InvokeVoidAsync(_grainId, new ManagedBuffer_SetDataInvokable(value)).AsTask();
 
     public Task SelfDestructAsync()
-        => _invoker.InvokeVoidAsync(_grainId, new ManagedBuffer_SelfDestructInvokable());
+        => _invoker.InvokeVoidAsync(_grainId, new ManagedBuffer_SelfDestructInvokable()).AsTask();
 }

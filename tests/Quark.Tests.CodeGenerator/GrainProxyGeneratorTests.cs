@@ -48,10 +48,11 @@ public sealed class GrainProxyGeneratorTests
         // No-arg Serialize is empty body; Deserialize returns new().
         Assert.Contains("{ }", generated);
         Assert.Contains("=> new();", generated);
-        // Proxy methods call .Clone() on the new invokable.
-        Assert.Contains("_invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(_grainId, new CounterGrainProxy_IncrementAsyncInvokable().Clone())", generated);
+        // Task<T>-returning method calls InvokeAsync and adapts to Task<T> via AsTask().
+        Assert.Contains("_invoker.InvokeAsync<CounterGrainProxy_IncrementAsyncInvokable, long>(_grainId, new CounterGrainProxy_IncrementAsyncInvokable().Clone()).AsTask()", generated);
+        // ValueTask-returning method returns InvokeVoidAsync directly (no wrapping needed).
         Assert.Contains(
-            "return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, new CounterGrainProxy_ResetAsyncInvokable().Clone()));",
+            "return _invoker.InvokeVoidAsync(_grainId, new CounterGrainProxy_ResetAsyncInvokable().Clone());",
             generated);
         Assert.Contains("public sealed class CounterGrainProxy_TransportDispatcher", generated);
         Assert.Contains(": global::Quark.Core.Abstractions.Hosting.ITransportGrainDispatcher", generated);

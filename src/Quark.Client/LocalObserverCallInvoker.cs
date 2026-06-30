@@ -1,4 +1,3 @@
-using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
@@ -17,22 +16,22 @@ public sealed class LocalObserverCallInvoker : IGrainCallInvoker
 
     public LocalObserverCallInvoker(ObserverRegistry registry) => _registry = registry;
 
-    public Task<TResult> InvokeAsync<TInvokable, TResult>(
+    public ValueTask<TResult> InvokeAsync<TInvokable, TResult>(
         GrainId grainId, TInvokable invokable, CancellationToken cancellationToken = default)
         where TInvokable : struct, IGrainInvokable<TResult>
         => throw new NotSupportedException("Grain invocations are not supported in observer dispatch context.");
 
-    public Task InvokeVoidAsync<TInvokable>(
+    public ValueTask InvokeVoidAsync<TInvokable>(
         GrainId grainId, TInvokable invokable, CancellationToken cancellationToken = default)
         where TInvokable : struct, IGrainVoidInvokable
         => throw new NotSupportedException("Grain invocations are not supported in observer dispatch context.");
 
-    public Task InvokeObserverAsync<TInvokable>(
+    public ValueTask InvokeObserverAsync<TInvokable>(
         GrainId grainId, TInvokable invokable, CancellationToken cancellationToken = default)
         where TInvokable : struct, IObserverVoidInvokable
     {
         if (!_registry.TryGet(grainId, out ObserverRegistry.ObserverEntry entry))
             throw new InvalidOperationException($"Observer '{grainId}' not found in local registry.");
-        return invokable.Invoke(entry.Target).AsTask();
+        return invokable.Invoke(entry.Target);
     }
 }

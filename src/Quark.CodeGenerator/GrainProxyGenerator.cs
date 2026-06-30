@@ -898,14 +898,14 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         if (m.IsObserver)
         {
             // Observer methods are always treated as void (fire-and-forget via InvokeObserverAsync).
+            // InvokeObserverAsync returns ValueTask; adapt to the declared interface return type.
             if (method.IsTask)
             {
-                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate});");
+                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate}).AsTask();");
             }
             else if (method.IsValueTask)
             {
-                sb.AppendLine(
-                    $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeObserverAsync(_grainId, {structCreate}));");
+                sb.AppendLine($"        return _invoker.InvokeObserverAsync(_grainId, {structCreate});");
             }
             else
             {
@@ -915,22 +915,25 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
         }
         else if (method.IsTask)
         {
-            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate});");
+            // InvokeVoidAsync returns ValueTask; adapt to Task for the grain interface.
+            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate}).AsTask();");
         }
         else if (method.IsTaskOfT)
         {
+            // InvokeAsync returns ValueTask<T>; adapt to Task<T> for the grain interface.
             sb.AppendLine(
-                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate});");
+                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate}).AsTask();");
         }
         else if (method.IsValueTask)
         {
-            sb.AppendLine(
-                $"        return new global::System.Threading.Tasks.ValueTask(_invoker.InvokeVoidAsync(_grainId, {structCreate}));");
+            // InvokeVoidAsync returns ValueTask — return directly.
+            sb.AppendLine($"        return _invoker.InvokeVoidAsync(_grainId, {structCreate});");
         }
         else if (method.IsValueTaskOfT)
         {
+            // InvokeAsync returns ValueTask<T> — return directly.
             sb.AppendLine(
-                $"        return new global::System.Threading.Tasks.ValueTask<{method.TaskResultType}>(_invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate}));");
+                $"        return _invoker.InvokeAsync<{structName}, {method.TaskResultType}>(_grainId, {structCreate});");
         }
         else
         {
