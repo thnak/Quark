@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using System.Threading.Tasks.Sources;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,6 +21,10 @@ namespace Quark.Runtime;
 /// </summary>
 public sealed class GrainActivation : IAsyncDisposable
 {
+    // One pooled MailboxWorkItem cached per thread; avoids per-call heap allocation on the hot path.
+    [ThreadStatic]
+    private static MailboxWorkItem? t_cachedItem;
+
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger<GrainActivation> _logger;
     private readonly Task _processingLoop;
@@ -36,7 +42,10 @@ public sealed class GrainActivation : IAsyncDisposable
     private int _pendingWorkCount;    // work items queued but not yet executing
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
-    private readonly Channel<Func<ValueTask>> _queue;
+    // Stored so Deactivate() can post a fire-and-forget item without creating a capturing lambda.
+    private DeactivationReason _pendingDeactivationReason = null!;
+
+    private readonly Channel<MailboxWorkItem> _queue;
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
 
@@ -66,11 +75,11 @@ public sealed class GrainActivation : IAsyncDisposable
     // A bounded mailbox caps the work a single grain can queue. We always create bounded channels in
     // FullMode.Wait; RejectWhenFull is enforced in PostAsync via TryWrite so a rejection raises a
     // clean MailboxFullException rather than silently dropping work.
-    private static Channel<Func<ValueTask>> CreateQueue(int capacity)
+    private static Channel<MailboxWorkItem> CreateQueue(int capacity)
         => capacity <= 0
-            ? Channel.CreateUnbounded<Func<ValueTask>>(
+            ? Channel.CreateUnbounded<MailboxWorkItem>(
                 new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false })
-            : Channel.CreateBounded<Func<ValueTask>>(
+            : Channel.CreateBounded<MailboxWorkItem>(
                 new BoundedChannelOptions(capacity)
                 {
                     SingleReader = true,
@@ -222,12 +231,18 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         _status = GrainActivationStatus.Deactivating;
-        _queue.Writer.TryWrite(() => RunDeactivationAsync(reason));
+        _pendingDeactivationReason = reason;
+        var item = new MailboxWorkItem();
+        item.InitFireAndForget(RunPendingDeactivationAsync);
+        _queue.Writer.TryWrite(item);
 
         _ = _processingLoop.ContinueWith(
             _ => _onDeactivated?.Invoke() ?? Task.CompletedTask,
             TaskScheduler.Default).Unwrap();
     }
+
+    // Instance method reference used by Deactivate() to avoid an allocating lambda closure.
+    private ValueTask RunPendingDeactivationAsync() => RunDeactivationAsync(_pendingDeactivationReason);
 
     /// <inheritdoc cref="IGrainContext.DelayDeactivation" />
     public void DelayDeactivation(TimeSpan timeSpan)
@@ -278,25 +293,13 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         if (_status is GrainActivationStatus.Active or GrainActivationStatus.Activating)
         {
-            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             try
             {
-                await PostAsync(async () =>
-                {
-                    try
-                    {
-                        await RunDeactivationAsync(DeactivationReason.ShuttingDown).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        done.TrySetResult();
-                    }
-                }).ConfigureAwait(false);
-                await done.Task.ConfigureAwait(false);
+                await PostAsync(() => RunDeactivationAsync(DeactivationReason.ShuttingDown)).ConfigureAwait(false);
             }
             catch
             {
-                done.TrySetResult();
+                // Deactivation errors are already logged inside RunDeactivationAsync.
             }
         }
 
@@ -319,61 +322,54 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     Posts a unit of work to this grain's sequential mailbox and awaits its completion.
     ///     Reentrant grains bypass the queue and execute immediately.
     /// </summary>
-    public async ValueTask PostAsync(Func<Task> workItem)
+    public ValueTask PostAsync(Func<ValueTask> workItem)
     {
         if (_isReentrant)
         {
             _cts.Token.ThrowIfCancellationRequested();
             Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
-            await workItem().ConfigureAwait(false);
-            return;
+            return workItem();
         }
 
+        return PostCoreAsync(workItem);
+    }
+
+    private async ValueTask PostCoreAsync(Func<ValueTask> workItem)
+    {
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         int depth = Interlocked.Increment(ref _pendingWorkCount);
         _diagnostics.OnMailboxEnqueued(new MailboxEnqueuedEvent(GrainId, depth));
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var ctx = ExecutionContext.Capture();
 
-        Func<ValueTask> dispatched;
-        if (ctx is null)
-        {
-            dispatched = async () =>
-            {
-                try { await workItem().ConfigureAwait(false); tcs.TrySetResult(); }
-                catch (Exception ex) { tcs.TrySetException(ex); }
-            };
-        }
-        else
-        {
-            dispatched = async () =>
-            {
-                try
-                {
-                    Task? task = null;
-                    ExecutionContext.Run(ctx, _ => task = workItem(), null);
-                    await task!.ConfigureAwait(false);
-                    tcs.TrySetResult();
-                }
-                catch (Exception ex) { tcs.TrySetException(ex); }
-            };
-        }
+        // Rent from the thread-local pool; fall back to allocation on miss.
+        MailboxWorkItem item = t_cachedItem ?? new MailboxWorkItem();
+        t_cachedItem = null;
+        item.Initialize(workItem, ExecutionContext.Capture());
 
         if (_mailboxFullMode == MailboxFullMode.RejectWhenFull && _mailboxCapacity > 0)
         {
             // Fail fast when the bounded mailbox is full rather than waiting for space.
-            if (!_queue.Writer.TryWrite(dispatched))
+            if (!_queue.Writer.TryWrite(item))
             {
                 Interlocked.Decrement(ref _pendingWorkCount);
+                item.ReturnOnEnqueueFailure();
                 throw new MailboxFullException(GrainId, _mailboxCapacity);
             }
         }
         else
         {
-            await _queue.Writer.WriteAsync(dispatched, _cts.Token).ConfigureAwait(false);
+            try
+            {
+                await _queue.Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                item.ReturnOnEnqueueFailure();
+                throw;
+            }
         }
 
-        await tcs.Task.ConfigureAwait(false);
+        // Await completion signal from RunLoopAsync. Pool return happens in ExecuteAsync's finally.
+        await item.WaitAsync().ConfigureAwait(false);
     }
 
     private async ValueTask RunDeactivationAsync(DeactivationReason reason)
@@ -482,13 +478,13 @@ public sealed class GrainActivation : IAsyncDisposable
 
     private async Task RunLoopAsync(CancellationToken ct)
     {
-        await foreach (Func<ValueTask> work in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        await foreach (MailboxWorkItem item in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
         {
             Interlocked.Decrement(ref _pendingWorkCount);
             Interlocked.Exchange(ref _workItemStartedAt, Stopwatch.GetTimestamp());
             try
             {
-                await work().ConfigureAwait(false);
+                await item.ExecuteAsync().ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -499,5 +495,130 @@ public sealed class GrainActivation : IAsyncDisposable
                 Interlocked.Exchange(ref _workItemStartedAt, 0);
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    ///     Pooled per-call work item for the mailbox.
+    ///     Replaces TaskCompletionSource + lambda closure with a reusable object and static callback.
+    ///     The caller awaits <see cref="WaitAsync"/>; the runner calls <see cref="ExecuteAsync"/>.
+    ///
+    ///     Pool-return safety: ManualResetValueTaskSourceCore invokes registered continuations
+    ///     synchronously inside SetResult/SetException, which means GetResult() may run before
+    ///     ExecuteAsync's finally block.  Returning the item to the pool from GetResult() would
+    ///     therefore race with the finally block clearing WorkItem/Context on a re-rented item.
+    ///     To avoid this, pool return happens in ExecuteAsync's finally (after SetResult returns)
+    ///     for the normal execution path, and in <see cref="ReturnOnEnqueueFailure"/> for the
+    ///     path where enqueue failed before the item reached the consumer.
+    /// </summary>
+    private sealed class MailboxWorkItem : IValueTaskSource
+    {
+        private ManualResetValueTaskSourceCore<bool> _core;
+
+        internal Func<ValueTask>? WorkItem;
+        internal ExecutionContext? Context;
+
+        // Bridge slot: ExecutionContext.Run is synchronous, so the static callback stores the
+        // resulting ValueTask here and we await it after Run() returns.
+        internal ValueTask PendingVt;
+
+        private bool _isFireAndForget;
+
+        // Static callback: receives 'this' as state — no closure object allocated.
+        private static readonly ContextCallback s_runInContext = static s =>
+        {
+            var self = (MailboxWorkItem)s!;
+            self.PendingVt = self.WorkItem!();
+        };
+
+        /// <summary>Prepare for an awaited (pooled) work item. Resets the MVTSC for reuse.</summary>
+        internal void Initialize(Func<ValueTask> work, ExecutionContext? ctx)
+        {
+            WorkItem = work;
+            Context = ctx;
+            _isFireAndForget = false;
+            _core.Reset();
+        }
+
+        /// <summary>
+        ///     Prepare for a fire-and-forget work item (no result signaling, not returned to pool).
+        ///     Used by <see cref="Deactivate"/> for the one-shot deactivation work item.
+        /// </summary>
+        internal void InitFireAndForget(Func<ValueTask> work)
+        {
+            WorkItem = work;
+            Context = null;
+            _isFireAndForget = true;
+        }
+
+        /// <summary>
+        ///     Return to the thread-local pool when enqueue fails before the item reached the consumer.
+        ///     Safe to call from <see cref="PostCoreAsync"/> because <see cref="ExecuteAsync"/> never ran.
+        /// </summary>
+        internal void ReturnOnEnqueueFailure()
+        {
+            WorkItem = null;
+            Context = null;
+            if (!_isFireAndForget && t_cachedItem is null)
+                t_cachedItem = this;
+        }
+
+        /// <summary>Awaitable signal that completes when <see cref="ExecuteAsync"/> finishes.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ValueTask WaitAsync() => new(this, _core.Version);
+
+        /// <summary>
+        ///     Runs the work item under its captured <see cref="ExecutionContext"/> and signals
+        ///     the awaiter when done.  Called exclusively by <see cref="RunLoopAsync"/>.
+        /// </summary>
+        internal async ValueTask ExecuteAsync()
+        {
+            try
+            {
+                if (Context is null)
+                {
+                    await WorkItem!().ConfigureAwait(false);
+                }
+                else
+                {
+                    ExecutionContext.Run(Context, s_runInContext, this);
+                    await PendingVt.ConfigureAwait(false);
+                    PendingVt = default;
+                }
+
+                if (!_isFireAndForget)
+                    _core.SetResult(true);
+                    // SetResult may run the caller's continuation synchronously (and thus GetResult),
+                    // but pool return is deferred to the finally block below — after SetResult returns.
+            }
+            catch (Exception ex)
+            {
+                if (_isFireAndForget)
+                    throw; // let RunLoopAsync catch and log it
+                _core.SetException(ex);
+            }
+            finally
+            {
+                // Clear state and return to pool. Runs after SetResult/SetException completes
+                // (including any synchronous continuations), so no concurrent renter sees stale state.
+                WorkItem = null;
+                Context = null;
+                PendingVt = default;
+                if (!_isFireAndForget && t_cachedItem is null)
+                    t_cachedItem = this;
+            }
+        }
+
+        // IValueTaskSource — called by the awaiter in PostCoreAsync after WaitAsync().
+        // No pool return here: GetResult may fire synchronously inside SetResult, before
+        // ExecuteAsync's finally runs, which would cause a re-rented item's state to be corrupted.
+        void IValueTaskSource.GetResult(short token) => _core.GetResult(token);
+
+        ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _core.GetStatus(token);
+
+        void IValueTaskSource.OnCompleted(
+            Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+            => _core.OnCompleted(continuation, state, token, flags);
     }
 }

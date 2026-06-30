@@ -59,7 +59,7 @@ public sealed class ReentrantTests
         var task2 = activation.PostAsync(() =>
         {
             task2Reached.SetResult();
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         });
 
         await task2Reached.Task.WaitAsync(TimeSpan.FromSeconds(5));
