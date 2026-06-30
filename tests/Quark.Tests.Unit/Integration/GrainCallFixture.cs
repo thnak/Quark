@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Quark.Client;
-using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
@@ -84,11 +83,13 @@ public sealed class GrainCallFixture : IAsyncDisposable
             NullLogger<LocalGrainCallInvoker>.Instance,
             NullLogger<GrainActivation>.Instance);
 
+        Invoker = callInvoker;
         grainFactoryRef = new LocalGrainFactory(proxyRegistry, interfaceRegistry, callInvoker);
         Client = new LocalClusterClient(grainFactoryRef);
     }
 
     public IClusterClient Client { get; }
+    public IGrainCallInvoker Invoker { get; }
     public GrainActivationTable ActivationTable => _activationTable;
 
     public async ValueTask DisposeAsync()
