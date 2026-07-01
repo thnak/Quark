@@ -135,6 +135,30 @@ public sealed class ValueTaskPerformanceAnalyzerTests
         Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0030");
     }
 
+    [Fact]
+    public void Qrk0030_Does_Not_Fire_On_Explicit_Interface_Implementation()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain
+            {
+                Task DoAsync();
+            }
+
+            public sealed class MyBehavior : IGrainBehavior, IMyGrain
+            {
+                Task IMyGrain.DoAsync() => Task.CompletedTask;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new ValueTaskPerformanceAnalyzer());
+        Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0030");
+    }
+
     // -----------------------------------------------------------------------
     // QRK0030 fixer tests
     // -----------------------------------------------------------------------
@@ -226,6 +250,111 @@ public sealed class ValueTaskPerformanceAnalyzerTests
         Assert.Contains("await Task.Yield();", result);
     }
 
+    [Fact]
+    public async Task Qrk0030_Fix_Task_CompletedTask_BlockBody()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IGrainBehavior, IMyGrain
+            {
+                public Task DoAsync()
+                {
+                    return Task.CompletedTask;
+                }
+            }
+            """;
+
+        string result = await CodeFixTestDriver.ApplyFixAsync(
+            source,
+            new ValueTaskPerformanceAnalyzer(),
+            new ValueTaskPerformanceFixer(),
+            "QRK0030");
+
+        Assert.Contains("ValueTask DoAsync()", result);
+        Assert.Contains("return ValueTask.CompletedTask;", result);
+    }
+
+    [Fact]
+    public async Task Qrk0030_Fix_BlockBody_Wraps_NonFactory_Return()
+    {
+        // The returned expression is a plain Task<int>-typed local, not a
+        // Task.CompletedTask/Task.FromResult call — the rewriter must wrap it
+        // in `new ValueTask<int>(...)` rather than leaving it untouched.
+        const string source = """
+            using System.Threading.Tasks;
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IGrainBehavior, IMyGrain
+            {
+                public Task<int> GetAsync()
+                {
+                    Task<int> inner = Helper.ComputeAsync();
+                    return inner;
+                }
+            }
+
+            public static class Helper
+            {
+                public static Task<int> ComputeAsync() => Task.FromResult(42);
+            }
+            """;
+
+        string result = await CodeFixTestDriver.ApplyFixAsync(
+            source,
+            new ValueTaskPerformanceAnalyzer(),
+            new ValueTaskPerformanceFixer(),
+            "QRK0030");
+
+        Assert.Contains("ValueTask<int> GetAsync()", result);
+        Assert.Contains("new ValueTask<int>(inner)", result);
+    }
+
+    [Fact]
+    public async Task Qrk0030_Fix_BlockBody_Handles_Multiple_Return_Statements()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IGrainBehavior, IMyGrain
+            {
+                public Task<int> GetAsync(bool flag)
+                {
+                    if (flag)
+                    {
+                        return Task.FromResult(1);
+                    }
+
+                    return Task.FromResult(2);
+                }
+            }
+            """;
+
+        string result = await CodeFixTestDriver.ApplyFixAsync(
+            source,
+            new ValueTaskPerformanceAnalyzer(),
+            new ValueTaskPerformanceFixer(),
+            "QRK0030");
+
+        Assert.Contains("ValueTask<int> GetAsync(bool flag)", result);
+        Assert.Contains("new ValueTask<int>(1)", result);
+        Assert.Contains("new ValueTask<int>(2)", result);
+    }
+
     // -----------------------------------------------------------------------
     // QRK0031 — Task.CompletedTask / Task.FromResult inside ValueTask method
     // -----------------------------------------------------------------------
@@ -277,6 +406,33 @@ public sealed class ValueTaskPerformanceAnalyzerTests
             public sealed class MyService
             {
                 public Task DoAsync() => Task.CompletedTask;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new ValueTaskPerformanceAnalyzer());
+        Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0031");
+    }
+
+    [Fact]
+    public void Qrk0031_Does_Not_Fire_Inside_Lambda_Nested_In_ValueTask_Method()
+    {
+        // IsInsideValueTaskMethod stops walking up at lambda boundaries, so a
+        // Task.CompletedTask captured inside a Func<Task> local should not be
+        // attributed to the enclosing ValueTask-returning method.
+        const string source = """
+            using System;
+            using System.Threading.Tasks;
+
+            namespace Demo;
+
+            public sealed class MyService
+            {
+                public ValueTask DoAsync()
+                {
+                    Func<Task> factory = () => Task.CompletedTask;
+                    factory();
+                    return ValueTask.CompletedTask;
+                }
             }
             """;
 
