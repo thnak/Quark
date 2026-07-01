@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/thnak/Quark/main/banner.png" alt="Quark — Lightweight. Distributed. AOT-First." width="720">
+</p>
+
 # Quark
 
 Quark is a **Native AOT-first, Orleans-compatible distributed actor framework** for .NET 10.

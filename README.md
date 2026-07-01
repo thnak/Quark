@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner.png" alt="Quark — Lightweight. Distributed. AOT-First." width="720">
+</p>
+
 # Quark
 
 **Native AOT-first, Orleans-compatible distributed actor framework for .NET 10.**

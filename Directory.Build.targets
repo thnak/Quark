@@ -1,0 +1,12 @@
+<Project>
+  <!-- Directory.Build.targets is imported after the project body, so $(PackageId) is
+       already set here — use it to scope package metadata to real NuGet packages only
+       (excludes test projects and sample apps, which never declare a PackageId). -->
+  <PropertyGroup Condition="'$(PackageId)' != ''">
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PackageId)' != ''">
+    <None Include="$(MSBuildThisFileDirectory)Quark-logo.png" Pack="true" PackagePath="icon.png" Visible="false" />
+  </ItemGroup>
+</Project>
