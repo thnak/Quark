@@ -4,9 +4,42 @@
        (excludes test projects and sample apps, which never declare a PackageId). -->
   <PropertyGroup Condition="'$(PackageId)' != ''">
     <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/thnak/Quark</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>orleans;actor-model;distributed-actors;distributed-systems;native-aot;aot;dotnet</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PackageId)' != ''">
     <None Include="$(MSBuildThisFileDirectory)Quark-logo.png" Pack="true" PackagePath="icon.png" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)banner.png" Pack="true" PackagePath="banner.png" Visible="false" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
   </ItemGroup>
+
+  <!-- Source generators / analyzers ship as netstandard2.0 — AOT analyzers not applicable.
+       $(IsRoslynComponent) is set in the project body, so this must live here (in
+       Directory.Build.targets) rather than Directory.Build.props to actually see it. -->
+  <PropertyGroup Condition="'$(IsRoslynComponent)' == 'true'">
+    <IsTrimmable>false</IsTrimmable>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <!-- NU5128: expected for analyzer-only packages (IncludeBuildOutput=false ships the DLL
+         under analyzers/dotnet/cs instead of lib/, so there's intentionally no lib match). -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <!-- $(IsTestProject) is set in the project body, so this must live here (in
+       Directory.Build.targets) rather than Directory.Build.props to actually see it. -->
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <IsTrimmable>false</IsTrimmable>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+  </PropertyGroup>
 </Project>
