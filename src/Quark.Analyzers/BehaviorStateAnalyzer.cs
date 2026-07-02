@@ -10,6 +10,7 @@ namespace Quark.Analyzers;
 ///     <list type="bullet">
 ///         <item>QRK0020 (Warning) — non-readonly instance field on a behavior class.</item>
 ///         <item>QRK0021 (Warning) — writable auto-property on a behavior class.</item>
+///         <item>QRK0022 (Warning) — mutable static field/property on a behavior class.</item>
 ///     </list>
 /// </summary>
 /// <remarks>
@@ -48,8 +49,19 @@ public sealed class BehaviorStateAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/thnak/Quark/wiki/Timers-and-Reminders#registration");
 
+    public static readonly DiagnosticDescriptor MutableStaticState = new(
+        "QRK0022",
+        "Static mutable state on grain behavior is shared across all activations",
+        "Static mutable state on grain behavior '{1}' (member '{0}') is shared across all activations on this " +
+        "silo and is not part of the engine-owned state model. " +
+        "Use IActivationMemory<T> (per-activation), a registered singleton service, or persistent state.",
+        "Quark.BehaviorLifecycle",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/thnak/Quark/wiki/AOT-and-Trim");
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(MutableInstanceField, WritableAutoProperty);
+        ImmutableArray.Create(MutableInstanceField, WritableAutoProperty, MutableStaticState);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -108,7 +120,67 @@ public sealed class BehaviorStateAnalyzer : DiagnosticAnalyzer
                     property.Name,
                     type.Name));
             }
+
+            // Static fields that are neither const nor provably immutable → QRK0022.
+            // readonly-ness alone isn't enough: a `static readonly Dictionary<,>` still
+            // lets every activation mutate the same shared instance.
+            if (member is IFieldSymbol staticField &&
+                staticField.IsStatic &&
+                !staticField.IsConst &&
+                !(staticField.IsReadOnly && IsDeeplyImmutableType(staticField.Type)))
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    MutableStaticState,
+                    staticField.Locations.FirstOrDefault() ?? Location.None,
+                    staticField.Name,
+                    type.Name));
+            }
+
+            // Writable static auto-properties → QRK0022.
+            if (member is IPropertySymbol staticProperty &&
+                staticProperty.IsStatic &&
+                staticProperty.SetMethod is { } staticSetter &&
+                staticSetter.IsInitOnly == false &&
+                IsAutoProperty(staticProperty))
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    MutableStaticState,
+                    staticProperty.Locations.FirstOrDefault() ?? Location.None,
+                    staticProperty.Name,
+                    type.Name));
+            }
         }
+    }
+
+    // Types whose value can never change after construction, so a `static readonly` field
+    // of this type cannot become a shared-mutable-state footgun.
+    private static bool IsDeeplyImmutableType(ITypeSymbol type)
+    {
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_Boolean:
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+            case SpecialType.System_UInt32:
+            case SpecialType.System_Int64:
+            case SpecialType.System_UInt64:
+            case SpecialType.System_Single:
+            case SpecialType.System_Double:
+            case SpecialType.System_Decimal:
+            case SpecialType.System_Char:
+            case SpecialType.System_String:
+                return true;
+        }
+
+        if (type.TypeKind == TypeKind.Enum)
+            return true;
+
+        string fqn = type.OriginalDefinition.ToDisplayString();
+        return fqn is "System.Guid" or "System.TimeSpan" or "System.DateTime" or "System.DateTimeOffset"
+            || fqn.StartsWith("System.Collections.Immutable.", StringComparison.Ordinal);
     }
 
     // An auto-property has no explicit getter/setter body — its backing field is compiler-generated.

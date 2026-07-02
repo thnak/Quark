@@ -66,7 +66,7 @@ Auto-discovery via assembly scanning is not trim-safe. All providers — storage
 These analyzers fire on any code in packages that set `EnableAotAnalyzer=true`.
 
 > `Quark.Analyzers` also ships data-isolation (`QRK0010`–`QRK0012`) and behavior-lifecycle
-> (`QRK0020`–`QRK0021`) analyzers; see their release notes in `AnalyzerReleases.Unshipped.md`.
+> (`QRK0020`–`QRK0022`) analyzers; see their release notes in `AnalyzerReleases.Unshipped.md`.
 
 ## Native AOT smoke build
 

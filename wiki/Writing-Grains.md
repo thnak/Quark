@@ -95,7 +95,7 @@ You do not have to remember this — the build does:
 - `QRK0020` warns on any mutable instance field of a behavior; `QRK0021` on writable auto-properties.
 - `readonly` constructor-injected fields (services, `IActivationMemory<T>` handles, `ICallContext`) are the intended pattern and produce no warning.
 - `BehaviorStartupValidator` constructs every registered behavior at silo startup, so a missing DI registration fails at boot rather than on the first live call.
-- Mutable `static` fields are the one escape the analyzers don't flag yet ([#129](https://github.com/thnak/Quark/issues/129)) — never use them for grain state: statics are shared across *all* activations on the silo and invisible to persistence and clustering.
+- `QRK0022` warns on mutable `static` fields/properties on a behavior — including `static readonly` fields of mutable collection types (e.g. `Dictionary<,>`), since readonly-ness of the reference doesn't make the contents immutable. Static state is shared across *all* activations on the silo, is not thread-safe under `[Reentrant]`/`[StatelessWorker]`, and is invisible to persistence, clustering, and diagnostics — use `IActivationMemory<T>`, a registered singleton service, or persistent state instead.
 
 Where cross-call state actually lives, from cheapest to most durable: `IActivationMemory<T>` (survives calls, lost on deactivation) → `IManagedActivationMemory<T>` (adds async init/cleanup for resources) → `IPersistentActivationMemory<T>` / `[PersistentState]` (durable) → `JournaledGrain` (event-sourced). The full decision table with lifecycle diagrams is in [Persistence](Persistence); the engine's lifetime and failure contract is in [Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics).
 
