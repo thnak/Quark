@@ -8,6 +8,19 @@
 
 Quark follows the Orleans mental model — Grain, Silo, Client, Placement, Persistence — while being built from the ground up for AOT compilation, per-call DI scoping, and lean memory footprints. It achieves Orleans API compatibility at three tiers: drop-in (identical attributes and interfaces), minor-change (same concept, different DI wiring), and Quark-native (new capabilities without direct Orleans equivalents).
 
+## Why Quark?
+
+Quark is built as an engine, not a collection of actor-shaped conventions. The runtime owns activation identity, mailbox ordering, placement, state lifetime, timers, resource cleanup, persistence boundaries, and diagnostics. User code supplies behavior through explicit APIs that the engine can schedule, observe, persist, and validate.
+
+That leads to a deliberately strong model:
+
+- **Behavior is execution logic, not grain state.** Grain behaviors are POCOs resolved from a fresh `IServiceScope` for each call, invoked, then discarded.
+- **State must be visible to the engine.** Cross-call state belongs in `IActivationMemory<T>`, `IPersistentActivationMemory<T>`, `IPersistentState<T>`, `IManagedActivationMemory<T>`, journals, or explicit external services.
+- **AOT is a design constraint, not an optimization.** Quark favors source generation, explicit registration, and analyzers over runtime discovery and reflection-heavy magic.
+- **Compatibility is a bridge.** Orleans-style APIs help teams adopt Quark, but the core runtime remains Quark-native: activation-shell owned, generated, trim-safe, and lifecycle-driven.
+
+In short: Orleans-compatible at the edge, Quark-engineered at the core.
+
 ## Features
 
 - Virtual actor model with grain behaviors (POCO, no base class required)
@@ -135,7 +148,8 @@ Full documentation is in the [wiki](../../wiki):
 ## Design principles
 
 1. **AOT-first.** No reflection on hot paths. Source generators emit all proxy, serializer, and registration code at build time.
-2. **Per-call DI scoping.** Each grain method call gets a fresh `IServiceScope`, enabling scoped services (DbContext, etc.) without manual workarounds.
-3. **Fail fast.** `BehaviorStartupValidator` catches DI misconfiguration at silo startup, not on the first live call.
-4. **Explicit registration.** No assembly scanning. Every type is registered via explicit extension methods.
-5. **Mailbox unchanged.** The `Channel<Func<Task>>` single-reader queue is the actor model's correctness guarantee.
+2. **Engine-owned lifecycle.** The activation shell owns identity, ordering, state lifetime, timers, resources, placement, and deactivation.
+3. **Per-call DI scoping.** Each grain method call gets a fresh `IServiceScope`, enabling scoped services (DbContext, etc.) without manual workarounds.
+4. **Fail fast.** `BehaviorStartupValidator` catches DI misconfiguration at silo startup, not on the first live call.
+5. **Explicit registration.** No assembly scanning. Every type is registered via explicit extension methods.
+6. **Mailbox unchanged.** The `Channel<Func<Task>>` single-reader queue is the actor model's correctness guarantee.
