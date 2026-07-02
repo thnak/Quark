@@ -137,6 +137,7 @@ sequenceDiagram
     participant Tbl as GrainActivationTable
     participant Shell as GrainActivation (mailbox)
     participant Scope as IServiceScope
+    participant Binder as GrainScopeBinder
     participant Beh as Behavior (POCO)
 
     App->>Proxy: MethodAsync(args)
@@ -146,7 +147,9 @@ sequenceDiagram
     Inv->>Shell: enqueue work item
     Note over Shell: mailbox serialises concurrent calls
     Shell->>Scope: create per-call scope
-    Scope->>Beh: construct + resolve ctor deps
+    Scope->>Binder: BindAndResolveAsync
+    Note over Binder: bind ICallContext, run GrainScopeInitializer (if registered)
+    Binder->>Beh: construct + resolve ctor deps
     Beh->>Beh: run method
     Beh-->>Shell: result
     Shell->>Scope: dispose scope
@@ -197,6 +200,54 @@ silo.Services.AddScoped<IActivationMemory<MyState>>(sp =>
 ```
 
 The `BehaviorRegistrationGenerator` eliminates this boilerplate — see [Source Generators](Source-Generators).
+
+## Per-call scope initializers (multi-tenant DI scoping)
+
+`GrainScopeInitializer` is a delegate hook that runs inside every freshly-created per-call
+`IServiceScope`, right after the shell accessor and `ICallContext` are bound but **before** the
+behavior instance (and its scoped constructor dependencies) are resolved:
+
+```csharp
+public delegate ValueTask GrainScopeInitializer(
+    ICallContext ctx,
+    IServiceProvider scopedProvider,
+    CancellationToken cancellationToken);
+```
+
+`GrainScopeBinder.BindAndResolveAsync` looks the initializer up by `GrainType` in
+`IGrainScopeInitializerRegistry` and, if one is registered, awaits it before calling
+`IBehaviorResolver.Resolve`. If nothing is registered for the grain type, the lookup and delegate
+invocation are skipped entirely — the hook is opt-in per grain type, not a global pipeline step.
+
+This is the extension point behind **multi-tenancy**: derive a tenant from `GrainId.Key` and
+populate a scoped tenant-context service that other scoped dependencies (a tenant-scoped
+`DbContext`, connection string, cache namespace, ...) read from during construction. Register one
+per grain type with `AddGrainScopeInitializer<TInterface, TBehavior>`:
+
+```csharp
+silo.Services.AddScoped<TenantContext>();
+silo.Services.AddGrainScopeInitializer<IOrderGrain, OrderBehavior>((ctx, sp, ct) =>
+{
+    // GrainId.Key convention: "{tenantId}/{orderId}"
+    sp.GetRequiredService<TenantContext>().TenantId = ctx.GrainId.Key.Split('/')[0];
+    return ValueTask.CompletedTask;
+});
+```
+
+**Where it runs** — once per activation (`GrainActivation.RunActivationAsync`, before
+`OnActivateAsync`) and again on every subsequent call (`LocalGrainCallInvoker`, before the behavior
+is constructed for that call) — because each of those creates its own fresh `IServiceScope` and the
+binder runs on every scope.
+
+**Failure semantics** — an initializer that throws propagates to the caller and faults the
+activation; `GrainActivationTable` removes it so the next call attempts a fresh activation rather
+than reusing a partially-initialized one. Use this to reject calls for an unknown or unauthorized
+tenant before any scoped state, or the behavior itself, is constructed.
+
+Like other `Add*` registrations, this is deferred: `SiloHostedService.StartAsync` applies all
+`AddGrainScopeInitializer` calls into the singleton `IGrainScopeInitializerRegistry` before the silo
+starts serving calls. See [Writing Grains](Writing-Grains#multi-tenant-scope-initialization) for a
+full worked example.
 
 ## Layered architecture
 

@@ -21,6 +21,13 @@ That leads to a deliberately strong model:
 
 In short: Orleans-compatible at the edge, Quark-engineered at the core.
 
+Two wiki pages make this case in depth — and honestly:
+
+- **[Why Quark](../../wiki/Why-Quark)** — positioning vs Orleans and Akka.NET, the AOT trade-offs, per-call construction costs, and when you should *not* choose Quark.
+- **[Lifecycle and Failure Semantics](../../wiki/Lifecycle-and-Failure-Semantics)** — the engine contract: what lives how long, and exactly what happens when a behavior throws, an activation fails, a timer faults, or a transaction half-commits.
+
+**Project status: pre-1.0.** The failure, delivery, and performance contracts are documented and being hardened in the open — see the roadmap epics: [Track A — security](https://github.com/thnak/Quark/issues/50), [Track B — reliability](https://github.com/thnak/Quark/issues/51), [Track C — benchmarks](https://github.com/thnak/Quark/issues/52), [Track D — CI/process](https://github.com/thnak/Quark/issues/53), and the [v1.0 engine epic](https://github.com/thnak/Quark/issues/128). If you need years of production burn-in today, Orleans remains the honest recommendation; choose Quark when Native AOT deployment and an explicit, analyzable engine contract are what you're optimizing for.
+
 ## Features
 
 - Virtual actor model with grain behaviors (POCO, no base class required)
@@ -106,6 +113,7 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 |---|---|
 | `Quark.Core.Abstractions` | `IGrain`, key interfaces, `IGrainFactory`, `IClusterClient`, lifecycle, placement |
 | `Quark.Core` | Host-builder extensions (`UseQuark`, `UseQuarkClient`) |
+| `Quark.Server` | Server meta-package — pulls in `Quark.Runtime` + `Quark.Core` for hosting silos |
 | `Quark.Runtime` | Silo runtime: activations, invoker, placement, message pump |
 | `Quark.Client` | `LocalClusterClient`, proxy factory registries |
 | `Quark.Client.Tcp` | `TcpGatewayClusterClient`, TCP stream push |
@@ -116,7 +124,8 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 | `Quark.Streaming.*` | `IAsyncStream<T>`, in-memory stream provider |
 | `Quark.Transactions` | `ITransactionalState<T>`, 2PC coordinator |
 | `Quark.CodeGenerator` | Roslyn source generators |
-| `Quark.Analyzers` | AOT-safety analyzers |
+| `Quark.Analyzers` | Roslyn analyzers: AOT safety (`QRK000x`), data isolation (`QRK001x`), behavior lifecycle (`QRK002x`), performance (`QRK003x`) |
+| `Quark.Diagnostics.*` | `IQuarkDiagnosticListener` event surface, OpenTelemetry instruments, `StuckGrainDetector` |
 | `Quark.Testing` | In-process `TestCluster` test harness |
 
 ## Samples
@@ -124,7 +133,10 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 | Sample | Demonstrates |
 |---|---|
 | `samples/Adventure` | Grain-to-grain calls, timers, TCP gateway client, multi-grain state |
-| `samples/ChatRoom` | In-memory streams, TCP client stream push, Spectre.Console UI |
+| `samples/ChatRoom` | In-memory streams, TCP client stream push, observers, Spectre.Console UI |
+| `samples/Streaming` | In-memory + TCP stream push, implicit subscriptions |
+| `samples/Persistence` | The "Bank" sample — all five state patterns side by side (`IPersistentActivationMemory`, `[PersistentState]`, `JournaledGrain`, eager + managed memory) |
+| `samples/Realm` | MMO spatial backbone — placement, timers, streams at scale |
 
 See the [Samples wiki page](../../wiki/Samples) for full walkthroughs.
 
@@ -132,7 +144,9 @@ See the [Samples wiki page](../../wiki/Samples) for full walkthroughs.
 
 Full documentation is in the [wiki](../../wiki):
 
+- [Why Quark](../../wiki/Why-Quark)
 - [Architecture](../../wiki/Architecture)
+- [Lifecycle and Failure Semantics](../../wiki/Lifecycle-and-Failure-Semantics)
 - [Writing Grains](../../wiki/Writing-Grains)
 - [Persistence](../../wiki/Persistence)
 - [Serialization](../../wiki/Serialization)

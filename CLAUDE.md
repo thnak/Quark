@@ -186,7 +186,7 @@ services.AddRedisGrainStorage(opts => opts.ConnectionString = "...");
 services.AddRedisGrainStorage("namedProvider", opts => { ... });
 ```
 
-Idle deactivation is managed by `GrainIdleCollector`. Configure via `SiloRuntimeOptions.CollectionAge` / `CollectionInterval`. Call `_ctx.DelayDeactivation(TimeSpan)` to defer.
+Idle deactivation is managed by `GrainIdleCollector`. Configure via `SiloRuntimeOptions.GrainCollectionAge` / `GrainCollectionInterval` (disabled by default — `GrainCollectionAge` is `TimeSpan.Zero`). Call `_ctx.DelayDeactivation(TimeSpan)` to defer.
 
 ## Streaming
 

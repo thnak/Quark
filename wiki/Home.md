@@ -8,6 +8,8 @@ Quark is a **Native AOT-first, Orleans-compatible distributed actor framework** 
 
 It follows the Orleans mental model — Grain, Silo, Client, Placement, Persistence — while being built from the ground up for AOT compilation, per-call DI scoping, and lean memory footprints.
 
+New here? Two pages frame everything else: **[Why Quark](Why-Quark)** (what Quark bets on vs Orleans/Akka.NET, and when not to use it) and **[Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics)** (the engine contract — what lives how long and exactly what happens on failure).
+
 ## How the pieces fit
 
 A client calls grains through a generated proxy. In-process the proxy talks straight to the local
@@ -63,6 +65,7 @@ flowchart LR
 | Durable grain reminders (in-memory + Redis) | ✅ |
 | `[Reentrant]` concurrent dispatch | ✅ |
 | `[PersistentState]` injection | ✅ |
+| Per-call grain scope initializers (`AddGrainScopeInitializer`, multi-tenant DI scoping) | ✅ |
 | `IPersistentActivationMemory<T>` | ✅ |
 | `JournaledGrain<TState,TEvent>` event sourcing | ✅ |
 | In-memory streams (`IAsyncStream<T>`) | ✅ |
@@ -157,7 +160,9 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 
 ## Pages
 
+- [Why Quark](Why-Quark)
 - [Architecture](Architecture)
+- [Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics)
 - [Writing Grains](Writing-Grains)
 - [Persistence](Persistence)
 - [Serialization](Serialization)

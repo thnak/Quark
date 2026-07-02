@@ -78,6 +78,27 @@ public sealed class PlayerBehavior : IGrainBehavior, IPlayerGrain
 
 A new `PlayerBehavior` instance is created for every method call and disposed when the call returns.
 
+### The one rule: behavior fields are per-call
+
+This is the habit that changes coming from Orleans (`Grain` subclasses) or Akka.NET (actor classes): **a mutable field on a behavior does not survive to the next call.** The engine rebuilds the behavior from a fresh `IServiceScope` on every invocation, so fields are scratch space for a single call.
+
+```csharp
+public sealed class WrongCounter : IGrainBehavior, ICounterGrain
+{
+    private int _count;                                  // ⚠ QRK0020: reset between calls
+    public Task IncrementAsync() { _count++; return Task.CompletedTask; }
+}
+```
+
+You do not have to remember this — the build does:
+
+- `QRK0020` warns on any mutable instance field of a behavior; `QRK0021` on writable auto-properties.
+- `readonly` constructor-injected fields (services, `IActivationMemory<T>` handles, `ICallContext`) are the intended pattern and produce no warning.
+- `BehaviorStartupValidator` constructs every registered behavior at silo startup, so a missing DI registration fails at boot rather than on the first live call.
+- Mutable `static` fields are the one escape the analyzers don't flag yet ([#129](https://github.com/thnak/Quark/issues/129)) — never use them for grain state: statics are shared across *all* activations on the silo and invisible to persistence and clustering.
+
+Where cross-call state actually lives, from cheapest to most durable: `IActivationMemory<T>` (survives calls, lost on deactivation) → `IManagedActivationMemory<T>` (adds async init/cleanup for resources) → `IPersistentActivationMemory<T>` / `[PersistentState]` (durable) → `JournaledGrain` (event-sourced). The full decision table with lifecycle diagrams is in [Persistence](Persistence); the engine's lifetime and failure contract is in [Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics).
+
 ## Grain state
 
 State that must survive across calls lives in `IActivationMemory<TState>`:
@@ -107,6 +128,84 @@ Use `ICallContext` to obtain your own `GrainId` when constructing a self-referen
 ```csharp
 var self = _factory.GetGrain<IMyGrain>(_ctx.GrainId);
 ```
+
+## Multi-tenant scope initialization
+
+`AddGrainScopeInitializer<TInterface, TBehavior>` configures the per-call `IServiceScope` *before*
+the behavior is constructed — the hook for deriving tenant identity from the grain key and
+populating scoped services the behavior depends on.
+
+```csharp
+public sealed class TenantContext
+{
+    public string TenantId { get; set; } = "";
+}
+
+public sealed class OrderBehavior : IGrainBehavior, IOrderGrain
+{
+    private readonly TenantContext _tenant;
+    private readonly IActivationMemory<OrderState> _memory;
+
+    public OrderBehavior(TenantContext tenant, IActivationMemory<OrderState> memory)
+    {
+        _tenant = tenant;
+        _memory = memory;
+    }
+
+    public Task<string> GetTenantAsync() => Task.FromResult(_tenant.TenantId);
+}
+```
+
+```csharp
+// In silo startup:
+silo.Services.AddScoped<TenantContext>();
+silo.Services.AddGrainScopeInitializer<IOrderGrain, OrderBehavior>((ctx, sp, ct) =>
+{
+    // Convention: GrainId key is "{tenantId}/{orderId}"
+    sp.GetRequiredService<TenantContext>().TenantId = ctx.GrainId.Key.Split('/')[0];
+    return ValueTask.CompletedTask;
+});
+```
+
+The initializer runs on **every** scope Quark creates for `IOrderGrain` — at activation and again on
+each subsequent call — so `TenantContext` is always populated before `OrderBehavior` (or anything
+else in that scope) is constructed. Throwing from the initializer faults the activation and prevents
+the behavior from ever being constructed — use it to reject calls for an unknown tenant. See
+[Architecture](Architecture#per-call-scope-initializers-multi-tenant-di-scoping) for the full binder
+pipeline.
+
+## Data access from behaviors
+
+Per-call scoping means a scoped `DbContext` (or any unit-of-work service) is injected into your
+behavior exactly like in an ASP.NET Core request — fresh per call, disposed with the call, no
+manual scope juggling. Be clear about what that buys and what it doesn't:
+
+**What the per-call scope solves:** lifetime correctness. No stale change trackers, no `DbContext`
+shared across concurrent calls, natural per-tenant wiring via scope initializers.
+
+**What it does not solve:** database performance. A scope per call is not a connection per call —
+but it isn't free batching either. The guidance:
+
+- **Let the driver pool connections.** ADO.NET/`SqlClient`, Npgsql, and Redis multiplexers pool at
+  the process level; a short-lived `DbContext` borrows and returns a pooled connection. Register
+  clients that are *designed* to be long-lived (e.g. `IConnectionMultiplexer`, `HttpClient` via
+  factory) as singletons — per-call scoping is for units of work, not for expensive clients.
+- **Batch inside the call, not across calls.** Do one `SaveChanges`/pipeline per grain call, not one
+  per mutation. The mailbox already serializes all writers for a grain key, so a grain call is a
+  natural write batch with no extra locking.
+- **Use the grain as the write owner.** Route all writes for an entity through its grain instead of
+  letting N services open N contexts against the same row — that is the actor model doing your
+  contention control.
+- **Cache reads in activation memory.** If every call re-reads the same row, load it once into
+  `IPersistentActivationMemory<T>` (shell-cached, explicit `WriteStateAsync`) instead of using a
+  `[PersistentState]` slot, which re-reads storage on every call — see the comparison in
+  [Persistence](Persistence).
+- **Keep grain calls idempotent where callers may retry.** Delivery-guarantee formalization and
+  idempotency-key support are tracked in [#59](https://github.com/thnak/Quark/issues/59) and
+  [#124](https://github.com/thnak/Quark/issues/124); until then, retry policy is yours.
+- **For accumulate-and-flush workloads**, buffer in `IManagedActivationMemory<T>` and flush on a
+  grain timer and in `Destroy` — the deactivation contract guarantees the flush runs
+  ([Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics#what-deactivation-guarantees)).
 
 ## Lifecycle hooks
 

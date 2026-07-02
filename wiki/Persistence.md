@@ -2,6 +2,14 @@
 
 Quark offers six implemented persistence patterns, from ephemeral in-memory state to full event sourcing.
 
+**Which one do I use?** Answer three questions:
+
+1. **Must it survive deactivation / restart?** No → `IActivationMemory<T>` (plain data), `IManagedActivationMemory<T>` (needs async init or cleanup — buffers, clients, handles), or `IEagerActivationMemory<T>` (must be ready before `OnActivateAsync`). Yes → continue.
+2. **Do you need the history or just the latest value?** History → `JournaledGrain<TState,TEvent>`. Latest value → continue.
+3. **Hot state or Orleans compatibility?** Read on most calls → `IPersistentActivationMemory<T>` (shell-cached, explicit `WriteStateAsync`). Migrating Orleans code or need multiple named slots → `[PersistentState] IPersistentState<T>` (⚠ re-reads storage every call — see the comparison below).
+
+Multi-grain atomic updates are a separate concern — see [Transactions](Transactions). What each pattern guarantees on failure and deactivation is specified in [Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics).
+
 | Pattern | Interface | Init timing | `.Value` access | Storage |
 |---|---|---|---|---|
 | In-memory | `IActivationMemory<T>` | `new()` sync | Sync | None |
