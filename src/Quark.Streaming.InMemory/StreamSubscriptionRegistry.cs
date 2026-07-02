@@ -117,8 +117,17 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         {
             List<(Guid, IUntypedStreamObserver)> snapshot;
             lock (untypedList) { snapshot = [..untypedList]; }
+
+            List<Exception>? untypedErrors = null;
             foreach (var (_, obs) in snapshot)
-                await obs.OnNextAsync(item!, token).ConfigureAwait(false);
+            {
+                try { await obs.OnNextAsync(item!, token).ConfigureAwait(false); }
+                catch (Exception ex) { (untypedErrors ??= []).Add(ex); }
+            }
+            if (untypedErrors is { Count: > 0 })
+            {
+                throw new AggregateException(untypedErrors);
+            }
         }
     }
 
