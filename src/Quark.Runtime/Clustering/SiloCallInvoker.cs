@@ -99,7 +99,13 @@ public sealed class SiloCallInvoker : IGrainCallInvoker
         long id = Interlocked.Increment(ref _nextCorrelationId);
 
         var headers = new MessageHeaders();
-        headers.Set("x-quark-hop", "1");
+        headers.Set(QuarkHeaders.Hop, "1");
+
+        // Copy the ambient idempotency key onto forwarded envelopes so the terminal silo dedups
+        // on the original key rather than seeing a new request.
+        string? idempotencyKey = QuarkRequestContext.IdempotencyKey;
+        if (idempotencyKey is not null)
+            headers.Set(QuarkHeaders.IdempotencyKey, idempotencyKey);
 
         var envelope = new MessageEnvelope
         {

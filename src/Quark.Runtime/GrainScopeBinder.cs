@@ -15,6 +15,7 @@ internal static class GrainScopeBinder
 
         ICallContextSetter callContextSetter = sp.GetRequiredService<ICallContextSetter>();
         callContextSetter.Set(activation.GrainId);
+        callContextSetter.SetIdempotencyKey(QuarkRequestContext.IdempotencyKey);
 
         if (sp.GetService<IGrainScopeInitializerRegistry>() is { } registry &&
             registry.TryGet(activation.GrainType, out GrainScopeInitializer initializer))

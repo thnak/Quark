@@ -9,4 +9,10 @@ namespace Quark.Core.Abstractions.Hosting;
 public interface ICallContext
 {
     GrainId GrainId { get; }
+
+    /// <summary>
+    ///     The caller-supplied idempotency key for this call, or <c>null</c> when none was set.
+    ///     Stamped server-side from the <c>x-quark-idem</c> message header.
+    /// </summary>
+    string? IdempotencyKey => null;
 }

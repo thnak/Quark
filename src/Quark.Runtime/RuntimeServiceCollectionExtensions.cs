@@ -82,7 +82,8 @@ public static class RuntimeServiceCollectionExtensions
             tcpObserverTable: sp.GetService<TcpClientObserverTable>(),
             diagnostics: sp.GetService<IQuarkDiagnosticListener>(),
             placementDirector: sp.GetService<IPlacementDirector>(),
-            membershipSnapshot: sp.GetService<IClusterMembershipSnapshot>()));
+            membershipSnapshot: sp.GetService<IClusterMembershipSnapshot>(),
+            dedupStore: sp.GetService<IRequestDedupStore>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services
@@ -93,7 +94,8 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<IGrainCallInvoker>(),
             sp.GetRequiredService<GrainMessageSerializer>(),
             sp.GetService<IGrainFactory>(),
-            terminalInvoker: sp.GetKeyedService<IGrainCallInvoker>("silo-terminal")));
+            terminalInvoker: sp.GetKeyedService<IGrainCallInvoker>("silo-terminal"),
+            dedupStore: sp.GetService<IRequestDedupStore>()));
         services.TryAddSingleton<SiloMessagePump>();
 
         // Gateway client subscription table

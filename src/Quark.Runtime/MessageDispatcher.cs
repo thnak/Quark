@@ -17,6 +17,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
     private readonly IGrainCallInvoker _invoker;
     private readonly IGrainCallInvoker? _terminalInvoker;
     private readonly GrainMessageSerializer _serializer;
+    private readonly IRequestDedupStore? _dedupStore;
 
     /// <summary>Initializes the dispatcher.</summary>
     public MessageDispatcher(
@@ -24,13 +25,15 @@ public sealed class MessageDispatcher : IMessageDispatcher
         IGrainCallInvoker invoker,
         GrainMessageSerializer serializer,
         IGrainFactory? grainFactory = null,
-        IGrainCallInvoker? terminalInvoker = null)
+        IGrainCallInvoker? terminalInvoker = null,
+        IRequestDedupStore? dedupStore = null)
     {
         _dispatcherRegistry = dispatcherRegistry;
         _invoker = invoker;
         _serializer = serializer;
         _grainFactory = grainFactory;
         _terminalInvoker = terminalInvoker;
+        _dedupStore = dedupStore;
     }
 
     /// <inheritdoc />
@@ -61,9 +64,55 @@ public sealed class MessageDispatcher : IMessageDispatcher
         // Select local-terminal invoker for forwarded hops to prevent re-routing loops.
         // x-quark-hop: 1 is stamped by SiloCallInvoker on every silo-to-silo forwarded request.
         IGrainCallInvoker activeInvoker =
-            (envelope.Headers?.Get("x-quark-hop") is not null && _terminalInvoker is not null)
+            (envelope.Headers?.Get(QuarkHeaders.Hop) is not null && _terminalInvoker is not null)
             ? _terminalInvoker
             : _invoker;
+
+        // Propagate idempotency key to the ambient AsyncLocal so that ICallContext.IdempotencyKey
+        // is set when GrainScopeBinder stamps it onto the per-call scope.
+        string? idempotencyKey = envelope.Headers?.Get(QuarkHeaders.IdempotencyKey);
+        using IDisposable? keyScope = idempotencyKey is not null
+            ? QuarkRequestContext.WithIdempotencyKey(idempotencyKey)
+            : null;
+
+        // Dedup checkpoint: skip when there is no key, no store, or the call is transactional.
+        bool isDedupCall = idempotencyKey is not null
+            && _dedupStore is not null
+            && envelope.Headers?.Get(QuarkHeaders.Transaction) is null;
+
+        if (isDedupCall)
+        {
+            ulong argHash = ComputeFnv1aHash(request.ArgumentPayload);
+            DedupLease lease = await _dedupStore!.TryBeginAsync(
+                request.GrainId, idempotencyKey!, argHash, cancellationToken).ConfigureAwait(false);
+
+            if (lease.Outcome == DedupOutcome.Replay)
+            {
+                if (!expectResponse) return null;
+                return new MessageEnvelope
+                {
+                    CorrelationId = envelope.CorrelationId,
+                    MessageType = MessageType.Response,
+                    Headers = envelope.Headers,
+                    Payload = lease.RecordedResponse
+                };
+            }
+
+            if (lease.Outcome == DedupOutcome.Conflict)
+            {
+                if (!expectResponse) return null;
+                return new MessageEnvelope
+                {
+                    CorrelationId = envelope.CorrelationId,
+                    MessageType = MessageType.Response,
+                    Headers = envelope.Headers,
+                    Payload = _serializer.SerializeResponse(new GrainInvocationResponse(
+                        false, ReadOnlyMemory<byte>.Empty,
+                        "IdempotencyKeyConflict: the idempotency key was reused with different arguments."))
+                };
+            }
+            // DedupOutcome.Execute: fall through to normal execution below.
+        }
 
         try
         {
@@ -91,6 +140,23 @@ public sealed class MessageDispatcher : IMessageDispatcher
                     .ConfigureAwait(false);
             }
 
+            if (isDedupCall)
+            {
+                // Cache the outcome (success or empty for one-way) so retries replay it.
+                ReadOnlyMemory<byte> dedupPayload = expectResponse
+                    ? _serializer.SerializeResponse(new GrainInvocationResponse(true, resultPayload, null))
+                    : ReadOnlyMemory<byte>.Empty;
+                _dedupStore!.Complete(request.GrainId, idempotencyKey!, dedupPayload);
+                if (!expectResponse) return null;
+                return new MessageEnvelope
+                {
+                    CorrelationId = envelope.CorrelationId,
+                    MessageType = MessageType.Response,
+                    Headers = envelope.Headers,
+                    Payload = dedupPayload
+                };
+            }
+
             if (!expectResponse)
                 return null;
 
@@ -103,16 +169,37 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 Payload = _serializer.SerializeResponse(response)
             };
         }
-        catch (Exception ex) when (expectResponse)
+        catch (Exception ex) when (isDedupCall || expectResponse)
         {
-            GrainInvocationResponse response = new(false, ReadOnlyMemory<byte>.Empty, ex.ToString());
+            var errorResponse = new GrainInvocationResponse(false, ReadOnlyMemory<byte>.Empty, ex.ToString());
+            byte[] errorBytes = _serializer.SerializeResponse(errorResponse);
+
+            if (isDedupCall)
+                _dedupStore!.Complete(request.GrainId, idempotencyKey!, errorBytes);
+
+            // Re-throw for one-way keyed calls after recording the outcome.
+            if (!expectResponse) throw;
+
             return new MessageEnvelope
             {
                 CorrelationId = envelope.CorrelationId,
                 MessageType = MessageType.Response,
                 Headers = envelope.Headers,
-                Payload = _serializer.SerializeResponse(response)
+                Payload = errorBytes
             };
         }
+    }
+
+    private static ulong ComputeFnv1aHash(ReadOnlyMemory<byte> payload)
+    {
+        const ulong fnvPrime = 0x100000001B3UL;
+        const ulong offsetBasis = 0xCBF29CE484222325UL;
+        ulong hash = offsetBasis;
+        foreach (byte b in payload.Span)
+        {
+            hash ^= b;
+            hash *= fnvPrime;
+        }
+        return hash;
     }
 }

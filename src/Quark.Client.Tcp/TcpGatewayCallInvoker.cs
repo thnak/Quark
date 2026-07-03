@@ -94,11 +94,21 @@ public sealed class TcpGatewayCallInvoker : IGrainCallInvoker
         byte[] requestPayload = _grainSerializer.SerializeRequest(
             new GrainInvocationRequest(grainId, methodId, argBytes));
         long id = Interlocked.Increment(ref _nextCorrelationId);
+
+        string? idempotencyKey = QuarkRequestContext.IdempotencyKey;
+        MessageHeaders? headers = null;
+        if (idempotencyKey is not null)
+        {
+            headers = new MessageHeaders();
+            headers.Set(QuarkHeaders.IdempotencyKey, idempotencyKey);
+        }
+
         return await _connection.SendAndAwaitAsync(new MessageEnvelope
         {
             CorrelationId = id,
             MessageType = MessageType.Request,
-            Payload = requestPayload
+            Payload = requestPayload,
+            Headers = headers
         }, ct).ConfigureAwait(false);
     }
 }

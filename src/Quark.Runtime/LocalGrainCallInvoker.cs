@@ -36,6 +36,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly IClusterMembershipSnapshot? _membershipSnapshot;
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
+    private readonly IRequestDedupStore? _dedupStore;
 
     public LocalGrainCallInvoker(
         GrainActivationTable activationTable,
@@ -51,7 +52,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         TcpClientObserverTable? tcpObserverTable = null,
         IQuarkDiagnosticListener? diagnostics = null,
         IPlacementDirector? placementDirector = null,
-        IClusterMembershipSnapshot? membershipSnapshot = null)
+        IClusterMembershipSnapshot? membershipSnapshot = null,
+        IRequestDedupStore? dedupStore = null)
     {
         _activationTable = activationTable;
         _typeRegistry = typeRegistry;
@@ -69,6 +71,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
         _placementDirector = placementDirector;
         _membershipSnapshot = membershipSnapshot;
+        _dedupStore = dedupStore;
     }
 
     /// <inheritdoc />
@@ -353,9 +356,11 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             }
         }).ConfigureAwait(false);
 
+        IRequestDedupStore? dedupStore = _dedupStore;
         activation.SetOnDeactivated(() =>
         {
             _activationTable.Remove(grainId);
+            dedupStore?.EvictGrain(grainId);
             return Task.CompletedTask;
         });
 
