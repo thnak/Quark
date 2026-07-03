@@ -99,4 +99,28 @@ public sealed class SiloRuntimeOptions
     ///     Default: <see cref="SchedulerOverloadMode.Wait"/> (backpressure).
     /// </summary>
     public SchedulerOverloadMode SchedulerOverloadMode { get; set; } = SchedulerOverloadMode.Wait;
+
+    /// <summary>
+    ///     Default maximum number of concurrent local worker activations for a
+    ///     <c>[StatelessWorker]</c> grain that does not specify <c>maxLocalWorkers</c>.
+    ///     Applied when <c>maxLocalWorkers</c> is <c>-1</c> (the attribute default).
+    ///     Default: <see cref="Environment.ProcessorCount"/>; floor of 1.
+    /// </summary>
+    public int StatelessWorkerDefaultMaxLocalActivations { get; set; } = Environment.ProcessorCount;
+
+    /// <summary>
+    ///     Default waiter-queue capacity for stateless-worker pools.
+    ///     <c>0</c> (the default) means unbounded — calls block until a worker slot is free.
+    ///     When non-zero, <see cref="StatelessWorkerOverloadMode"/> is applied when the
+    ///     waiter queue is full.
+    /// </summary>
+    public int StatelessWorkerQueueCapacity { get; set; }
+
+    /// <summary>
+    ///     Policy applied when a bounded stateless-worker waiter queue
+    ///     (<see cref="StatelessWorkerQueueCapacity"/> &gt; 0) is full.
+    ///     Ignored when <see cref="StatelessWorkerQueueCapacity"/> is <c>0</c> (unbounded).
+    ///     Default: <see cref="SchedulerOverloadMode.Wait"/> (backpressure).
+    /// </summary>
+    public SchedulerOverloadMode StatelessWorkerOverloadMode { get; set; } = SchedulerOverloadMode.Wait;
 }
