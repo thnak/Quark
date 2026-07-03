@@ -88,6 +88,11 @@ public sealed class TestSilo : IAsyncDisposable
             builder.Services.AddHostedService<MembershipOracle>();
         }
 
+        if (Options.TimeProvider is not null)
+        {
+            builder.Services.AddSingleton(Options.TimeProvider);
+        }
+
         Options.ConfigureSiloServices?.Invoke(builder.Services);
         Options.ConfigureClientServices?.Invoke(builder.Services);
 

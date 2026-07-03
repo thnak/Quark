@@ -34,4 +34,11 @@ public sealed class TestClusterOptions
     ///     Created automatically by <see cref="TestCluster" />.
     /// </summary>
     internal SharedTestClusterState? SharedClusterState { get; set; }
+
+    /// <summary>
+    ///     When set, registered as the default <see cref="System.TimeProvider" /> in every silo's DI
+    ///     container, so grain timers that don't set <c>GrainTimerCreationOptions.TimeProvider</c>
+    ///     schedule against it. Pass a fake/virtual clock for deterministic timer advancement in tests.
+    /// </summary>
+    public TimeProvider? TimeProvider { get; set; }
 }

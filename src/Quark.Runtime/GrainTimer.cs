@@ -8,7 +8,7 @@ internal sealed class GrainTimer<TState> : IGrainTimer
     private readonly bool _interleave;
     private readonly Func<Func<ValueTask>, ValueTask> _post;
     private readonly TState _state;
-    private readonly Timer _timer;
+    private readonly ITimer _timer;
     private int _pending;
     private volatile bool _disposed;
 
@@ -16,13 +16,14 @@ internal sealed class GrainTimer<TState> : IGrainTimer
         Func<TState, CancellationToken, Task> callback,
         TState state,
         GrainTimerCreationOptions options,
-        Func<Func<ValueTask>, ValueTask> postToQueue)
+        Func<Func<ValueTask>, ValueTask> postToQueue,
+        TimeProvider timeProvider)
     {
         _callback = callback;
         _state = state;
         _interleave = options.Interleave;
         _post = postToQueue;
-        _timer = new Timer(OnFire, null, options.DueTime, options.Period);
+        _timer = timeProvider.CreateTimer(OnFire, null, options.DueTime, options.Period);
     }
 
     public void Change(TimeSpan dueTime, TimeSpan period)

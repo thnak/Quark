@@ -207,8 +207,9 @@ public sealed class GrainActivation : IAsyncDisposable
 
         GrainId capturedId = GrainId;
         IQuarkDiagnosticListener capturedDiagnostics = _diagnostics;
+        TimeProvider timeProvider = options.TimeProvider ?? _root.GetService<TimeProvider>() ?? TimeProvider.System;
 
-        var timer = new GrainTimer<TState>(Instrumented, state, options, PostAsync);
+        var timer = new GrainTimer<TState>(Instrumented, state, options, PostAsync, timeProvider);
         lock (_timersLock)
         {
             _timers.Add(timer);

@@ -21,4 +21,12 @@ public sealed class GrainTimerCreationOptions
     ///     When <c>false</c> (default), a pending fire is skipped if the previous one has not finished.
     /// </summary>
     public bool Interleave { get; init; }
+
+    /// <summary>
+    ///     Overrides the clock this timer schedules against. When <c>null</c> (default), the runtime
+    ///     resolves a <see cref="System.TimeProvider" /> registered in DI, falling back to
+    ///     <see cref="System.TimeProvider.System" /> if none is registered. Set explicitly to pin a
+    ///     single timer to a fake/virtual clock, e.g. for deterministic tests.
+    /// </summary>
+    public TimeProvider? TimeProvider { get; init; }
 }

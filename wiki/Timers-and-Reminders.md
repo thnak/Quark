@@ -89,13 +89,35 @@ The timer is automatically disposed when the activation is deactivated, but call
 ```csharp
 new GrainTimerCreationOptions
 {
-    DueTime    = TimeSpan.Zero,             // delay before first fire
-    Period     = TimeSpan.FromSeconds(10),  // interval; Timeout.InfiniteTimeSpan = one-shot
-    Interleave = false                      // true = overlapping fires allowed
+    DueTime      = TimeSpan.Zero,             // delay before first fire
+    Period       = TimeSpan.FromSeconds(10),  // interval; Timeout.InfiniteTimeSpan = one-shot
+    Interleave   = false,                     // true = overlapping fires allowed
+    TimeProvider = null                       // null = resolve from DI, falling back to TimeProvider.System
 }
 ```
 
 When `Interleave = false` (default), a timer tick that arrives while the previous callback is still running is silently dropped. This prevents unbounded queue growth for slow callbacks.
+
+### Deterministic timer tests
+
+Timers schedule against a `System.TimeProvider` instead of a hard-coded `System.Threading.Timer`, so
+tests can advance a virtual clock instead of sleeping on the real one:
+
+- **Per-timer override** — set `GrainTimerCreationOptions.TimeProvider` explicitly to pin a single
+  timer to a fake clock.
+- **Cluster-wide override** — set `TestClusterOptions.TimeProvider` to register a fake clock as the
+  DI default for every silo in a `TestCluster`; any timer that doesn't set its own override resolves
+  it automatically.
+
+```csharp
+var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+await using var cluster = await TestCluster.CreateAsync(options => options.TimeProvider = fakeTime);
+// ... register a grain timer with DueTime = TimeSpan.FromMinutes(5) ...
+fakeTime.Advance(TimeSpan.FromMinutes(5)); // fires deterministically, no wall-clock delay
+```
+
+If no override is registered, `RegisterTimer` falls back to `TimeProvider.System`, so production
+behavior is unchanged.
 
 ### Changing a running timer
 

@@ -95,6 +95,11 @@ S.Timer = shell.Shell.RegisterTimer<TState>(
 // dispose in OnDeactivateAsync (or call S.Timer.Dispose() to cancel early)
 ```
 
+Timers schedule against `TimeProvider.System` by default. For deterministic tests, set
+`GrainTimerCreationOptions.TimeProvider` on a single timer, or `TestClusterOptions.TimeProvider` to
+override the DI default for every silo in a `TestCluster` (advance a `FakeTimeProvider` instead of
+sleeping on the real clock).
+
 ## Reminders (durable; implement `IRemindable`)
 
 ```csharp
