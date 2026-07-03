@@ -163,15 +163,129 @@ When the remote client subscribes, the silo registers a `GatewayClientSubscripti
 await handle.UnsubscribeAsync();
 ```
 
-## Stream sequence tokens
+## One-call streaming instead of `IAsyncEnumerable<T>`
 
-`StreamSequenceToken` carries a sequence number and event index for ordering guarantees. Pass it to `SubscribeAsync` to resume from a known position:
+Quark grain methods currently support request/response shapes: `Task`, `Task<T>`,
+`ValueTask`, and `ValueTask<T>`. A grain method returning `IAsyncEnumerable<T>` is not a
+supported grain-call contract today.
+
+When you need a result that arrives item-by-item, model it as a stream-backed operation:
 
 ```csharp
-await stream.SubscribeAsync(observer, token: lastToken);
+public interface IReportGrain : IGrainWithStringKey
+{
+    Task<StreamId> StartReportAsync(ReportRequest request);
+}
 ```
 
-The in-memory provider assigns monotonically increasing sequence numbers per stream.
+The grain starts the operation and publishes rows to a stream:
+
+```csharp
+public sealed class ReportBehavior : IReportGrain, IGrainBehavior
+{
+    private readonly IStreamProvider _streams;
+
+    public ReportBehavior([FromKeyedServices("reports")] IStreamProvider streams)
+    {
+        _streams = streams;
+    }
+
+    public async Task<StreamId> StartReportAsync(ReportRequest request)
+    {
+        StreamId streamId = StreamId.Create("Reports", request.OperationId);
+        IAsyncStream<ReportRow> stream = _streams.GetStream<ReportRow>(streamId);
+
+        try
+        {
+            foreach (ReportRow row in ValidateRows(BuildRows(request)))
+            {
+                await stream.OnNextAsync(row);
+            }
+
+            await stream.OnCompletedAsync();
+        }
+        catch (Exception ex)
+        {
+            await stream.OnErrorAsync(ex);
+            throw;
+        }
+
+        return streamId;
+    }
+}
+```
+
+The client subscribes to the returned stream. Today this uses `SubscribeAsync` directly:
+
+```csharp
+StreamId streamId = await report.StartReportAsync(request);
+IAsyncStream<ReportRow> stream = streamProvider.GetStream<ReportRow>(streamId);
+
+StreamSubscriptionHandle<ReportRow> handle = await stream.SubscribeAsync(
+    onNext: (row, token) =>
+    {
+        Console.WriteLine(row);
+        return Task.CompletedTask;
+    },
+    onError: ex =>
+    {
+        Console.Error.WriteLine(ex);
+        return Task.CompletedTask;
+    },
+    onCompleted: () => Task.CompletedTask);
+```
+
+Issue [#137](https://github.com/thnak/Quark/issues/137) tracks a more ergonomic helper that
+adapts a Quark stream into `IAsyncEnumerable<T>` while still using the stream protocol under
+the hood:
+
+```csharp
+StreamId streamId = await report.StartReportAsync(request);
+IAsyncStream<ReportRow> stream = streamProvider.GetStream<ReportRow>(streamId);
+
+await foreach (ReportRow row in stream.OpenStreamAsync(
+    onError: ex =>
+    {
+        Console.Error.WriteLine(ex);
+        return Task.CompletedTask;
+    },
+    cancellationToken))
+{
+    Console.WriteLine(row);
+}
+```
+
+This helper should subscribe when enumeration starts, yield each `OnNextAsync` item, complete
+the enumeration when the stream completes, and unsubscribe when the caller cancels or exits
+the loop. It does not need an `onCompleted` callback because normal completion is represented
+by the end of the async sequence.
+
+Use this pattern when the caller expects a long or unbounded result set, progress updates,
+or live data. Use a normal `Task<IReadOnlyList<T>>` or `Task<T[]>` when the result is small,
+bounded, and should be returned atomically.
+
+For fault tolerance:
+
+- validate items before publishing them;
+- call `OnErrorAsync` when the producer cannot continue;
+- call `OnCompletedAsync` when the stream finishes normally;
+- keep the returned `StreamSubscriptionHandle<T>` and call `UnsubscribeAsync` when the
+  caller cancels or no longer needs data;
+- register codecs with `AddStreamableCodec<T, TCodec>()` for every stream item type crossing
+  the TCP gateway.
+
+## Stream sequence tokens
+
+`StreamSequenceToken` carries a sequence number and event index for ordering guarantees. The
+current in-memory provider delivers tokens to subscribers, but it does not support replay or
+resume from an old token:
+
+```csharp
+StreamSubscriptionHandle<ChatMsg> handle = await stream.SubscribeAsync(observer);
+```
+
+Persistent/recoverable streams are tracked separately in [#41](https://github.com/thnak/Quark/issues/41).
+That work will define replay-from-token behavior.
 
 ## ChatRoom sample
 
