@@ -71,4 +71,32 @@ public sealed class SiloRuntimeOptions
     ///     Default: <see cref="Quark.Runtime.MailboxFullMode.Wait"/> (backpressure).
     /// </summary>
     public MailboxFullMode MailboxFullMode { get; set; } = MailboxFullMode.Wait;
+
+    /// <summary>
+    ///     Maximum number of concurrent activation drains the scheduler may run simultaneously.
+    ///     Default: <see cref="Environment.ProcessorCount"/>; floor of 1.
+    /// </summary>
+    public int SchedulerMaxConcurrentActivations { get; set; } = Environment.ProcessorCount;
+
+    /// <summary>
+    ///     Maximum number of work items a single drain pass processes before yielding the activation
+    ///     back to the scheduler ready queue, giving other activations a chance to run.
+    ///     Default: <c>64</c>; floor of 1.
+    /// </summary>
+    public int SchedulerDrainBudget { get; set; } = 64;
+
+    /// <summary>
+    ///     Capacity of the scheduler's global ready queue. <c>0</c> (the default) means unbounded.
+    ///     When non-zero, the ready queue is bounded and <see cref="SchedulerOverloadMode"/> applies
+    ///     when the queue is full.
+    /// </summary>
+    public int SchedulerReadyQueueCapacity { get; set; }
+
+    /// <summary>
+    ///     Policy applied when a bounded scheduler ready queue
+    ///     (<see cref="SchedulerReadyQueueCapacity"/> &gt; 0) is full.
+    ///     Ignored when <see cref="SchedulerReadyQueueCapacity"/> is <c>0</c> (unbounded).
+    ///     Default: <see cref="SchedulerOverloadMode.Wait"/> (backpressure).
+    /// </summary>
+    public SchedulerOverloadMode SchedulerOverloadMode { get; set; } = SchedulerOverloadMode.Wait;
 }
