@@ -20,7 +20,10 @@ public sealed class SchedulingSemanticsFixture : IAsyncDisposable
 {
     private readonly ServiceProvider _serviceProvider;
 
-    public SchedulingSemanticsFixture(int mailboxCapacity = 0, MailboxFullMode mailboxFullMode = MailboxFullMode.Wait)
+    public SchedulingSemanticsFixture(
+        int mailboxCapacity = 0,
+        MailboxFullMode mailboxFullMode = MailboxFullMode.Wait,
+        Action<SiloRuntimeOptions>? configureScheduler = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -31,6 +34,7 @@ public sealed class SchedulingSemanticsFixture : IAsyncDisposable
             o.SiloName = "silo0";
             o.MailboxCapacity = mailboxCapacity;
             o.MailboxFullMode = mailboxFullMode;
+            configureScheduler?.Invoke(o);
         });
 
         services.AddSingleton<LifecycleSubject>();
@@ -66,6 +70,14 @@ public sealed class SchedulingSemanticsFixture : IAsyncDisposable
         LocalGrainFactory? grainFactoryRef = null;
         services.AddSingleton<IGrainFactory>(_ =>
             grainFactoryRef ?? throw new InvalidOperationException("Not yet wired."));
+
+        // Register the real ActivationScheduler only when QoS options are provided.
+        // Without this registration, GrainActivation falls back to SimpleActivationScheduler.Instance.
+        if (configureScheduler != null)
+        {
+            services.AddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
+                sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value));
+        }
 
         _serviceProvider = services.BuildServiceProvider();
 

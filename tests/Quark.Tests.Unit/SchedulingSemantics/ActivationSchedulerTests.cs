@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -202,6 +203,168 @@ public sealed class ActivationSchedulerTests : IAsyncDisposable
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(GrainActivationStatus.Inactive, activation.ActivationStatus);
+    }
+
+    // §15 item 5: drain budget fairness — a hot activation must yield to a colder one when the
+    // budget is reached.  With drainBudget=2 and a single worker, activation A processes 2 items,
+    // then yields so B (1 item) runs, then A continues.
+    [Fact]
+    public async Task Spec5_DrainBudget_HotActivationYieldsToOther()
+    {
+        await using var fixture = new SchedulingSemanticsFixture(configureScheduler: o =>
+        {
+            o.SchedulerDrainBudget = 2;
+            o.SchedulerMaxConcurrentActivations = 1;
+        });
+        fixture.Gate.Reset();
+
+        ISchedulingGrain grainA = fixture.Client.GetGrain<ISchedulingGrain>("budget5-a");
+        ISchedulingGrain grainB = fixture.Client.GetGrain<ISchedulingGrain>("budget5-b");
+        await Task.WhenAll(grainA.NoOpAsync(), grainB.NoOpAsync());
+
+        var aId = new GrainId(new GrainType("SchedulingGrain"), "budget5-a");
+        var bId = new GrainId(new GrainType("SchedulingGrain"), "budget5-b");
+        Assert.True(fixture.ActivationTable.TryGetActivation(aId, out GrainActivation? aActivation));
+        Assert.True(fixture.ActivationTable.TryGetActivation(bId, out GrainActivation? bActivation));
+
+        var executionOrder = new ConcurrentQueue<string>();
+
+        // A0: blocking item — occupies slot 1 of the budget-2 drain pass.
+        Task a0 = aActivation!.PostAsync(async () =>
+        {
+            executionOrder.Enqueue("A0");
+            await fixture.Gate.WaitAsync();
+        }).AsTask();
+
+        // Wait until A0 is executing (blocking on the gate).
+        await WaitUntilAsync(() => executionOrder.Contains("A0"));
+
+        // Enqueue A1-A9 while A0 blocks the single worker.
+        var aTasks = Enumerable.Range(1, 9).Select(i =>
+            aActivation.PostAsync(() => { executionOrder.Enqueue($"A{i}"); return ValueTask.CompletedTask; }).AsTask()
+        ).ToList();
+        await Task.Delay(30);
+
+        // Enqueue B while A is holding the single worker. B enters the ready queue behind A.
+        Task bTask = bActivation!.PostAsync(
+            () => { executionOrder.Enqueue("B"); return ValueTask.CompletedTask; }).AsTask();
+        await Task.Delay(30);
+
+        // Release: drain finishes A0 (slot 1) + A1 (slot 2, budget reached). A yields. B runs next.
+        fixture.Gate.Release();
+
+        await Task.WhenAll(new[] { a0, bTask }.Concat(aTasks)).WaitAsync(TimeSpan.FromSeconds(10));
+
+        string[] order = [.. executionOrder];
+        int bIndex = Array.IndexOf(order, "B");
+
+        Assert.True(bIndex > 0,
+            $"B must not be first; A should have items before it. Order: [{string.Join(", ", order)}]");
+        Assert.True(bIndex < order.Length - 1,
+            $"B must not be last; some A items must follow. Order: [{string.Join(", ", order)}]");
+    }
+
+    // §15 item 6: scheduler concurrency cap of 1 — two activations must not drain simultaneously
+    // when the cap is 1; the second must wait until the first's blocking turn completes.
+    [Fact]
+    public async Task Spec6_SchedulerConcurrencyCap_MaxOne_BlocksSecondActivation()
+    {
+        await using var fixture = new SchedulingSemanticsFixture(configureScheduler: o =>
+        {
+            o.SchedulerMaxConcurrentActivations = 1;
+        });
+        fixture.Gate.Reset();
+
+        ISchedulingGrain grainA = fixture.Client.GetGrain<ISchedulingGrain>("cap1-a");
+        ISchedulingGrain grainB = fixture.Client.GetGrain<ISchedulingGrain>("cap1-b");
+        await Task.WhenAll(grainA.NoOpAsync(), grainB.NoOpAsync());
+
+        // Block the single worker on grain A.
+        Task tA = grainA.BlockThenRecordAsync(60);
+        await WaitUntilAsync(() => fixture.EntryLog.Snapshot().Contains(60));
+
+        // With only 1 worker, grain B cannot run while A is blocking it.
+        Task tB = grainB.NoOpAsync();
+        await Task.Delay(100);
+        Assert.False(tB.IsCompleted,
+            "With SchedulerMaxConcurrentActivations=1, B must not execute while A blocks the single worker.");
+
+        fixture.Gate.Release();
+        await Task.WhenAll(tA, tB).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // §15 item 7: scheduler concurrency cap of 2 — two activations may drain simultaneously
+    // when the cap is at least 2.
+    [Fact]
+    public async Task Spec7_SchedulerConcurrencyParallelism_MaxTwo_AllowsConcurrentActivations()
+    {
+        await using var fixture = new SchedulingSemanticsFixture(configureScheduler: o =>
+        {
+            o.SchedulerMaxConcurrentActivations = 2;
+        });
+        fixture.Gate.Reset();
+
+        ISchedulingGrain grainA = fixture.Client.GetGrain<ISchedulingGrain>("par2-a");
+        ISchedulingGrain grainB = fixture.Client.GetGrain<ISchedulingGrain>("par2-b");
+        await Task.WhenAll(grainA.NoOpAsync(), grainB.NoOpAsync());
+
+        // Block one worker on grain A.
+        Task tA = grainA.BlockThenRecordAsync(70);
+        await WaitUntilAsync(() => fixture.EntryLog.Snapshot().Contains(70));
+
+        // With 2 workers, the second worker can drain grain B even while A is blocking.
+        await grainB.NoOpAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(tA.IsCompleted, "A should still be blocked on the gate while B completed.");
+
+        fixture.Gate.Release();
+        await tA.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // §15 item 8: ready queue rejection — a bounded scheduler ready queue with RejectWhenFull
+    // throws SchedulerOverloadException when the queue is at capacity.
+    [Fact]
+    public async Task Spec8_ReadyQueueRejection_ThrowsSchedulerOverloadException()
+    {
+        await using var fixture = new SchedulingSemanticsFixture(configureScheduler: o =>
+        {
+            o.SchedulerMaxConcurrentActivations = 1;
+            o.SchedulerReadyQueueCapacity = 1;
+            o.SchedulerOverloadMode = SchedulerOverloadMode.RejectWhenFull;
+        });
+        fixture.Gate.Reset();
+
+        ISchedulingGrain grainA = fixture.Client.GetGrain<ISchedulingGrain>("reject-a");
+        ISchedulingGrain grainB = fixture.Client.GetGrain<ISchedulingGrain>("reject-b");
+        ISchedulingGrain grainC = fixture.Client.GetGrain<ISchedulingGrain>("reject-c");
+        // Pre-activate each grain with a settling delay between calls.
+        // MailboxWorkItem uses ManualResetValueTaskSourceCore with RunContinuationsAsynchronously=false,
+        // so SetResult runs test continuations synchronously on the worker thread. This causes
+        // PostCoreAsync to TryWrite the grain back to the bounded ready queue (spurious entry) while
+        // the worker is still mid-drain. The delay yields the test to the thread pool, letting the
+        // worker complete its iteration and dequeue the spurious entry before the next activation.
+        await grainA.NoOpAsync();
+        await Task.Delay(10);
+        await grainB.NoOpAsync();
+        await Task.Delay(10);
+        await grainC.NoOpAsync();
+        await Task.Delay(10);
+
+        // Block the single worker on A. The worker is now draining A; ready queue is empty.
+        Task tA = grainA.BlockThenRecordAsync(80);
+        await WaitUntilAsync(() => fixture.EntryLog.Snapshot().Contains(80));
+
+        // B enters the ready queue (capacity=1, currently 0 → succeeds).
+        Task tB = grainB.NoOpAsync();
+        await Task.Delay(50); // let B's schedule land in the ready queue
+
+        // C tries to enter the ready queue — it's full (capacity=1, B occupies it).
+        SchedulerOverloadException ex = await Assert.ThrowsAsync<SchedulerOverloadException>(
+            () => grainC.NoOpAsync());
+        Assert.Equal(1, ex.Capacity);
+
+        fixture.Gate.Release();
+        await Task.WhenAll(tA, tB).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)
