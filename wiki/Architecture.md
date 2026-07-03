@@ -106,6 +106,12 @@ Quark's M2 milestone moved from the Orleans **Framework model** (inheriting `Gra
 
 **Activation memory** — a `StateHolder<TState>` owned by the shell. Survives across calls on the same activation; lost on deactivation. Exposed to the behavior via `IActivationMemory<TState>`.
 
+**The core contract:** behavior code is execution logic; the activation shell owns identity,
+ordering, state lifetime, timers, disposal, and placement. A behavior instance never outlives the
+call that created it, so anything it needs to remember must be handed to the shell — there is no
+"the actor" to keep it in, only "the current call." See [Writing Grains](Writing-Grains#the-one-rule-behavior-fields-are-per-call)
+for what that means in practice and how it contrasts with long-lived actor-object frameworks.
+
 The shell is the only long-lived object; behaviors are transient. One shell can serve many behavior
 instances over its lifetime — one per call:
 

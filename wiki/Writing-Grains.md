@@ -82,22 +82,59 @@ A new `PlayerBehavior` instance is created for every method call and disposed wh
 
 This is the habit that changes coming from Orleans (`Grain` subclasses) or Akka.NET (actor classes): **a mutable field on a behavior does not survive to the next call.** The engine rebuilds the behavior from a fresh `IServiceScope` on every invocation, so fields are scratch space for a single call.
 
+Akka.NET's actor-object model — where a user actor instance is long-lived and its fields *are* the
+actor's state — is not wrong; it is a coherent design that Quark deliberately does not follow. In
+Quark the long-lived runtime object is the `GrainActivation` shell, not the behavior object: the
+behavior is execution logic the shell runs per call, and the shell is what owns identity, ordering,
+state lifetime, timers, disposal, and placement. Anything a behavior needs to remember between
+calls has to be handed to the shell through one of the APIs below, because the behavior instance
+itself is discarded the moment the call returns.
+
 ```csharp
 public sealed class WrongCounter : IGrainBehavior, ICounterGrain
 {
     private int _count;                                  // ⚠ QRK0020: reset between calls
+
     public Task IncrementAsync() { _count++; return Task.CompletedTask; }
+    public Task<int> GetAsync() => Task.FromResult(_count); // always racing back to 0/1
+}
+```
+
+`_count` belongs to one `WrongCounter` instance, which lives for exactly one call. The next
+`IncrementAsync` call gets a brand-new instance with `_count` back at zero — the field looks like
+state but isn't. The corrected shape routes the same counter through the shell via
+`IActivationMemory<T>`, so it survives across calls on the activation:
+
+```csharp
+public sealed class RightCounter : IGrainBehavior, ICounterGrain
+{
+    private readonly IActivationMemory<CounterState> _memory;
+    public RightCounter(IActivationMemory<CounterState> memory) => _memory = memory;
+
+    public Task IncrementAsync() { _memory.Value.Count++; return Task.CompletedTask; }
+    public Task<int> GetAsync() => Task.FromResult(_memory.Value.Count); // survives across calls
 }
 ```
 
 You do not have to remember this — the build does:
 
 - `QRK0020` warns on any mutable instance field of a behavior; `QRK0021` on writable auto-properties.
-- `readonly` constructor-injected fields (services, `IActivationMemory<T>` handles, `ICallContext`) are the intended pattern and produce no warning.
+- `readonly` constructor-injected fields (services, `IActivationMemory<T>` handles, `ICallContext`) are the intended pattern and produce no warning. Injected dependencies and temporary per-call helpers are fine as fields precisely because nothing expects them to survive the call — only *state* is the problem.
 - `BehaviorStartupValidator` constructs every registered behavior at silo startup, so a missing DI registration fails at boot rather than on the first live call.
-- `QRK0022` warns on mutable `static` fields/properties on a behavior — including `static readonly` fields of mutable collection types (e.g. `Dictionary<,>`), since readonly-ness of the reference doesn't make the contents immutable. Static state is shared across *all* activations on the silo, is not thread-safe under `[Reentrant]`/`[StatelessWorker]`, and is invisible to persistence, clustering, and diagnostics — use `IActivationMemory<T>`, a registered singleton service, or persistent state instead.
+- `QRK0022` warns on mutable `static` fields/properties on a behavior — including `static readonly` fields of mutable collection types (e.g. `Dictionary<,>`), since readonly-ness of the reference doesn't make the contents immutable.
 
-Where cross-call state actually lives, from cheapest to most durable: `IActivationMemory<T>` (survives calls, lost on deactivation) → `IManagedActivationMemory<T>` (adds async init/cleanup for resources) → `IPersistentActivationMemory<T>` / `[PersistentState]` (durable) → `JournaledGrain` (event-sourced). The full decision table with lifecycle diagrams is in [Persistence](Persistence); the engine's lifetime and failure contract is in [Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics).
+Mutable static state is not grain state — it is process-wide state that happens to be reachable
+from a behavior class, and it fails in two distinct ways:
+
+- **Cross-grain leakage within one process.** A silo hosts many activations of the same grain type side by side; a mutable static field is shared by all of them, so one grain's write is visible to every other grain's read. It is also not thread-safe under `[Reentrant]`/`[StatelessWorker]`, where multiple calls can run concurrently against static state with no synchronization.
+- **Inconsistency across silos.** Static state lives in one silo's process memory only. A cluster with more than one silo has one copy per silo, each silo sees a different value, and none of it is visible to placement, persistence, or diagnostics — the engine has no way to migrate, replicate, or even know about it.
+
+`static readonly` **caches or configuration** — a compiled regex, a loaded config object, a lookup
+table built once at startup — are fine as static state precisely because they hold no grain, user,
+or application state; they are the same value on every silo and never mutated after initialization.
+The distinction QRK0022 draws is mutability, not "static" itself.
+
+Where cross-call state actually lives, from cheapest to most durable: `IActivationMemory<T>` (survives calls, lost on deactivation) → `IManagedActivationMemory<T>` (adds async init/cleanup for resources) → `IPersistentActivationMemory<T>` / `[PersistentState]` (durable) → `JournaledGrain` (event-sourced). Background work and any resource a behavior needs (a connection, a buffer, a subscription) must be owned by one of these lifecycle APIs — or by timers/reminders — rather than kept alive by the behavior instance, which has no `Dispose` the engine will call for you. The full decision table with lifecycle diagrams is in [Persistence](Persistence); the engine's lifetime and failure contract is in [Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics).
 
 ## Grain state
 
