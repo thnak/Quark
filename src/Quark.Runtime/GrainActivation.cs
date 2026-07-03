@@ -165,6 +165,9 @@ public sealed class GrainActivation : IAsyncDisposable
     // Discriminator type so eager holders cannot collide with state or managed holders.
     private sealed class EagerKey<T>;
 
+    // Discriminator type for the single per-activation ChildRegistry entry.
+    private sealed class ChildRegistryKey;
+
     /// <summary>
     ///     Returns or creates the <see cref="EagerActivationMemoryHolder{T}" /> for the given resource type.
     ///     One holder per (activation, T). Automatically disposed after <c>OnDeactivateAsync</c> completes.
@@ -178,6 +181,13 @@ public sealed class GrainActivation : IAsyncDisposable
 
         static object ValueFactory(Type _) => new EagerActivationMemoryHolder<T>();
     }
+
+    /// <summary>
+    ///     Returns or creates the <see cref="ChildRegistry" /> for this activation.
+    ///     Used by <see cref="ActivationChildrenAccessor" /> to project the child set into the per-call scope.
+    /// </summary>
+    internal ChildRegistry GetOrCreateChildRegistry()
+        => (ChildRegistry)_memoryBag.GetOrAdd(typeof(ChildRegistryKey), static _ => new ChildRegistry());
 
     /// <summary>
     ///     Gets or creates an activation-scoped singleton of type <typeparamref name="T" />.
@@ -415,6 +425,13 @@ public sealed class GrainActivation : IAsyncDisposable
             _logger.LogWarning(e, "Error running OnDeactivateAsync lifecycle hook for {GrainId}", GrainId);
         }
 
+        // After the parent's own OnDeactivateAsync completes (so it had a chance to Detach/flush),
+        // fire-and-forget cascade to all Cascade-mode children for intentional terminations.
+        if (reason.CascadesToChildren)
+        {
+            CascadeToChildren();
+        }
+
         await DisposeManagedHoldersAsync().ConfigureAwait(false);
         _status = GrainActivationStatus.Inactive;
         _queue.Writer.TryComplete();
@@ -426,6 +443,29 @@ public sealed class GrainActivation : IAsyncDisposable
             new KeyValuePair<string, object?>("grain_type", GrainType.Value));
         QuarkInstruments.ActiveGrainActivations.Add(-1,
             new KeyValuePair<string, object?>("grain_type", GrainType.Value));
+    }
+
+    private void CascadeToChildren()
+    {
+        if (!_memoryBag.TryGetValue(typeof(ChildRegistryKey), out object? obj) || obj is not ChildRegistry registry)
+            return;
+
+        IActivationTerminator? terminator = _root.GetService<IActivationTerminator>();
+        if (terminator is null)
+            return;
+
+        IReadOnlyCollection<GrainId> children = registry.Snapshot(ChildTerminationMode.Cascade);
+        foreach (GrainId child in children)
+        {
+            try
+            {
+                terminator.Terminate(child, DeactivationReason.ParentTerminated);
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "Error cascading termination to child {ChildId} from {GrainId}", child, GrainId);
+            }
+        }
     }
 
     private async Task DisposeManagedHoldersAsync()

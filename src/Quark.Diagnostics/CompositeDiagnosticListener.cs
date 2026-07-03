@@ -92,4 +92,9 @@ public sealed class CompositeDiagnosticListener : IQuarkDiagnosticListener
     {
         foreach (var l in _listeners) l.OnTimerFired(in e);
     }
+
+    public void OnChildTerminationFailed(in ChildTerminationFailedEvent e)
+    {
+        foreach (var l in _listeners) l.OnChildTerminationFailed(in e);
+    }
 }

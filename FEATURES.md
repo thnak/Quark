@@ -47,3 +47,7 @@ Orleans architecture reference: [`README.md`](README.md)
 ## Phase 8 — Silo-to-silo transport
 
 - [x] **F-16** Networked silo-to-silo grain forwarding (`NetworkedSiloRouter`, `SiloCallInvoker`, `SiloPeerConnection`, `PeerConnectionManager`, `IClusterMembershipSnapshot`, `x-quark-hop` loop guard, placement-director integration in `LocalGrainCallInvoker`, `AddSiloToSiloTransport()`) — closes #126 — _Complexity: L_
+
+## Phase 9 — Grain supervision
+
+- [x] **F-17** Cascading termination (`IActivationChildren.Attach`, `ChildTerminationMode`, `ChildRegistry`, `DeactivationReason.CascadesToChildren`, `DeactivationReason.ParentTerminated`, `IActivationTerminator`, `DefaultActivationTerminator`, one-way `TerminateRequest` frame, `MessageType.TerminateRequest`, `OnChildTerminationFailed` diagnostic) — closes #120 — _Complexity: M_

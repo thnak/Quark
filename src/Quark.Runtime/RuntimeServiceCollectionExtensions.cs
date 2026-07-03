@@ -104,6 +104,16 @@ public static class RuntimeServiceCollectionExtensions
         // Implicit stream subscription activator — wires publish→activate for [ImplicitStreamSubscription] grains
         services.TryAddSingleton<IImplicitStreamActivator, LocalImplicitStreamActivator>();
 
+        // Cascading termination — IActivationTerminator (singleton) + IActivationChildren (scoped per-call)
+        services.TryAddSingleton<IActivationTerminator>(sp => new DefaultActivationTerminator(
+            sp.GetRequiredService<GrainActivationTable>(),
+            sp.GetService<IGrainDirectory>(),
+            sp.GetService<ISiloRouter>(),
+            sp.GetService<IQuarkDiagnosticListener>()));
+        services.TryAddScoped<IActivationChildren>(sp =>
+            new ActivationChildrenAccessor(
+                sp.GetRequiredService<IActivationShellAccessor>().Shell.GetOrCreateChildRegistry()));
+
         // Idle-timeout grain collector
         services.AddHostedService<GrainIdleCollector>();
 

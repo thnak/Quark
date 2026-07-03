@@ -20,7 +20,7 @@ If you are wondering "where is Quark's supervision story?", this page is it — 
 | **Reminders** | `RegisterOrUpdateReminderAsync` | **Beyond** the activation — durable in the reminder store | Only by explicit `UnregisterReminderAsync` |
 | **Stream subscriptions** | `SubscribeAsync` | Until `UnsubscribeAsync` | Explicit unsubscribe (see [#101](https://github.com/thnak/Quark/issues/101) for the deactivation-timeout edge) |
 
-The activation/deactivation sequence diagrams live in [Persistence § Lifecycle at a glance](Persistence#lifecycle-at-a-glance). Deactivation order, verified against `GrainActivation.RunDeactivationAsync`: **dispose timers → `OnDeactivateAsync` → destroy managed/eager holders → complete the mailbox → remove from table**.
+The activation/deactivation sequence diagrams live in [Persistence § Lifecycle at a glance](Persistence#lifecycle-at-a-glance). Deactivation order, verified against `GrainActivation.RunDeactivationAsync`: **dispose timers → `OnDeactivateAsync` → cascade to Cascade-mode children (if `reason.CascadesToChildren`) → destroy managed/eager holders → complete the mailbox → remove from table**.
 
 ## When a behavior method throws
 
@@ -98,10 +98,61 @@ Triggered by idle collection (`GrainIdleCollector`, enabled by setting `SiloRunt
 1. Queued work drains first (deactivation waits its turn in the mailbox).
 2. All grain timers are disposed before any user hook runs.
 3. `OnDeactivateAsync(reason, ct)` runs — a throw here is caught and logged, and cleanup continues.
-4. Every `IManagedActivationMemory<T>.Destroy` callback is awaited — this is the guaranteed-cleanup home for buffers, handles, clients, and subscriptions.
-5. The mailbox is completed (no new work) and the shell is removed from the table; the next call re-activates from durable state.
+4. If `reason.CascadesToChildren`, termination is propagated to all Cascade-mode children (fire-and-forget; does not block cleanup). See [Cascading termination](#cascading-termination).
+5. Every `IManagedActivationMemory<T>.Destroy` callback is awaited — this is the guaranteed-cleanup home for buffers, handles, clients, and subscriptions.
+6. The mailbox is completed (no new work) and the shell is removed from the table; the next call re-activates from durable state.
 
 `DelayDeactivation(TimeSpan)` defers idle collection; graceful whole-silo drain with a configurable timeout is [#61](https://github.com/thnak/Quark/issues/61).
+
+## Cascading termination
+
+Implemented in [#120](https://github.com/thnak/Quark/issues/120). A behavior can declare that certain other grains are its "children" and should be terminated when it is. This is opt-in and explicit — Quark has no implicit parent/child tree.
+
+### Attaching children
+
+Inject `IActivationChildren` into a behavior (it is registered as `Scoped` by `AddQuarkRuntime`). The injected instance is bound to the calling grain's shell:
+
+```csharp
+public MyBehavior(IActivationChildren children)
+{
+    children.Attach(childId);                                    // Cascade (default)
+    children.Attach(childId, ChildTerminationMode.Orphan);       // leave child running
+}
+```
+
+Children can be detached at any time: `children.Detach(childId)`.
+
+### `ChildTerminationMode`
+
+| Mode | Behaviour on parent termination |
+|---|---|
+| `Cascade` (default) | Child is terminated with `DeactivationReason.ParentTerminated` |
+| `Orphan` | Child is left running |
+
+### Which reasons cascade?
+
+| Reason | `CascadesToChildren` |
+|---|---|
+| `ApplicationRequested` | `true` |
+| `Force` | `true` |
+| `ParentTerminated` | `true` |
+| `IdleTimeout` | `false` — an idle parent does not kill live children |
+| `ShuttingDown` | `false` — silo shutdown handles activations independently |
+
+### Ordering guarantee
+
+The cascade fires **after** `OnDeactivateAsync` completes. This gives the parent a chance to call `Detach()` for children it wants to preserve, or flush data before the tree tears down.
+
+### Semantics
+
+- **Best-effort, fire-and-forget.** The parent's own deactivation never blocks on child responses. A failure to reach a remote child emits `OnChildTerminationFailed` diagnostics but does not affect the parent's teardown.
+- **Recursive.** A child that receives `ParentTerminated` (`CascadesToChildren = true`) will in turn cascade to its own Cascade-mode children.
+- **Cycle-safe.** `Deactivate()` is idempotent — no-ops if the activation is already `Deactivating` or `Inactive`.
+- **Amnesia.** A new activation of the same grain identity starts with an empty child registry.
+
+### Remote children
+
+When a child lives on a different silo, `DefaultActivationTerminator` sends a one-way `TerminateRequest` frame (message type 10) over the peer connection. The receiving silo's `SiloMessagePump` or `GatewayMessagePump` handles it before forwarding to the dispatcher.
 
 ## Supervision: how this maps to Akka.NET
 
@@ -112,7 +163,7 @@ Quark has no parent/child actor tree; supervision decisions are made by the engi
 | `Resume` (keep state, keep going) | The default for any behavior-method exception: activation and memory survive, mailbox continues, caller gets the error |
 | `Restart` (fresh actor, replay identity) | Activation-failure handling: faulted activations are removed; the next call rebuilds from durable state. Manually forceable by letting the activation idle-collect, or (planned) failure-triggered recycle [#132](https://github.com/thnak/Quark/issues/132) |
 | `Stop` | Deactivation (idle collection / shutdown) with the cleanup guarantees above |
-| `Escalate` | No hierarchy to escalate through. The operator escalation path is diagnostics: error counters, `OnInvocationEnd` exceptions, `StuckGrainDetector`. Parent/child cascading termination is proposed in [#120](https://github.com/thnak/Quark/issues/120) |
+| `Escalate` | No implicit hierarchy to escalate through. The operator escalation path is diagnostics: error counters, `OnInvocationEnd` exceptions, `StuckGrainDetector`. Explicit parent/child cascading termination is available via `IActivationChildren` — see [Cascading termination](#cascading-termination) above |
 
 The philosophical difference: in Akka, *you* write supervision strategies per parent; in Quark, failure containment is an engine invariant (calls are isolated, state is engine-owned, cleanup is guaranteed) and the remaining policy knobs — quarantine thresholds, recycle policies — are configuration, not code. Whether that trade suits you is a fair adoption criterion; [Why Quark](Why-Quark) treats it honestly.
 

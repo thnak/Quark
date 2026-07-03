@@ -32,4 +32,10 @@ public enum MessageType : byte
 
     /// <summary>Client unregisters a local observer GrainId from the silo (client → server, one-way).</summary>
     ObserverUnregister = 9,
+
+    /// <summary>
+    ///     Silo-to-silo control frame: instructs the receiving silo to deactivate the named grain
+    ///     (one-way, no response).  Handled inline on the read loop, not via the grain invoker.
+    /// </summary>
+    TerminateRequest = 10,
 }

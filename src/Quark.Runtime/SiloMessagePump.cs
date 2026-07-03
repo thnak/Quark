@@ -3,6 +3,9 @@ using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Hosting;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
@@ -22,6 +25,7 @@ public sealed class SiloMessagePump : IAsyncDisposable
     private Task? _acceptLoop;
     private CancellationTokenSource? _cts;
     private ITransportListener? _listener;
+    private IActivationTerminator? _terminator;
 
     /// <summary>Initializes the message pump.</summary>
     public SiloMessagePump(
@@ -53,6 +57,8 @@ public sealed class SiloMessagePump : IAsyncDisposable
         {
             return;
         }
+
+        _terminator = _services.GetService<IActivationTerminator>();
 
         var transport = _services.GetService<ITransport>();
         if (transport is null)
@@ -124,6 +130,13 @@ public sealed class SiloMessagePump : IAsyncDisposable
                 if (envelope is null)
                 {
                     break;
+                }
+
+                if (envelope.MessageType == MessageType.TerminateRequest)
+                {
+                    HandleTerminateRequest(envelope);
+                    // one-way control frame — no response
+                    continue;
                 }
 
                 MessageEnvelope? response = await _dispatcher.DispatchAsync(envelope, linkedCts.Token)
@@ -216,6 +229,24 @@ public sealed class SiloMessagePump : IAsyncDisposable
         finally
         {
             await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private void HandleTerminateRequest(MessageEnvelope envelope)
+    {
+        IActivationTerminator? terminator = _terminator;
+        if (terminator is null) return;
+        try
+        {
+            var reader = new CodecReader(envelope.Payload);
+            string grainType = reader.ReadString();
+            string key = reader.ReadString();
+            var target = GrainId.Create(new GrainType(grainType), key);
+            terminator.Terminate(target, DeactivationReason.ParentTerminated);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to handle TerminateRequest.");
         }
     }
 

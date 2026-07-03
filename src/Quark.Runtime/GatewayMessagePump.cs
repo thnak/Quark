@@ -6,8 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Diagnostics.Abstractions;
 using Quark.Serialization.Abstractions.Abstractions;
+using Quark.Serialization.Abstractions.Buffers;
 using Quark.Streaming.Abstractions;
 using Quark.Transport.Abstractions;
 
@@ -34,6 +37,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
     private ICodecProvider? _codecs;
     private TcpClientObserverTable? _tcpObserverTable;
     private IQuarkDiagnosticListener _diagnostics = NullDiagnosticListener.Instance;
+    private IActivationTerminator? _terminator;
 
     private Task? _acceptLoop;
     private CancellationTokenSource? _cts;
@@ -71,6 +75,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         _codecs = _services.GetService<ICodecProvider>();
         _tcpObserverTable = _services.GetService<TcpClientObserverTable>();
         _diagnostics = _services.GetService<IQuarkDiagnosticListener>() ?? NullDiagnosticListener.Instance;
+        _terminator = _services.GetService<IActivationTerminator>();
         var transport = _services.GetService<ITransport>();
         if (transport is null)
         {
@@ -189,6 +194,10 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
 
                     case MessageType.ObserverUnregister:
                         HandleObserverUnregister(envelope, connectionObservers);
+                        break;
+
+                    case MessageType.TerminateRequest:
+                        HandleTerminateRequest(envelope);
                         break;
 
                     case MessageType.Request:
@@ -463,6 +472,24 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         _tcpObserverTable?.Unregister(grainId);
         connectionObservers.Remove(grainId);
         _diagnostics.OnObserverDeregistered(new ObserverDeregisteredEvent(grainId));
+    }
+
+    private void HandleTerminateRequest(MessageEnvelope envelope)
+    {
+        IActivationTerminator? terminator = _terminator;
+        if (terminator is null) return;
+        try
+        {
+            var reader = new CodecReader(envelope.Payload);
+            string grainType = reader.ReadString();
+            string key = reader.ReadString();
+            var target = GrainId.Create(new GrainType(grainType), key);
+            terminator.Terminate(target, DeactivationReason.ParentTerminated);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to handle TerminateRequest.");
+        }
     }
 
     private async Task AcceptLoopAsync(ITransportListener listener, CancellationToken cancellationToken)

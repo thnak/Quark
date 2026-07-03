@@ -90,6 +90,34 @@ public sealed class SiloCallInvoker : IGrainCallInvoker
         => throw new NotSupportedException(
             "Cross-silo observer push is not supported. Observer delivery is local only.");
 
+    /// <summary>
+    ///     Sends a one-way <see cref="MessageType.TerminateRequest"/> control frame to the peer silo.
+    ///     Called by <see cref="Quark.Runtime.DefaultActivationTerminator"/> for the remote cascade leg.
+    /// </summary>
+    internal async Task SendTerminateRequestAsync(GrainId target, byte reasonCode, CancellationToken ct)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        var writer = new CodecWriter(buffer);
+        writer.WriteString(target.Type.Value);
+        writer.WriteString(target.Key);
+        writer.WriteByte(reasonCode);
+
+        var envelope = new MessageEnvelope
+        {
+            CorrelationId = -1,
+            MessageType = MessageType.TerminateRequest,
+            Payload = buffer.WrittenMemory.ToArray()
+        };
+
+        if (_testSendFn is not null)
+        {
+            await _testSendFn(envelope, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await _connection.SendOneWayAsync(envelope, ct).ConfigureAwait(false);
+    }
+
     private Task<MessageEnvelope> SendAsync(
         GrainId grainId, uint methodId, byte[] argBytes, CancellationToken ct)
     {

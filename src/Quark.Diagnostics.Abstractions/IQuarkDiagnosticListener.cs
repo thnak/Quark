@@ -49,4 +49,12 @@ public interface IQuarkDiagnosticListener
 
     /// <summary>Called after a grain timer callback completes (successfully or with error).</summary>
     void OnTimerFired(in TimerFiredEvent e) { }
+
+    // ── Cascading termination ─────────────────────────────────────────────────
+
+    /// <summary>
+    ///     Called when a best-effort cascade to a child grain cannot be delivered — the remote silo
+    ///     is unreachable or the child's directory entry is stale.  The child is left independent.
+    /// </summary>
+    void OnChildTerminationFailed(in ChildTerminationFailedEvent e) { }
 }
