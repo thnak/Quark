@@ -6,6 +6,7 @@ using Quark.Core.Abstractions.Clustering;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Diagnostics.Abstractions;
 using Quark.Runtime.Clustering;
+using Quark.Runtime.StatelessWorker;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Transport.Abstractions;
 
@@ -53,7 +54,8 @@ public static class SiloToSiloServiceCollectionExtensions
             tcpObserverTable: sp.GetService<TcpClientObserverTable>(),
             diagnostics: sp.GetService<IQuarkDiagnosticListener>(),
             placementDirector: null,
-            membershipSnapshot: null));
+            membershipSnapshot: null,
+            statelessWorkerRouter: sp.GetService<StatelessWorkerRouter>()));
 
         return services;
     }

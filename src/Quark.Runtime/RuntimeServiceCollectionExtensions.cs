@@ -10,6 +10,7 @@ using Quark.Core.Abstractions.Placement;
 using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
+using Quark.Runtime.StatelessWorker;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Streaming.Abstractions;
 
@@ -73,6 +74,9 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
             sp.GetService<IQuarkDiagnosticListener>()));
 
+        // Stateless-worker pool router (singleton; pool dictionaries keyed by logical grain id)
+        services.TryAddSingleton<StatelessWorkerRouter>();
+
         // Local in-process call invoker
         services.TryAddSingleton<LocalGrainCallInvoker>(sp => new LocalGrainCallInvoker(
             sp.GetRequiredService<GrainActivationTable>(),
@@ -89,7 +93,8 @@ public static class RuntimeServiceCollectionExtensions
             diagnostics: sp.GetService<IQuarkDiagnosticListener>(),
             placementDirector: sp.GetService<IPlacementDirector>(),
             membershipSnapshot: sp.GetService<IClusterMembershipSnapshot>(),
-            dedupStore: sp.GetService<IRequestDedupStore>()));
+            dedupStore: sp.GetService<IRequestDedupStore>(),
+            statelessWorkerRouter: sp.GetService<StatelessWorkerRouter>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services

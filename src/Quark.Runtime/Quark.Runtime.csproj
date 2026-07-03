@@ -8,6 +8,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Quark.Tests.Unit"/>
     <InternalsVisibleTo Include="Quark.Tests.Fault"/>
+    <InternalsVisibleTo Include="Quark.Tests.Integration"/>
     <InternalsVisibleTo Include="Quark.Diagnostics"/>
   </ItemGroup>
 

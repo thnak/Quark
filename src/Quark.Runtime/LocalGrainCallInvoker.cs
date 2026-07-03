@@ -8,6 +8,7 @@ using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Placement;
 using Quark.Diagnostics.Abstractions;
 using Quark.Runtime.Clustering;
+using Quark.Runtime.StatelessWorker;
 using Quark.Serialization.Abstractions.Abstractions;
 
 namespace Quark.Runtime;
@@ -37,8 +38,9 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
     private readonly IRequestDedupStore? _dedupStore;
+    private readonly StatelessWorkerRouter? _statelessWorkerRouter;
 
-    public LocalGrainCallInvoker(
+    internal LocalGrainCallInvoker(
         GrainActivationTable activationTable,
         IGrainTypeRegistry typeRegistry,
         IGrainDirectory directory,
@@ -53,7 +55,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         IQuarkDiagnosticListener? diagnostics = null,
         IPlacementDirector? placementDirector = null,
         IClusterMembershipSnapshot? membershipSnapshot = null,
-        IRequestDedupStore? dedupStore = null)
+        IRequestDedupStore? dedupStore = null,
+        StatelessWorkerRouter? statelessWorkerRouter = null)
     {
         _activationTable = activationTable;
         _typeRegistry = typeRegistry;
@@ -72,6 +75,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _placementDirector = placementDirector;
         _membershipSnapshot = membershipSnapshot;
         _dedupStore = dedupStore;
+        _statelessWorkerRouter = statelessWorkerRouter;
     }
 
     /// <inheritdoc />
@@ -108,11 +112,23 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _diagnostics.OnInvocationStart(new InvocationStartEvent(grainId, invokable.MethodId, isObserver: false));
         long startedAt = Stopwatch.GetTimestamp();
 
-        GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
-        TResult result = default!;
+        GrainId target = grainId;
+        StatelessWorkerLease lease = default;
+        bool pooled = false;
+        if (_statelessWorkerRouter is not null
+            && _statelessWorkerRouter.TryGetPolicy(grainId.Type, out StatelessWorkerPoolPolicy policy))
+        {
+            pooled = true;
+            lease = await _statelessWorkerRouter.AcquireAsync(grainId, policy, cancellationToken)
+                .ConfigureAwait(false);
+            target = lease.WorkerId;
+        }
 
+        TResult result = default!;
         try
         {
+            GrainActivation activation = await GetOrActivateAsync(target, cancellationToken).ConfigureAwait(false);
+
             await activation.PostAsync(async () =>
             {
                 using IServiceScope scope = _services.CreateScope();
@@ -139,6 +155,10 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: false, elapsed, ex));
             QuarkInstruments.GrainInvocationErrors.Add(1, new KeyValuePair<string, object?>("grain_type", grainId.Type.Value));
             throw;
+        }
+        finally
+        {
+            if (pooled) lease.Dispose();
         }
     }
 
@@ -177,10 +197,22 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _diagnostics.OnInvocationStart(new InvocationStartEvent(grainId, invokable.MethodId, isObserver: false));
         long startedAt = Stopwatch.GetTimestamp();
 
-        GrainActivation activation = await GetOrActivateAsync(grainId, cancellationToken).ConfigureAwait(false);
+        GrainId target = grainId;
+        StatelessWorkerLease lease = default;
+        bool pooled = false;
+        if (_statelessWorkerRouter is not null
+            && _statelessWorkerRouter.TryGetPolicy(grainId.Type, out StatelessWorkerPoolPolicy policy))
+        {
+            pooled = true;
+            lease = await _statelessWorkerRouter.AcquireAsync(grainId, policy, cancellationToken)
+                .ConfigureAwait(false);
+            target = lease.WorkerId;
+        }
 
         try
         {
+            GrainActivation activation = await GetOrActivateAsync(target, cancellationToken).ConfigureAwait(false);
+
             await activation.PostAsync(async () =>
             {
                 using IServiceScope scope = _services.CreateScope();
@@ -201,6 +233,10 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: false, elapsed, ex));
             QuarkInstruments.GrainInvocationErrors.Add(1, new KeyValuePair<string, object?>("grain_type", grainId.Type.Value));
             throw;
+        }
+        finally
+        {
+            if (pooled) lease.Dispose();
         }
     }
 
@@ -357,10 +393,14 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         }).ConfigureAwait(false);
 
         IRequestDedupStore? dedupStore = _dedupStore;
+        StatelessWorkerRouter? router = _statelessWorkerRouter;
+        bool isWorker = router?.IsWorkerId(grainId) == true;
+
         activation.SetOnDeactivated(() =>
         {
             _activationTable.Remove(grainId);
             dedupStore?.EvictGrain(grainId);
+            if (isWorker) router!.OnWorkerDeactivated(grainId);
             return Task.CompletedTask;
         });
 
