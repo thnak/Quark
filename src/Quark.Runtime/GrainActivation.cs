@@ -26,13 +26,22 @@ public sealed class GrainActivation : IAsyncDisposable
 
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger<GrainActivation> _logger;
-    private readonly Task _processingLoop;
+    private readonly IActivationScheduler _scheduler;
     private readonly bool _isReentrant;
     private readonly IServiceProvider _root;
     private readonly ConcurrentDictionary<Type, object> _memoryBag = new();
     private readonly Lock _timersLock = new();
     private readonly List<IGrainTimer> _timers = [];
     private readonly IQuarkDiagnosticListener _diagnostics;
+
+    // Phase 2: scheduler-owned drain state (replaces per-activation _processingLoop).
+    internal int _scheduled;  // 0 = not in scheduler ready queue, 1 = scheduled
+    private int _running;     // 0 = not draining, 1 = currently draining
+
+    // Phase 3: explicit completion signal (replaces _processingLoop awaiting in DisposeAsync).
+    private readonly TaskCompletionSource _completion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private Func<Task>? _onDeactivated;
     private long _lastAccessedTicks;
     private long _deactivationNotBeforeTicks;
@@ -41,7 +50,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private int _pendingWorkCount; // work items queued but not yet executing
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
-    // Stored so Deactivate() can post a fire-and-forget item without creating a capturing lambda.
+    // Stored so Deactivate() can schedule teardown without capturing a lambda closure.
     private DeactivationReason _pendingDeactivationReason = null!;
 
     private readonly Channel<MailboxWorkItem> _queue;
@@ -67,7 +76,8 @@ public sealed class GrainActivation : IAsyncDisposable
         _mailboxCapacity = mailboxCapacity;
         _mailboxFullMode = mailboxFullMode;
         _queue = CreateQueue(mailboxCapacity);
-        _processingLoop = RunLoopAsync(_cts.Token);
+        // Resolve from root DI so that tests with NullServiceProvider fall back to SimpleActivationScheduler.
+        _scheduler = root.GetService<IActivationScheduler>() ?? SimpleActivationScheduler.Instance;
         _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
 
@@ -96,9 +106,10 @@ public sealed class GrainActivation : IAsyncDisposable
         _logger = NullLogger<GrainActivation>.Instance;
         _diagnostics = NullDiagnosticListener.Instance;
         _queue = CreateQueue(0);
-        _processingLoop = Task.CompletedTask;
+        _scheduler = SimpleActivationScheduler.Instance;
         _status = GrainActivationStatus.Active;
         _lastAccessedTicks = 0;
+        _completion.TrySetResult(); // probe never deactivates via normal path
     }
 
     /// <summary>
@@ -135,6 +146,10 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     Read by <see cref="StuckGrainDetector" /> for diagnostic context.
     /// </summary>
     internal int PendingWorkCount => Volatile.Read(ref _pendingWorkCount);
+
+    // Phase 2: scheduler polls this after a drain to decide whether to reschedule.
+    internal bool HasPendingWork
+        => _queue.Reader.TryPeek(out _) || _status == GrainActivationStatus.Deactivating;
 
     /// <summary>
     ///     Returns or creates the <see cref="StateHolder{TState}" /> for the given state type.
@@ -248,7 +263,10 @@ public sealed class GrainActivation : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Requests deactivation. Posts the full lifecycle teardown as the next mailbox work item.
+    ///     Requests deactivation.
+    ///     Phase 3: sets Deactivating status and schedules a drain pass instead of writing a
+    ///     fire-and-forget item to the bounded mailbox (which could be silently dropped when full).
+    ///     DrainAsync detects Deactivating status after pre-queued work drains and runs teardown inline.
     /// </summary>
     public void Deactivate(DeactivationReason reason)
     {
@@ -259,22 +277,20 @@ public sealed class GrainActivation : IAsyncDisposable
 
         _status = GrainActivationStatus.Deactivating;
         _pendingDeactivationReason = reason;
-        var item = new MailboxWorkItem();
-        item.InitFireAndForget(RunPendingDeactivationAsync);
-        _queue.Writer.TryWrite(item);
 
-        _ = _processingLoop.ContinueWith(
-            ContinuationFunction,
-            TaskScheduler.Default).Unwrap();
+        // Schedule a drain pass so the scheduler sees the Deactivating status
+        // and runs teardown after any already-queued work drains (spec invariant 7).
+        // ScheduleAsync is synchronously completed in both implementations.
+        ValueTask vt = _scheduler.ScheduleAsync(this);
+        if (!vt.IsCompletedSuccessfully)
+        {
+            vt.AsTask().ContinueWith(
+                static t => { },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
-
-    private Task ContinuationFunction(Task _)
-    {
-        return _onDeactivated?.Invoke() ?? Task.CompletedTask;
-    }
-
-    // Instance method reference used by Deactivate() to avoid an allocating lambda closure.
-    private ValueTask RunPendingDeactivationAsync() => RunDeactivationAsync(_pendingDeactivationReason);
 
     /// <inheritdoc cref="IGrainContext.DelayDeactivation" />
     public void DelayDeactivation(TimeSpan timeSpan)
@@ -327,30 +343,124 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             try
             {
-                await PostAsync(WorkItem).ConfigureAwait(false);
+                // Phase 3: post deactivation as a mailbox work item so it executes in FIFO order
+                // after any items already queued. PostAsync awaits the work item's completion,
+                // so RunDeactivationAsync will have called _completion.TrySetResult() before
+                // control returns here.
+                await PostAsync(() => RunDeactivationAsync(DeactivationReason.ShuttingDown))
+                    .ConfigureAwait(false);
             }
             catch
             {
-                // Deactivation errors are already logged inside RunDeactivationAsync.
+                // Deactivation errors are logged inside RunDeactivationAsync.
             }
         }
 
-        await _cts.CancelAsync();
+        await _cts.CancelAsync().ConfigureAwait(false);
         _queue.Writer.TryComplete();
+
+        // Phase 3: await the explicit completion signal set by RunDeactivationAsync, replacing
+        // the old `await _processingLoop` pattern. Handles the case where Deactivate() was
+        // called externally before DisposeAsync, so deactivation is scheduler-driven not inline.
         try
         {
-            await _processingLoop.ConfigureAwait(false);
+            await _completion.Task.ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch
         {
+            // Swallow — errors were already logged inside RunDeactivationAsync.
         }
 
         _cts.Dispose();
     }
 
-    private ValueTask WorkItem()
+    // -----------------------------------------------------------------------
+    // Phase 2: narrow drain surface exposed to IActivationScheduler implementations.
+    // The scheduler calls these to execute mailbox items; GrainActivation retains mailbox ownership.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    ///     Atomically marks this activation as "scheduled" in the scheduler's ready queue.
+    ///     Returns <see langword="true"/> if the CAS succeeded (caller should enqueue the activation);
+    ///     <see langword="false"/> if it was already scheduled (no duplicate enqueue needed).
+    /// </summary>
+    internal bool TryMarkScheduled()
+        => Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0;
+
+    /// <summary>
+    ///     Attempts to begin a drain: atomically acquires the drain lock and clears the scheduled flag.
+    ///     Returns <see langword="false"/> if a drain is already running (caller should ensure the running
+    ///     drain will pick up any pending work via <see cref="HasPendingWork"/>).
+    ///     On failure, resets the scheduled flag to 0 so a fresh <see cref="TryMarkScheduled"/> is possible.
+    /// </summary>
+    internal bool TryBeginDrain()
     {
-        return RunDeactivationAsync(DeactivationReason.ShuttingDown);
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
+        {
+            // Another drain is running. Reset _scheduled so pending work can be re-scheduled.
+            Interlocked.Exchange(ref _scheduled, 0);
+            return false;
+        }
+
+        Interlocked.Exchange(ref _scheduled, 0);
+        return true;
+    }
+
+    /// <summary>
+    ///     Drains up to <paramref name="maxItems"/> work items from the mailbox in FIFO order.
+    ///     After exhausting available items, checks for a pending deactivation and runs teardown inline
+    ///     (Phase 3: reliable deactivation — not written to the bounded mailbox, detected by status check).
+    /// </summary>
+    internal async ValueTask<ActivationDrainResult> DrainAsync(int maxItems, CancellationToken ct)
+    {
+        int count = 0;
+
+        while (!ct.IsCancellationRequested && count < maxItems
+               && _queue.Reader.TryRead(out MailboxWorkItem? item))
+        {
+            Interlocked.Decrement(ref _pendingWorkCount);
+            Interlocked.Exchange(ref _workItemStartedAt, Stopwatch.GetTimestamp());
+            try
+            {
+                await item.ExecuteAsync().ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                // Fault isolation (invariant 9): one bad item must not stop later queued work.
+                _logger.LogError(e, "Error executing grain method on {GrainId}", GrainId);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _workItemStartedAt, 0);
+            }
+            count++;
+        }
+
+        bool hasMore = _queue.Reader.TryPeek(out _);
+
+        // Phase 3: deactivation reliability. Deactivate() no longer writes to the bounded mailbox;
+        // instead DrainAsync detects Deactivating status here, after all pre-queued work drains
+        // (invariants 5 and 7). This is safe to run inline because _running=1 guarantees exclusivity.
+        if (_status == GrainActivationStatus.Deactivating && !hasMore)
+        {
+            await RunDeactivationAsync(_pendingDeactivationReason).ConfigureAwait(false);
+            return new ActivationDrainResult(false, true, count);
+        }
+
+        return new ActivationDrainResult(hasMore, _status == GrainActivationStatus.Inactive, count);
+    }
+
+    /// <summary>
+    ///     Clears the drain lock after a drain pass.
+    ///     Returns <see langword="true"/> if more work has appeared in the mailbox since the drain
+    ///     ended (scheduler should reschedule); <see langword="false"/> if the mailbox is still empty.
+    /// </summary>
+    internal bool CompleteDrain(ActivationDrainResult result)
+    {
+        Interlocked.Exchange(ref _running, 0);
+        // Full memory barrier via Interlocked ensures items written by concurrent PostAsync calls
+        // are visible before we peek the channel.
+        return _queue.Reader.TryPeek(out _) || _status == GrainActivationStatus.Deactivating;
     }
 
     // -----------------------------------------------------------------------
@@ -358,6 +468,7 @@ public sealed class GrainActivation : IAsyncDisposable
     /// <summary>
     ///     Posts a unit of work to this grain's sequential mailbox and awaits its completion.
     ///     Reentrant grains bypass the queue and execute immediately.
+    ///     Phase 3: rejects new work when the grain is already Deactivating or Inactive.
     /// </summary>
     public ValueTask PostAsync(Func<ValueTask> workItem)
     {
@@ -366,6 +477,14 @@ public sealed class GrainActivation : IAsyncDisposable
             _cts.Token.ThrowIfCancellationRequested();
             Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
             return workItem();
+        }
+
+        // Phase 3: explicit rejection to satisfy invariant 6 (terminal deactivation).
+        GrainActivationStatus status = _status;
+        if (status is GrainActivationStatus.Deactivating or GrainActivationStatus.Inactive)
+        {
+            return ValueTask.FromException(
+                new OperationCanceledException($"Grain {GrainId} is {status.ToString().ToLowerInvariant()}."));
         }
 
         return PostCoreAsync(workItem);
@@ -405,7 +524,12 @@ public sealed class GrainActivation : IAsyncDisposable
             }
         }
 
-        // Await completion signal from RunLoopAsync. Pool return happens in ExecuteAsync's finally.
+        // Phase 1: notify the scheduler that this activation has work.
+        // The scheduler adds the activation to its ready queue if not already scheduled.
+        await _scheduler.ScheduleAsync(this, _cts.Token).ConfigureAwait(false);
+
+        // Await completion signal from DrainAsync / ExecuteAsync. Pool return happens in
+        // ExecuteAsync's finally block.
         await item.WaitAsync().ConfigureAwait(false);
     }
 
@@ -433,7 +557,6 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         await DisposeManagedHoldersAsync().ConfigureAwait(false);
-        _status = GrainActivationStatus.Inactive;
         _queue.Writer.TryComplete();
 
         long activatedAt = Interlocked.Read(ref _activatedAtTicks);
@@ -443,6 +566,25 @@ public sealed class GrainActivation : IAsyncDisposable
             new KeyValuePair<string, object?>("grain_type", GrainType.Value));
         QuarkInstruments.ActiveGrainActivations.Add(-1,
             new KeyValuePair<string, object?>("grain_type", GrainType.Value));
+
+        // Phase 3: run table removal before setting Inactive so that any caller waiting
+        // for ActivationStatus == Inactive sees a fully-cleaned-up table entry.
+        if (_onDeactivated is not null)
+        {
+            try
+            {
+                await _onDeactivated().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Swallow — table removal is best-effort.
+            }
+        }
+
+        _status = GrainActivationStatus.Inactive;
+
+        // Phase 3: signal DisposeAsync (and any other awaiters) that deactivation is complete.
+        _completion.TrySetResult();
     }
 
     private void CascadeToChildren()
@@ -547,27 +689,6 @@ public sealed class GrainActivation : IAsyncDisposable
         }
     }
 
-    private async Task RunLoopAsync(CancellationToken ct)
-    {
-        await foreach (MailboxWorkItem item in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-        {
-            Interlocked.Decrement(ref _pendingWorkCount);
-            Interlocked.Exchange(ref _workItemStartedAt, Stopwatch.GetTimestamp());
-            try
-            {
-                await item.ExecuteAsync().ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Error executing grain method on {GrainId}", GrainId);
-            }
-            finally
-            {
-                Interlocked.Exchange(ref _workItemStartedAt, 0);
-            }
-        }
-    }
-
     // -----------------------------------------------------------------------
 
     /// <summary>
@@ -613,17 +734,6 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         /// <summary>
-        ///     Prepare for a fire-and-forget work item (no result signaling, not returned to pool).
-        ///     Used by <see cref="Deactivate"/> for the one-shot deactivation work item.
-        /// </summary>
-        internal void InitFireAndForget(Func<ValueTask> work)
-        {
-            _workItem = work;
-            _context = null;
-            _isFireAndForget = true;
-        }
-
-        /// <summary>
         ///     Return to the thread-local pool when enqueue fails before the item reached the consumer.
         ///     Safe to call from <see cref="PostCoreAsync"/> because <see cref="ExecuteAsync"/> never ran.
         /// </summary>
@@ -643,7 +753,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
         /// <summary>
         ///     Runs the work item under its captured <see cref="ExecutionContext"/> and signals
-        ///     the awaiter when done.  Called exclusively by <see cref="RunLoopAsync"/>.
+        ///     the awaiter when done.  Called exclusively by <see cref="DrainAsync"/>.
         /// </summary>
         internal async ValueTask ExecuteAsync()
         {
@@ -671,7 +781,7 @@ public sealed class GrainActivation : IAsyncDisposable
             {
                 if (_isFireAndForget)
                 {
-                    throw; // let RunLoopAsync catch and log it
+                    throw; // let DrainAsync catch and log it
                 }
 
                 _core.SetException(ex);

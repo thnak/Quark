@@ -67,6 +67,9 @@ public static class RuntimeServiceCollectionExtensions
         // Diagnostic listener — NullDiagnosticListener unless the consumer calls AddQuarkDiagnostics.
         services.TryAddSingleton<IQuarkDiagnosticListener>(NullDiagnosticListener.Instance);
 
+        // Activation scheduler — drives centralized drain dispatch; replaces per-activation loops.
+        services.TryAddSingleton<IActivationScheduler, ActivationScheduler>();
+
         // Local in-process call invoker
         services.TryAddSingleton<LocalGrainCallInvoker>(sp => new LocalGrainCallInvoker(
             sp.GetRequiredService<GrainActivationTable>(),
