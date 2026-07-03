@@ -19,28 +19,31 @@ public sealed class ReentrantTests
     {
         await using var activation = MakeActivation(isReentrant: false);
 
-        var completionSource1 = new TaskCompletionSource();
-        var completionSource2 = new TaskCompletionSource();
+        using var gate = new SemaphoreSlim(0, 1);
+        var task2Reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        _ = activation.PostAsync(async () =>
+        var task1 = activation.PostAsync(async () =>
         {
-            await Task.Delay(50);
-            completionSource1.SetResult();
+            await gate.WaitAsync(TimeSpan.FromSeconds(5));
         });
 
-        _ = activation.PostAsync(async () =>
+        var task2 = activation.PostAsync(() =>
         {
-            await Task.Delay(50);
-            completionSource2.SetResult();
+            task2Reached.SetResult();
+            return ValueTask.CompletedTask;
         });
 
-        await Task.WhenAll(completionSource1.Task, completionSource2.Task);
-        sw.Stop();
+        // Structural proof of serialization, no wall-clock timing: task2 must not even start
+        // (let alone finish) while task1 is still blocked on the gate — a non-reentrant
+        // activation processes one mailbox item at a time.
+        Task raced = await Task.WhenAny(task2Reached.Task, Task.Delay(TimeSpan.FromMilliseconds(200)));
+        Assert.NotSame(raced, task2Reached.Task);
+        Assert.False(task1.IsCompleted);
+        Assert.False(task2.IsCompleted);
 
-        Assert.True(sw.ElapsedMilliseconds >= 80,
-            $"Expected ~100ms serial, got {sw.ElapsedMilliseconds}ms");
+        gate.Release();
+        await Task.WhenAll(task1.AsTask(), task2.AsTask()).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(task2Reached.Task.IsCompletedSuccessfully);
     }
 
     [Fact]
