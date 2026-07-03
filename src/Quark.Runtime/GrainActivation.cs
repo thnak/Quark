@@ -401,23 +401,20 @@ public sealed class GrainActivation : IAsyncDisposable
         => Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0;
 
     /// <summary>
-    ///     Attempts to begin a drain: atomically acquires the drain lock and clears the scheduled flag.
-    ///     Returns <see langword="false"/> if a drain is already running (caller should ensure the running
-    ///     drain will pick up any pending work via <see cref="HasPendingWork"/>).
-    ///     On failure, resets the scheduled flag to 0 so a fresh <see cref="TryMarkScheduled"/> is possible.
+    ///     Attempts to begin a drain: atomically acquires the drain lock.
+    ///     Returns <see langword="false"/> if a drain is already running for this activation — this
+    ///     should not happen in practice since <c>_scheduled</c> stays set for the whole drain (see
+    ///     <see cref="CompleteDrain"/>), preventing a second ready-queue entry from ever being created
+    ///     while a drain is in flight; it is handled defensively as a no-op.
+    ///     Deliberately does NOT clear <c>_scheduled</c> here (on success or failure) — the flag stays
+    ///     claimed for the entire drain so concurrent <see cref="PostAsync"/> calls do not create a
+    ///     redundant ready-queue entry for an activation that is already being drained. That matters
+    ///     under <see cref="SchedulerOverloadMode.RejectWhenFull"/>: a spurious duplicate entry would
+    ///     consume a bounded ready-queue slot and could cause an unrelated activation's legitimate
+    ///     schedule request to be falsely rejected. <see cref="CompleteDrain"/> releases the claim.
     /// </summary>
     internal bool TryBeginDrain()
-    {
-        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
-        {
-            // Another drain is running. Reset _scheduled so pending work can be re-scheduled.
-            Interlocked.Exchange(ref _scheduled, 0);
-            return false;
-        }
-
-        Interlocked.Exchange(ref _scheduled, 0);
-        return true;
-    }
+        => Interlocked.CompareExchange(ref _running, 1, 0) == 0;
 
     /// <summary>
     ///     Drains up to <paramref name="maxItems"/> work items from the mailbox in FIFO order.
@@ -464,13 +461,18 @@ public sealed class GrainActivation : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Clears the drain lock after a drain pass.
+    ///     Clears the drain lock and the scheduled claim after a drain pass.
     ///     Returns <see langword="true"/> if more work has appeared in the mailbox since the drain
     ///     ended (scheduler should reschedule); <see langword="false"/> if the mailbox is still empty.
+    ///     Clears <c>_scheduled</c> BEFORE peeking the channel — a writer that arrives after the clear
+    ///     wins <see cref="TryMarkScheduled"/> and self-enqueues; a writer that arrived before the clear
+    ///     already wrote its item, so the peek below observes it. Either order picks the work up exactly
+    ///     once, so there is no lost wakeup.
     /// </summary>
     internal bool CompleteDrain(ActivationDrainResult result)
     {
         Interlocked.Exchange(ref _running, 0);
+        Interlocked.Exchange(ref _scheduled, 0);
         // Full memory barrier via Interlocked ensures items written by concurrent PostAsync calls
         // are visible before we peek the channel.
         return _queue.Reader.TryPeek(out _) || _status == GrainActivationStatus.Deactivating;

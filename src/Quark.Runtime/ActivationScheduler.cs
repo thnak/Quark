@@ -34,9 +34,10 @@ internal sealed class SimpleActivationScheduler : IActivationScheduler
     {
         if (!activation.TryBeginDrain())
         {
-            // Another drain won the CAS. Ensure pending work will still be processed:
-            // TryBeginDrain reset _scheduled to 0, so a new ScheduleAsync from PostAsync
-            // will add another entry. Check now in case the race left us as the last waker.
+            // Should not happen: _scheduled stays claimed for the whole drain (see
+            // GrainActivation.CompleteDrain), so a second Task.Run for this activation is never
+            // spawned while one is in flight. Defensive fallback in case that invariant is ever
+            // violated — make sure pending work is not stranded.
             if (activation.HasPendingWork)
                 await ScheduleAsync(activation, ct).ConfigureAwait(false);
             return;
@@ -144,8 +145,10 @@ internal sealed class ActivationScheduler : IActivationScheduler
 
             if (!activation.TryBeginDrain())
             {
-                // Another drain is running for this activation. The running drain's CompleteDrain
-                // will reschedule if more work remains — no action needed here.
+                // Should not happen: _scheduled stays claimed for the whole drain (see
+                // GrainActivation.CompleteDrain), so this activation cannot have a second ready-queue
+                // entry while a drain is in flight. Defensive no-op in case that invariant is ever
+                // violated — the in-flight drain's CompleteDrain will reschedule if work remains.
                 continue;
             }
 
