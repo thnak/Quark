@@ -16,3 +16,4 @@
  QRK0022 | Quark.BehaviorLifecycle | Warning | Static mutable state on grain behavior is shared across all activations
  QRK0030 | Quark.Performance    | Warning | Grain behavior method returns Task; consider ValueTask
  QRK0031 | Quark.Performance    | Info    | Use ValueTask-native completion instead of Task.CompletedTask/Task.FromResult
+ QRK0040 | Quark.Reentrancy     | Warning | Non-reentrant grain behavior awaits a call back into its own grain interface

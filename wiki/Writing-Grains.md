@@ -242,6 +242,14 @@ public sealed class CatalogBehavior : IGrainBehavior, ICatalogGrain
 }
 ```
 
+A non-reentrant behavior that `await`s a call back into its own grain interface risks a classic
+single-mailbox deadlock: if the call target is this same activation, its mailbox is already
+occupied processing the current call, so the callback can never be scheduled. `QRK0040` flags the
+common inline shape of this (`await _self.MethodAsync()` where the behavior implements the
+interface `_self` is typed as) at compile time — see
+[Lifecycle and Failure Semantics](Lifecycle-and-Failure-Semantics#mailbox-ordering-and-backpressure) for the
+full deadlock-surface writeup and the heuristic's known false-positive/false-negative shape.
+
 ## Accessing other grains
 
 Inject `IGrainFactory` and call `GetGrain<T>`:
