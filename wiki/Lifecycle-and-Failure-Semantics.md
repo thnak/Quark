@@ -38,7 +38,7 @@ The most important rule in the engine: **an exception is contained to the failin
 
 Design consequence: because the behavior instance is discarded after every call anyway, a throw can never leave *behavior* state corrupted — the only state that can be left half-mutated is what you put in engine-owned memory, which is why the guidance is to validate before mutating, or keep mutations idempotent.
 
-**Repeated failures:** there is deliberately no automatic recycling yet — a grain that fails every call keeps failing and keeps answering. Poison-message quarantine / recycle-after-N-failures is designed in [#132](https://github.com/thnak/Quark/issues/132). Contract tests pinning all of the above: [#130](https://github.com/thnak/Quark/issues/130).
+**Repeated failures:** there is deliberately no automatic recycling yet — a grain that fails every call keeps failing and keeps answering. Poison-message quarantine / recycle-after-N-failures is designed in [#132](https://github.com/thnak/Quark/issues/132). Contract tests pinning all of the above: `tests/Quark.Tests.Unit/FailureSemantics/` (behavior-throw, activation-fault, timer, and deactivation guarantees) plus `tests/Quark.Tests.Integration/FailureSemanticsGatewayTests.cs` (the TCP error shape) — issue [#130](https://github.com/thnak/Quark/issues/130).
 
 ## When activation itself fails
 
