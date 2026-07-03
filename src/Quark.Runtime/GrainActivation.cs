@@ -27,7 +27,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger<GrainActivation> _logger;
     private readonly IActivationScheduler _scheduler;
-    private readonly bool _isReentrant;
+    private readonly ReentrantSchedulingMode _reentrantMode;
     private readonly IServiceProvider _root;
     private readonly ConcurrentDictionary<Type, object> _memoryBag = new();
     private readonly Lock _timersLock = new();
@@ -74,7 +74,7 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         GrainId = grainId;
         GrainType = grainType;
-        _isReentrant = isReentrant;
+        _reentrantMode = isReentrant ? ReentrantSchedulingMode.Immediate : ReentrantSchedulingMode.None;
         _root = root;
         _logger = logger;
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
@@ -106,7 +106,6 @@ public sealed class GrainActivation : IAsyncDisposable
     {
         GrainId = grainId;
         GrainType = grainType;
-        _isReentrant = false;
         _root = root;
         _logger = NullLogger<GrainActivation>.Instance;
         _diagnostics = NullDiagnosticListener.Instance;
@@ -497,12 +496,13 @@ public sealed class GrainActivation : IAsyncDisposable
 
     /// <summary>
     ///     Posts a unit of work to this grain's sequential mailbox and awaits its completion.
-    ///     Reentrant grains bypass the queue and execute immediately.
+    ///     <see cref="ReentrantSchedulingMode.Immediate"/> activations bypass the queue and execute
+    ///     inline — see that enum value's documentation for the scheduler-invisibility tradeoff.
     ///     Phase 3: rejects new work when the grain is already Deactivating or Inactive.
     /// </summary>
     public ValueTask PostAsync(Func<ValueTask> workItem)
     {
-        if (_isReentrant)
+        if (_reentrantMode == ReentrantSchedulingMode.Immediate)
         {
             _cts.Token.ThrowIfCancellationRequested();
             Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);

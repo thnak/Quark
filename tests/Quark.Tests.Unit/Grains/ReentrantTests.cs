@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Xunit;
@@ -68,6 +69,30 @@ public sealed class ReentrantTests
         await task2Reached.Task.WaitAsync(TimeSpan.FromSeconds(5));
         gate.Release();
         await Task.WhenAll(task1.AsTask(), task2.AsTask()).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // Phase 5: verify that deactivation of a reentrant grain still runs through the
+    // lifecycle path (RunDeactivationAsync fires the _completion signal) and is NOT
+    // skipped by the Immediate-mode bypass. DisposeAsync completes only when
+    // RunDeactivationAsync has set the TaskCompletionSource — so the fact that this
+    // test finishes is the proof that the lifecycle barrier is preserved.
+    [Fact]
+    public async Task ReentrantGrain_DisposeAsyncCompletesLifecyclePath()
+    {
+        var activation = MakeActivation(isReentrant: true);
+        await activation.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // Phase 5: verify that deactivation via Deactivate() (e.g. idle collection) always
+    // goes through the scheduler drain path — independent of the Immediate-mode bypass —
+    // and that DisposeAsync awaits the completion signal set by that drain.
+    [Fact]
+    public async Task ReentrantGrain_ExternalDeactivationCompletesLifecyclePath()
+    {
+        var activation = MakeActivation(isReentrant: true);
+        activation.MarkActive();
+        activation.Deactivate(DeactivationReason.ShuttingDown);
+        await activation.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private sealed class NullServiceProvider : IServiceProvider
