@@ -327,6 +327,41 @@ Register an `ILogStorage` provider (in-memory is provided):
 services.AddInMemoryLogStorage();
 ```
 
+### `TransitionState` must be deterministic
+
+`TransitionState` runs twice in a grain's lifetime for the same event: once during original
+execution (via `RaiseEvent`), and again during log replay on every reactivation (via
+`OnActivateAsync`). If it calls a nondeterministic API — `Guid.NewGuid()`, `DateTime.Now`/
+`UtcNow`/`Today`, `DateTimeOffset.Now`/`UtcNow`, or `new Random()` — the value computed on replay
+will differ from the value computed originally, so the replayed state silently diverges from the
+state that was actually persisted. There is no error; the grain just quietly ends up with the
+wrong data.
+
+```csharp
+// Wrong — replay produces a different value.Id on every reactivation.
+protected override void TransitionState(BankAccountState state, AccountEvent @event)
+{
+    if (@event is Deposited(var amount))
+        state.LastTransactionId = Guid.NewGuid(); // nondeterministic
+}
+
+// Right — compute the value once, before raising the event, and carry it in the payload.
+public async Task DepositAsync(decimal amount)
+{
+    RaiseEvent(new Deposited(amount, TransactionId: Guid.NewGuid()));
+    await ConfirmEventsAsync();
+}
+protected override void TransitionState(BankAccountState state, AccountEvent @event)
+{
+    if (@event is Deposited(var amount, var transactionId))
+        state.LastTransactionId = transactionId; // pure — same input, same output, every time
+}
+```
+
+`Quark.Analyzers` flags direct nondeterministic calls inside a `TransitionState` override with
+`QRK0041` (category `Quark.Determinism`, enabled by default). It only catches calls made directly
+in the override body, not ones hidden behind a helper method it calls.
+
 ## 6. Eager in-memory resource (`IEagerActivationMemory<T>`)
 
 Fills the gap between `IActivationMemory<T>` (sync default-construct, no DI) and `IManagedActivationMemory<T>` (lazy, async access). Use when you need to **load a large or externally-sourced resource at grain activation time** and then access it **synchronously** on every call.

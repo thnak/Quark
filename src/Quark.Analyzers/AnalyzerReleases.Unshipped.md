@@ -17,3 +17,4 @@
  QRK0030 | Quark.Performance    | Warning | Grain behavior method returns Task; consider ValueTask
  QRK0031 | Quark.Performance    | Info    | Use ValueTask-native completion instead of Task.CompletedTask/Task.FromResult
  QRK0040 | Quark.Reentrancy     | Warning | Non-reentrant grain behavior awaits a call back into its own grain interface
+ QRK0041 | Quark.Determinism    | Warning | TransitionState override calls a nondeterministic API
