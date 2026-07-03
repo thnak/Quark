@@ -51,11 +51,18 @@ public sealed class PeerConnectionManager : BackgroundService
         _messageSerializer = messageSerializer!;
     }
 
+    /// <summary>
+    ///     Performs the initial membership sync synchronously before returning, so peers are
+    ///     registered by the time StartAsync completes rather than racing the background loop.
+    /// </summary>
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        await base.StartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Initial sync on startup
-        await RefreshAsync(stoppingToken).ConfigureAwait(false);
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try

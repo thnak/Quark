@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
@@ -78,12 +79,35 @@ public sealed class LoopGuardTests
         services.AddQuarkRuntime();
         using var sp = services.BuildServiceProvider();
         var serializer = sp.GetRequiredService<GrainMessageSerializer>();
+
+        var registry = new TransportGrainDispatcherRegistry();
+        registry.Register(new GrainType("TestGrain"), new RecordingDispatcher());
+
         return new MessageDispatcher(
-            new TransportGrainDispatcherRegistry(),
+            registry,
             routing,
             serializer,
             grainFactory: null,
             terminalInvoker: terminalInvoker);
+    }
+
+    /// <summary>Forwards straight to whichever invoker MessageDispatcher selected, so the hop-header routing decision is observable.</summary>
+    private sealed class RecordingDispatcher : ITransportGrainDispatcher
+    {
+        public async Task<ReadOnlyMemory<byte>> DispatchAsync(
+            GrainId grainId, uint methodId, ReadOnlyMemory<byte> argumentPayload,
+            IGrainCallInvoker invoker, IGrainFactory? factory, CancellationToken cancellationToken = default)
+        {
+            await invoker.InvokeVoidAsync(grainId, new NoOpInvokable(), cancellationToken).ConfigureAwait(false);
+            return ReadOnlyMemory<byte>.Empty;
+        }
+    }
+
+    private readonly struct NoOpInvokable : IGrainVoidInvokable
+    {
+        public uint MethodId => 0;
+        public ValueTask Invoke(IGrainBehavior behavior) => ValueTask.CompletedTask;
+        public void Serialize(ref CodecWriter writer) { }
     }
 
     private static MessageEnvelope BuildRequestEnvelope(GrainId grainId, MessageHeaders? headers)
