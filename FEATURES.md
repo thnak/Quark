@@ -51,3 +51,7 @@ Orleans architecture reference: [`README.md`](README.md)
 ## Phase 9 — Grain supervision
 
 - [x] **F-17** Cascading termination (`IActivationChildren.Attach`, `ChildTerminationMode`, `ChildRegistry`, `DeactivationReason.CascadesToChildren`, `DeactivationReason.ParentTerminated`, `IActivationTerminator`, `DefaultActivationTerminator`, one-way `TerminateRequest` frame, `MessageType.TerminateRequest`, `OnChildTerminationFailed` diagnostic) — closes #120 — _Complexity: M_
+
+## Phase 10 — Engine-owned activation scheduling
+
+- [x] **F-18** Single-node activation scheduler (`IActivationScheduler`, `ActivationScheduler` with configurable concurrency cap/drain budget/bounded ready queue, `SchedulerOverloadMode`, `SchedulerOverloadException`, scheduler diagnostics + `QuarkInstruments` metrics, `ReentrantSchedulingMode.Immediate` compatibility policy) — replaces the permanent per-activation processing loop with centralized, fair, engine-owned dispatch; closes #136 phases 1–5. Phase 6 (stateless-worker pool policy) deferred — see design spec §12 and the "Suggested implementation phases" list — _Complexity: L_
