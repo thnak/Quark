@@ -63,4 +63,34 @@ public static class QuarkInstruments
     public static readonly Histogram<double> MailboxWaitDuration =
         _meter.CreateHistogram<double>("quark.grain.mailbox.wait_ms", unit: "ms",
             description: "Time a work item spends in the mailbox queue before execution starts.");
+
+    // ── Scheduler metrics ────────────────────────────────────────────────────
+
+    public static readonly UpDownCounter<long> SchedulerReadyQueueDepth =
+        _meter.CreateUpDownCounter<long>("quark.scheduler.ready_queue.depth",
+            description: "Current number of activations waiting in the scheduler ready queue.");
+
+    public static readonly UpDownCounter<long> SchedulerActiveDrains =
+        _meter.CreateUpDownCounter<long>("quark.scheduler.active_drains",
+            description: "Current number of activation drain passes running concurrently.");
+
+    public static readonly Counter<long> SchedulerDrainItems =
+        _meter.CreateCounter<long>("quark.scheduler.drain.items",
+            description: "Total work items processed across all scheduler drain passes.");
+
+    public static readonly Counter<long> SchedulerDrainYields =
+        _meter.CreateCounter<long>("quark.scheduler.drain.yields",
+            description: "Total number of times a drain pass yielded because the budget was reached.");
+
+    public static readonly Counter<long> SchedulerOverloadRejections =
+        _meter.CreateCounter<long>("quark.scheduler.overload.rejections",
+            description: "Total number of activations rejected because the scheduler ready queue was full.");
+
+    public static readonly Histogram<double> SchedulerActivationWaitDuration =
+        _meter.CreateHistogram<double>("quark.scheduler.activation_wait.duration_ms", unit: "ms",
+            description: "Time an activation spent in the scheduler ready queue before a worker picked it up.");
+
+    public static readonly Histogram<double> SchedulerDrainDuration =
+        _meter.CreateHistogram<double>("quark.scheduler.drain.duration_ms", unit: "ms",
+            description: "Wall-clock duration of a single scheduler drain pass.");
 }

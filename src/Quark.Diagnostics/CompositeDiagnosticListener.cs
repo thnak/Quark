@@ -97,4 +97,39 @@ public sealed class CompositeDiagnosticListener : IQuarkDiagnosticListener
     {
         foreach (var l in _listeners) l.OnChildTerminationFailed(in e);
     }
+
+    public void OnSchedulerReadyQueueDepthChanged(in SchedulerReadyQueueDepthChangedEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerReadyQueueDepthChanged(in e);
+    }
+
+    public void OnSchedulerActivationScheduled(in SchedulerActivationScheduledEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerActivationScheduled(in e);
+    }
+
+    public void OnSchedulerDrainStarted(in SchedulerDrainStartedEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerDrainStarted(in e);
+    }
+
+    public void OnSchedulerDrainCompleted(in SchedulerDrainCompletedEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerDrainCompleted(in e);
+    }
+
+    public void OnSchedulerDrainYielded(in SchedulerDrainYieldedEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerDrainYielded(in e);
+    }
+
+    public void OnSchedulerOverloadRejected(in SchedulerOverloadRejectedEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerOverloadRejected(in e);
+    }
+
+    public void OnSchedulerActivationWaited(in SchedulerActivationWaitedEvent e)
+    {
+        foreach (var l in _listeners) l.OnSchedulerActivationWaited(in e);
+    }
 }

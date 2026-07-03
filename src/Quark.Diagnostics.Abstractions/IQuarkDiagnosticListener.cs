@@ -57,4 +57,33 @@ public interface IQuarkDiagnosticListener
     ///     is unreachable or the child's directory entry is stale.  The child is left independent.
     /// </summary>
     void OnChildTerminationFailed(in ChildTerminationFailedEvent e) { }
+
+    // ── Scheduler ────────────────────────────────────────────────────────────
+
+    /// <summary>Called each time the scheduler ready-queue depth changes (activation added or removed).</summary>
+    void OnSchedulerReadyQueueDepthChanged(in SchedulerReadyQueueDepthChangedEvent e) { }
+
+    /// <summary>Called when an activation is successfully added to the scheduler ready queue.</summary>
+    void OnSchedulerActivationScheduled(in SchedulerActivationScheduledEvent e) { }
+
+    /// <summary>Called when a scheduler worker begins draining an activation's mailbox.</summary>
+    void OnSchedulerDrainStarted(in SchedulerDrainStartedEvent e) { }
+
+    /// <summary>Called when a drain pass finishes (budget hit, queue empty, or deactivation complete).</summary>
+    void OnSchedulerDrainCompleted(in SchedulerDrainCompletedEvent e) { }
+
+    /// <summary>
+    ///     Called when a drain pass yields the activation because the drain budget was reached and
+    ///     more work remains. The activation is rescheduled at the back of the ready queue.
+    /// </summary>
+    void OnSchedulerDrainYielded(in SchedulerDrainYieldedEvent e) { }
+
+    /// <summary>
+    ///     Called when the scheduler rejects an activation because the bounded ready queue is full
+    ///     and the overload mode is <c>RejectWhenFull</c>.
+    /// </summary>
+    void OnSchedulerOverloadRejected(in SchedulerOverloadRejectedEvent e) { }
+
+    /// <summary>Called at the start of a drain, reporting how long the activation waited in the ready queue.</summary>
+    void OnSchedulerActivationWaited(in SchedulerActivationWaitedEvent e) { }
 }
