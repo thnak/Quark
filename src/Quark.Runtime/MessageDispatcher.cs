@@ -15,6 +15,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
     private readonly TransportGrainDispatcherRegistry _dispatcherRegistry;
     private readonly IGrainFactory? _grainFactory;
     private readonly IGrainCallInvoker _invoker;
+    private readonly IGrainCallInvoker? _terminalInvoker;
     private readonly GrainMessageSerializer _serializer;
 
     /// <summary>Initializes the dispatcher.</summary>
@@ -22,12 +23,14 @@ public sealed class MessageDispatcher : IMessageDispatcher
         TransportGrainDispatcherRegistry dispatcherRegistry,
         IGrainCallInvoker invoker,
         GrainMessageSerializer serializer,
-        IGrainFactory? grainFactory = null)
+        IGrainFactory? grainFactory = null,
+        IGrainCallInvoker? terminalInvoker = null)
     {
         _dispatcherRegistry = dispatcherRegistry;
         _invoker = invoker;
         _serializer = serializer;
         _grainFactory = grainFactory;
+        _terminalInvoker = terminalInvoker;
     }
 
     /// <inheritdoc />
@@ -55,6 +58,13 @@ public sealed class MessageDispatcher : IMessageDispatcher
     {
         GrainInvocationRequest request = _serializer.DeserializeRequest(envelope.Payload);
 
+        // Select local-terminal invoker for forwarded hops to prevent re-routing loops.
+        // x-quark-hop: 1 is stamped by SiloCallInvoker on every silo-to-silo forwarded request.
+        IGrainCallInvoker activeInvoker =
+            (envelope.Headers?.Get("x-quark-hop") is not null && _terminalInvoker is not null)
+            ? _terminalInvoker
+            : _invoker;
+
         try
         {
             ReadOnlyMemory<byte> resultPayload;
@@ -67,7 +77,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 string reminderName = (string)GrainMessageSerializer.ReadArg(ref reminderReader)!;
                 var tickStatus = (TickStatus)GrainMessageSerializer.ReadArg(ref reminderReader)!;
                 var invokable = new ReceiveReminderInvokable(reminderName, tickStatus);
-                await _invoker.InvokeVoidAsync(request.GrainId, invokable, cancellationToken)
+                await activeInvoker.InvokeVoidAsync(request.GrainId, invokable, cancellationToken)
                     .ConfigureAwait(false);
                 resultPayload = ReadOnlyMemory<byte>.Empty;
             }
@@ -77,7 +87,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
                     _dispatcherRegistry.GetDispatcher(request.GrainId.Type);
                 resultPayload = await dispatcher
                     .DispatchAsync(request.GrainId, request.MethodId, request.ArgumentPayload,
-                        _invoker, _grainFactory, cancellationToken)
+                        activeInvoker, _grainFactory, cancellationToken)
                     .ConfigureAwait(false);
             }
 

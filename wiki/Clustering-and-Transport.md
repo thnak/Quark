@@ -196,3 +196,46 @@ The `PlacementDirector` evaluates the placement attribute on a grain's behavior 
 | `[StatelessWorker]` | Multiple activations per silo |
 
 For single-silo deployments, all strategies resolve to the local silo.
+
+## Silo-to-silo transport
+
+Multi-silo clusters need a way for one silo to forward grain calls to the silo that owns the activation. Quark implements this via the following additions (all in `Quark.Runtime`).
+
+### Components
+
+| Component | Responsibility |
+|---|---|
+| `IClusterMembershipSnapshot` | Cheap cached list of currently Active silos; consumed by `PlacementDirector` |
+| `DefaultClusterMembershipSnapshot` | Mutable implementation updated by `PeerConnectionManager` via `volatile` swap |
+| `NetworkedSiloRouter` | `ISiloRouter` implementation whose invoker map is populated with real TCP invokers |
+| `SiloPeerConnection` | Lazy, single-flight TCP connection to a peer silo; mirrors `TcpGatewayConnection` |
+| `SiloCallInvoker` | `IGrainCallInvoker` that serializes a grain call, sends it to a peer via `SiloPeerConnection`, and stamps the `x-quark-hop: 1` header |
+| `PeerConnectionManager` | `BackgroundService` that polls `IMembershipTable`, registers `SiloCallInvoker` per Active peer into `NetworkedSiloRouter`, and updates `DefaultClusterMembershipSnapshot` |
+
+### Loop guard
+
+Every request forwarded by `SiloCallInvoker` carries `x-quark-hop: 1`. `MessageDispatcher` reads this header: if present it routes the request to the keyed `"silo-terminal"` `LocalGrainCallInvoker` (constructed without a `siloRouter`) so the receiving silo always activates locally and never re-forwards.
+
+### Registration
+
+```csharp
+builder.UseQuark(silo =>
+{
+    silo.Services.AddQuarkRuntime();
+    silo.Services.AddSiloToSiloTransport(); // registers NetworkedSiloRouter, PeerConnectionManager, etc.
+    silo.Services.AddTcpTransport();
+    silo.UseLocalhostClustering(gatewayPort: 30001);
+});
+```
+
+### Placement with multiple silos
+
+`LocalGrainCallInvoker` consults `PlacementDirector` when both `IClusterMembershipSnapshot` and `ISiloRouter` are registered. If placement selects a remote silo it delegates to that silo's `SiloCallInvoker` and caches the mapping in the local grain directory for subsequent calls.
+
+Non-deterministic strategies (`[RandomPlacement]`, `[PreferLocalPlacement]`, `[StatelessWorker]`) may produce duplicate activations in a multi-silo cluster when grains are first accessed from different silos simultaneously. Only `[HashBasedPlacement]` guarantees single-activation across silos (each silo independently computes the same deterministic owner). A warning is logged once when `ActiveSilos.Count > 1`.
+
+### Non-goals for this release
+
+- Reconnect / exponential backoff — tracked in issue #60
+- TLS / mutual auth — tracked in issue #56
+- Distributed grain directory — activations are locally registered; no cross-silo lookup

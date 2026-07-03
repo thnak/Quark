@@ -24,7 +24,7 @@ public sealed class CodecProvider : ICodecProvider
     /// <inheritdoc />
     public IFieldCodec<T>? TryGetCodec<T>()
     {
-        return (IFieldCodec<T>?)_services.GetService(typeof(IFieldCodec<T>));
+        return _services.GetService<IFieldCodec<T>>();
     }
 
     /// <inheritdoc />

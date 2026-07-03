@@ -18,8 +18,8 @@ internal sealed class ClientStartupService : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        var proxyRegistry = _services.GetService(typeof(GrainProxyFactoryRegistry)) as GrainProxyFactoryRegistry;
-        var interfaceRegistry = _services.GetService(typeof(GrainInterfaceTypeRegistry)) as GrainInterfaceTypeRegistry;
+        var proxyRegistry = _services.GetService<GrainProxyFactoryRegistry>();
+        var interfaceRegistry = _services.GetService<GrainInterfaceTypeRegistry>();
 
         if (proxyRegistry is null || interfaceRegistry is null)
         {
@@ -32,7 +32,7 @@ internal sealed class ClientStartupService : IHostedService
         }
 
         // Apply deferred observer proxy registrations.
-        if (_services.GetService(typeof(ObserverProxyFactoryRegistry)) is ObserverProxyFactoryRegistry observerProxyRegistry)
+        if (_services.GetService<ObserverProxyFactoryRegistry>() is { } observerProxyRegistry)
         {
             foreach (ClientServiceCollectionExtensions.IObserverProxyRegistration reg in _services.GetServices<ClientServiceCollectionExtensions.IObserverProxyRegistration>())
             {

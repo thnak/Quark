@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quark.Transport.Abstractions;
@@ -53,7 +54,7 @@ public sealed class SiloMessagePump : IAsyncDisposable
             return;
         }
 
-        var transport = _services.GetService(typeof(ITransport)) as ITransport;
+        var transport = _services.GetService<ITransport>();
         if (transport is null)
         {
             _logger.LogDebug("No transport registered; silo message pump remains idle.");

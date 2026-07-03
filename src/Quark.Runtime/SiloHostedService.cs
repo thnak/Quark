@@ -49,7 +49,7 @@ public sealed class SiloHostedService : IHostedService
         // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
         ApplyTransportDispatcherRegistrations();
 
-        if (_services.GetService(typeof(SiloMessagePump)) is SiloMessagePump messagePump)
+        if (_services.GetService<SiloMessagePump>() is { } messagePump)
         {
             await messagePump.StartAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -57,7 +57,7 @@ public sealed class SiloHostedService : IHostedService
         await _lifecycle.StartAsync(cancellationToken).ConfigureAwait(false);
 
         // Register this silo in the cluster router so remote silos can forward calls to us.
-        if (_services.GetService(typeof(ISiloRouter)) is ISiloRouter router)
+        if (_services.GetService<ISiloRouter>() is { } router)
         {
             IGrainCallInvoker invoker = _services.GetRequiredService<IGrainCallInvoker>();
             router.Register(_options.SiloAddress, invoker);
@@ -73,10 +73,10 @@ public sealed class SiloHostedService : IHostedService
         _logger.LogInformation("Stopping Quark silo '{SiloName}'...", _options.SiloName);
 
         // Remove from router before stopping so no new calls are routed here.
-        var router = _services.GetService(typeof(ISiloRouter)) as ISiloRouter;
+        var router = _services.GetService<ISiloRouter>();
         router?.Unregister(_options.SiloAddress);
 
-        if (_services.GetService(typeof(SiloMessagePump)) is SiloMessagePump messagePump)
+        if (_services.GetService<SiloMessagePump>() is { } messagePump)
         {
             await messagePump.StopAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -86,7 +86,7 @@ public sealed class SiloHostedService : IHostedService
         // Drain all grain activations while the DI root is still live.
         // GrainActivationTable is disposed again by the container after StopAsync returns, but
         // by then _activations is empty so that second call is a no-op.
-        if (_services.GetService(typeof(GrainActivationTable)) is GrainActivationTable table)
+        if (_services.GetService<GrainActivationTable>() is { } table)
         {
             await table.DisposeAsync().ConfigureAwait(false);
         }
@@ -98,7 +98,7 @@ public sealed class SiloHostedService : IHostedService
 
     private void ApplyGrainRegistrations()
     {
-        if (_services.GetService(typeof(GrainTypeRegistry)) is not GrainTypeRegistry typeRegistry)
+        if (_services.GetService<GrainTypeRegistry>() is not { } typeRegistry)
         {
             return;
         }
@@ -111,7 +111,7 @@ public sealed class SiloHostedService : IHostedService
 
     private void ApplyTransportDispatcherRegistrations()
     {
-        if (_services.GetService(typeof(TransportGrainDispatcherRegistry)) is not TransportGrainDispatcherRegistry dispatcherRegistry)
+        if (_services.GetService<TransportGrainDispatcherRegistry>() is not { } dispatcherRegistry)
         {
             return;
         }
@@ -124,7 +124,7 @@ public sealed class SiloHostedService : IHostedService
 
     private void ApplyScopeInitializerRegistrations()
     {
-        if (_services.GetService(typeof(IGrainScopeInitializerRegistry)) is not IGrainScopeInitializerRegistry registry)
+        if (_services.GetService<IGrainScopeInitializerRegistry>() is not { } registry)
         {
             return;
         }

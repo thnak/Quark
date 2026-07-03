@@ -3,8 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Core.Abstractions.Clustering;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Placement;
 using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
@@ -78,7 +80,9 @@ public static class RuntimeServiceCollectionExtensions
             copierProvider: sp.GetService<ICopierProvider>(),
             siloRouter: sp.GetService<ISiloRouter>(),
             tcpObserverTable: sp.GetService<TcpClientObserverTable>(),
-            diagnostics: sp.GetService<IQuarkDiagnosticListener>()));
+            diagnostics: sp.GetService<IQuarkDiagnosticListener>(),
+            placementDirector: sp.GetService<IPlacementDirector>(),
+            membershipSnapshot: sp.GetService<IClusterMembershipSnapshot>()));
         services.TryAddSingleton<IGrainCallInvoker>(sp => sp.GetRequiredService<LocalGrainCallInvoker>());
 
         // Message dispatch / pump services
@@ -88,7 +92,8 @@ public static class RuntimeServiceCollectionExtensions
             sp.GetRequiredService<TransportGrainDispatcherRegistry>(),
             sp.GetRequiredService<IGrainCallInvoker>(),
             sp.GetRequiredService<GrainMessageSerializer>(),
-            sp.GetService<IGrainFactory>()));
+            sp.GetService<IGrainFactory>(),
+            terminalInvoker: sp.GetKeyedService<IGrainCallInvoker>("silo-terminal")));
         services.TryAddSingleton<SiloMessagePump>();
 
         // Gateway client subscription table

@@ -2,8 +2,10 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Quark.Core.Abstractions.Clustering;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Placement;
 using Quark.Diagnostics.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Serialization.Abstractions.Abstractions;
@@ -30,6 +32,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly SiloAddress _siloAddress;
     private readonly ISiloRouter? _siloRouter;
     private readonly IGrainTypeRegistry _typeRegistry;
+    private readonly IPlacementDirector? _placementDirector;
+    private readonly IClusterMembershipSnapshot? _membershipSnapshot;
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
 
@@ -45,7 +49,9 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         ICopierProvider? copierProvider = null,
         ISiloRouter? siloRouter = null,
         TcpClientObserverTable? tcpObserverTable = null,
-        IQuarkDiagnosticListener? diagnostics = null)
+        IQuarkDiagnosticListener? diagnostics = null,
+        IPlacementDirector? placementDirector = null,
+        IClusterMembershipSnapshot? membershipSnapshot = null)
     {
         _activationTable = activationTable;
         _typeRegistry = typeRegistry;
@@ -61,6 +67,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _siloRouter = siloRouter;
         _tcpObserverTable = tcpObserverTable;
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
+        _placementDirector = placementDirector;
+        _membershipSnapshot = membershipSnapshot;
     }
 
     /// <inheritdoc />
@@ -80,6 +88,18 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             return await remote.InvokeAsync<TInvokable, TResult>(grainId, invokable, cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        // G2: consult PlacementDirector on a directory miss when silo-to-silo transport is active.
+        if (_siloRouter is not null && _placementDirector is not null && _membershipSnapshot is not null
+            && !_directory.TryLookup(grainId, out _))
+        {
+            IGrainCallInvoker? placementRemote = TryPlaceRemote(grainId);
+            if (placementRemote is not null)
+            {
+                return await placementRemote.InvokeAsync<TInvokable, TResult>(grainId, invokable, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         _diagnostics.OnInvocationStart(new InvocationStartEvent(grainId, invokable.MethodId, isObserver: false));
@@ -136,6 +156,19 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             await remote.InvokeVoidAsync(grainId, invokable, cancellationToken).ConfigureAwait(false);
             return;
+        }
+
+        // G2: consult PlacementDirector on a directory miss when silo-to-silo transport is active.
+        if (_siloRouter is not null && _placementDirector is not null && _membershipSnapshot is not null
+            && !_directory.TryLookup(grainId, out _))
+        {
+            IGrainCallInvoker? placementRemote = TryPlaceRemote(grainId);
+            if (placementRemote is not null)
+            {
+                await placementRemote.InvokeVoidAsync(grainId, invokable, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
         }
 
         _diagnostics.OnInvocationStart(new InvocationStartEvent(grainId, invokable.MethodId, isObserver: false));
@@ -227,6 +260,25 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     internal Task EnsureActivatedAsync(GrainId grainId, CancellationToken cancellationToken = default)
         => GetOrActivateAsync(grainId, cancellationToken);
+
+    private IGrainCallInvoker? TryPlaceRemote(GrainId grainId)
+    {
+        if (!_typeRegistry.TryGetGrainClass(grainId.Type, out Type? behaviorClass) || behaviorClass is null)
+            return null;
+
+        SiloAddress target = _placementDirector!.SelectActivationSilo(
+            grainId, behaviorClass, _siloAddress, _membershipSnapshot!.ActiveSilos);
+
+        if (target == _siloAddress)
+            return null;
+
+        if (!_siloRouter!.TryGetInvoker(target, out IGrainCallInvoker? invoker))
+            return null;
+
+        // Cache the placement decision locally so subsequent calls hit the fast TryRouteRemote path.
+        _directory.TryRegister(grainId, target, out _);
+        return invoker;
+    }
 
     private IGrainCallInvoker? TryRouteRemote(GrainId grainId)
     {

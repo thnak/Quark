@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Exceptions;
 
@@ -21,7 +22,7 @@ public sealed class CopierProvider : ICopierProvider
     /// <inheritdoc />
     public IDeepCopier<T>? TryGetCopier<T>()
     {
-        return (IDeepCopier<T>?)_services.GetService(typeof(IDeepCopier<T>));
+        return _services.GetService<IDeepCopier<T>>();
     }
 
     /// <inheritdoc />

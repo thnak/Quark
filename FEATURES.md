@@ -43,3 +43,7 @@ Orleans architecture reference: [`README.md`](README.md)
 ## Phase 7 — TCP gateway client
 
 - [x] **F-15** TCP Gateway Client (`TcpGatewayClusterClient`, `UseLocalhostGateway()`, `GatewayMessagePump`, `Quark.Client.Tcp`, grain-ref serialisation in code generator) — _Complexity: L_
+
+## Phase 8 — Silo-to-silo transport
+
+- [x] **F-16** Networked silo-to-silo grain forwarding (`NetworkedSiloRouter`, `SiloCallInvoker`, `SiloPeerConnection`, `PeerConnectionManager`, `IClusterMembershipSnapshot`, `x-quark-hop` loop guard, placement-director integration in `LocalGrainCallInvoker`, `AddSiloToSiloTransport()`) — closes #126 — _Complexity: L_

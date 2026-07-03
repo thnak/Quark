@@ -71,7 +71,7 @@ public sealed class GatewayMessagePump : IHostedService, IAsyncDisposable
         _codecs = _services.GetService<ICodecProvider>();
         _tcpObserverTable = _services.GetService<TcpClientObserverTable>();
         _diagnostics = _services.GetService<IQuarkDiagnosticListener>() ?? NullDiagnosticListener.Instance;
-        var transport = _services.GetService(typeof(ITransport)) as ITransport;
+        var transport = _services.GetService<ITransport>();
         if (transport is null)
         {
             _logger.LogDebug("No transport registered; gateway message pump remains idle.");
