@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Threading.Channels;
+using Quark.Diagnostics.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -48,8 +50,9 @@ internal sealed class SimpleActivationScheduler : IActivationScheduler
 }
 
 /// <summary>
-///     Centralized activation scheduler with a global ready queue and
-///     <see cref="Environment.ProcessorCount"/> drain workers.
+///     Centralized activation scheduler with a configurable ready queue and drain workers.
+///     Options come from <see cref="SiloRuntimeOptions"/>; defaults preserve previous behavior
+///     (unbounded ready queue, <see cref="Environment.ProcessorCount"/> workers, no drain budget).
 ///     Registered as a singleton by <see cref="RuntimeServiceCollectionExtensions.AddQuarkRuntime"/>.
 /// </summary>
 internal sealed class ActivationScheduler : IActivationScheduler
@@ -57,23 +60,63 @@ internal sealed class ActivationScheduler : IActivationScheduler
     private readonly Channel<GrainActivation> _readyQueue;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task[] _workers;
+    private readonly int _drainBudget;
+    private readonly int _queueCapacity;
+    private readonly SchedulerOverloadMode _overloadMode;
+    private readonly IQuarkDiagnosticListener _diagnostics;
 
-    public ActivationScheduler()
+    public ActivationScheduler(SiloRuntimeOptions options, IQuarkDiagnosticListener? diagnostics = null)
     {
-        _readyQueue = Channel.CreateUnbounded<GrainActivation>(
-            new UnboundedChannelOptions { SingleWriter = false, AllowSynchronousContinuations = false });
+        int concurrency = Math.Max(1, options.SchedulerMaxConcurrentActivations);
+        _drainBudget = Math.Max(1, options.SchedulerDrainBudget);
+        _queueCapacity = options.SchedulerReadyQueueCapacity;
+        _overloadMode = options.SchedulerOverloadMode;
+        _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
 
-        int count = Math.Max(1, Environment.ProcessorCount);
-        _workers = new Task[count];
-        for (int i = 0; i < count; i++)
+        _readyQueue = _queueCapacity > 0
+            ? Channel.CreateBounded<GrainActivation>(
+                new BoundedChannelOptions(_queueCapacity)
+                {
+                    SingleWriter = false,
+                    // BoundedChannelFullMode.Wait so WriteAsync blocks when we're in Wait overload mode.
+                    // For RejectWhenFull we use TryWrite manually in ScheduleAsync before calling WriteAsync.
+                    FullMode = BoundedChannelFullMode.Wait,
+                    AllowSynchronousContinuations = false,
+                })
+            : Channel.CreateUnbounded<GrainActivation>(
+                new UnboundedChannelOptions { SingleWriter = false, AllowSynchronousContinuations = false });
+
+        _workers = new Task[concurrency];
+        for (int i = 0; i < concurrency; i++)
             _workers[i] = Task.Run(() => RunWorkerAsync(_cts.Token));
     }
 
-    public ValueTask ScheduleAsync(GrainActivation activation, CancellationToken cancellationToken = default)
+    public async ValueTask ScheduleAsync(GrainActivation activation, CancellationToken cancellationToken = default)
     {
-        if (activation.TryMarkScheduled())
-            _readyQueue.Writer.TryWrite(activation);
-        return ValueTask.CompletedTask;
+        if (!activation.TryMarkScheduled())
+            return;
+
+        activation.SetSchedulerEnqueueTime();
+        _diagnostics.OnSchedulerActivationScheduled(new SchedulerActivationScheduledEvent(activation.GrainId));
+
+        if (_queueCapacity > 0 && _overloadMode == SchedulerOverloadMode.RejectWhenFull)
+        {
+            if (!_readyQueue.Writer.TryWrite(activation))
+            {
+                activation.AbortSchedule();
+                QuarkInstruments.SchedulerOverloadRejections.Add(1);
+                _diagnostics.OnSchedulerOverloadRejected(new SchedulerOverloadRejectedEvent(_queueCapacity));
+                throw new SchedulerOverloadException(_queueCapacity);
+            }
+        }
+        else
+        {
+            await _readyQueue.Writer.WriteAsync(activation, cancellationToken).ConfigureAwait(false);
+        }
+
+        QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
+        _diagnostics.OnSchedulerReadyQueueDepthChanged(
+            new SchedulerReadyQueueDepthChangedEvent(_readyQueue.Reader.Count, 1));
     }
 
     public async ValueTask DisposeAsync()
@@ -95,21 +138,62 @@ internal sealed class ActivationScheduler : IActivationScheduler
     {
         await foreach (GrainActivation activation in _readyQueue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
         {
+            QuarkInstruments.SchedulerReadyQueueDepth.Add(-1);
+            _diagnostics.OnSchedulerReadyQueueDepthChanged(
+                new SchedulerReadyQueueDepthChangedEvent(_readyQueue.Reader.Count, -1));
+
             if (!activation.TryBeginDrain())
             {
-                // Another drain is already running for this activation. It will either
-                // process pending work itself or HasPendingWork will trigger a reschedule.
-                if (activation.HasPendingWork)
-                    activation.TryMarkScheduled();  // may fail — that's fine, existing entry covers it
+                // Another drain is running for this activation. The running drain's CompleteDrain
+                // will reschedule if more work remains — no action needed here.
                 continue;
             }
 
-            ActivationDrainResult result = await activation.DrainAsync(int.MaxValue, ct).ConfigureAwait(false);
+            long enqueuedAt = activation.TakeSchedulerEnqueueTime();
+            double waitMs = enqueuedAt > 0 ? Stopwatch.GetElapsedTime(enqueuedAt).TotalMilliseconds : 0;
+            QuarkInstruments.SchedulerActivationWaitDuration.Record(waitMs);
+            _diagnostics.OnSchedulerActivationWaited(new SchedulerActivationWaitedEvent(activation.GrainId, waitMs));
+
+            _diagnostics.OnSchedulerDrainStarted(new SchedulerDrainStartedEvent(activation.GrainId));
+            QuarkInstruments.SchedulerActiveDrains.Add(1);
+
+            long drainStart = Stopwatch.GetTimestamp();
+            ActivationDrainResult result;
+            try
+            {
+                result = await activation.DrainAsync(_drainBudget, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                QuarkInstruments.SchedulerActiveDrains.Add(-1);
+            }
+
+            double drainMs = Stopwatch.GetElapsedTime(drainStart).TotalMilliseconds;
+            QuarkInstruments.SchedulerDrainDuration.Record(drainMs);
+            QuarkInstruments.SchedulerDrainItems.Add(result.ItemsProcessed);
+            _diagnostics.OnSchedulerDrainCompleted(
+                new SchedulerDrainCompletedEvent(activation.GrainId, result.ItemsProcessed, drainMs));
+
+            // Fairness yield: drain hit budget with work still pending.
+            if (result.HasMoreWork && result.ItemsProcessed >= _drainBudget)
+            {
+                QuarkInstruments.SchedulerDrainYields.Add(1);
+                _diagnostics.OnSchedulerDrainYielded(
+                    new SchedulerDrainYieldedEvent(activation.GrainId, result.ItemsProcessed));
+            }
+
             bool needsReschedule = activation.CompleteDrain(result);
-            if (result.HasMoreWork || needsReschedule)
+
+            if (!result.IsCompleted && (result.HasMoreWork || needsReschedule))
             {
                 if (activation.TryMarkScheduled())
+                {
+                    activation.SetSchedulerEnqueueTime();
                     _readyQueue.Writer.TryWrite(activation);
+                    QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
+                    _diagnostics.OnSchedulerReadyQueueDepthChanged(
+                        new SchedulerReadyQueueDepthChangedEvent(_readyQueue.Reader.Count, 1));
+                }
             }
         }
     }

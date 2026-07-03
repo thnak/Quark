@@ -68,7 +68,10 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<IQuarkDiagnosticListener>(NullDiagnosticListener.Instance);
 
         // Activation scheduler — drives centralized drain dispatch; replaces per-activation loops.
-        services.TryAddSingleton<IActivationScheduler, ActivationScheduler>();
+        // Factory reads SiloRuntimeOptions so concurrency, drain budget, and queue capacity are configurable.
+        services.TryAddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
+            sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
+            sp.GetService<IQuarkDiagnosticListener>()));
 
         // Local in-process call invoker
         services.TryAddSingleton<LocalGrainCallInvoker>(sp => new LocalGrainCallInvoker(

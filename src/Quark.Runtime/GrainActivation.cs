@@ -35,8 +35,9 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly IQuarkDiagnosticListener _diagnostics;
 
     // Phase 2: scheduler-owned drain state (replaces per-activation _processingLoop).
-    internal int _scheduled;  // 0 = not in scheduler ready queue, 1 = scheduled
-    private int _running;     // 0 = not draining, 1 = currently draining
+    internal int _scheduled;             // 0 = not in scheduler ready queue, 1 = scheduled
+    private int _running;                // 0 = not draining, 1 = currently draining
+    private long _schedulerEnqueueTime; // Stopwatch ticks when activation entered the scheduler ready queue
 
     // Phase 3: explicit completion signal (replaces _processingLoop awaiting in DisposeAsync).
     private readonly TaskCompletionSource _completion =
@@ -474,6 +475,21 @@ public sealed class GrainActivation : IAsyncDisposable
         // are visible before we peek the channel.
         return _queue.Reader.TryPeek(out _) || _status == GrainActivationStatus.Deactivating;
     }
+
+    /// <summary>
+    ///     Resets the scheduled flag to 0. Called by the scheduler when it cannot enqueue the
+    ///     activation into the ready queue (e.g. <see cref="SchedulerOverloadMode.RejectWhenFull"/>).
+    ///     Allows a future <see cref="TryMarkScheduled"/> to succeed.
+    /// </summary>
+    internal void AbortSchedule() => Interlocked.Exchange(ref _scheduled, 0);
+
+    /// <summary>Records the Stopwatch timestamp at which the activation entered the scheduler ready queue.</summary>
+    internal void SetSchedulerEnqueueTime()
+        => Interlocked.Exchange(ref _schedulerEnqueueTime, Stopwatch.GetTimestamp());
+
+    /// <summary>Returns and clears the scheduler-enqueue timestamp (0 if never set).</summary>
+    internal long TakeSchedulerEnqueueTime()
+        => Interlocked.Exchange(ref _schedulerEnqueueTime, 0);
 
     // -----------------------------------------------------------------------
 
