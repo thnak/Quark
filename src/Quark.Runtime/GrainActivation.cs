@@ -53,6 +53,10 @@ public sealed class GrainActivation : IAsyncDisposable
     // Stored so Deactivate() can schedule teardown without capturing a lambda closure.
     private DeactivationReason _pendingDeactivationReason = null!;
 
+    // True only for CreateProbe() shells (startup validation, unit-test predicate boundaries).
+    // Probes never run scheduler-driven drains — Deactivate() must not schedule real work for them.
+    private readonly bool _isProbe;
+
     private readonly Channel<MailboxWorkItem> _queue;
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
@@ -109,6 +113,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _scheduler = SimpleActivationScheduler.Instance;
         _status = GrainActivationStatus.Active;
         _lastAccessedTicks = 0;
+        _isProbe = true;
         _completion.TrySetResult(); // probe never deactivates via normal path
     }
 
@@ -277,6 +282,13 @@ public sealed class GrainActivation : IAsyncDisposable
 
         _status = GrainActivationStatus.Deactivating;
         _pendingDeactivationReason = reason;
+
+        // Probes are inert shells with no real mailbox/lifecycle to drain — leave status at
+        // Deactivating and stop, matching the pre-scheduler behavior probe callers rely on.
+        if (_isProbe)
+        {
+            return;
+        }
 
         // Schedule a drain pass so the scheduler sees the Deactivating status
         // and runs teardown after any already-queued work drains (spec invariant 7).
