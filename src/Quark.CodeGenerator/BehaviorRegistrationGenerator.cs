@@ -85,7 +85,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
                        "so a compile-time factory cannot be generated. The behavior will be constructed via " +
                        "a runtime-reflection fallback (ActivatorUtilities) instead of the AOT-safe generated factory.",
         category: "Quark.CodeGenerator",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
     /// <inheritdoc />
