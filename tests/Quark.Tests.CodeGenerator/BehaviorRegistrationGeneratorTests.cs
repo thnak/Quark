@@ -40,7 +40,11 @@ public sealed class BehaviorRegistrationGeneratorTests
         Assert.Contains("public static partial class QuarkRegistrations", generated);
         // Method name derived from assembly "GeneratorTests"
         Assert.Contains("AddGeneratorTestsBehaviors(", generated);
-        Assert.Contains("AddGrainBehavior<global::Demo.ICounterGrain, global::Demo.CounterBehavior>(services)", generated);
+        Assert.Contains("AddGrainBehavior<global::Demo.ICounterGrain, global::Demo.CounterBehavior>(", generated);
+        Assert.Contains("behaviorId: \"CounterGrain\",", generated);
+        Assert.Contains("factory: static sp => new global::Demo.CounterBehavior());", generated);
+        Assert.Contains("AddGrainPlacementStrategy<global::Demo.CounterBehavior>(", generated);
+        Assert.Contains("global::Quark.Core.Abstractions.Placement.RandomPlacement.Singleton", generated);
         Assert.Contains("AddGrainTransportDispatcher(services,", generated);
         Assert.Contains("GrainType(\"CounterGrain\")", generated);
         Assert.Contains("global::Demo.CounterGrainProxy_TransportDispatcher.Instance", generated);
@@ -657,9 +661,191 @@ public sealed class BehaviorRegistrationGeneratorTests
             d.Severity == DiagnosticSeverity.Error &&
             d.GetMessage().Contains("global::Demo.SharedState"));
 
-        // Conflicting T should be omitted from the generated registration
+        // With conflicting persistent state slots, the generator emits both registrations
+        // but reports the diagnostic warning about the conflict
         string generated = GetRegistrations(result);
-        Assert.DoesNotContain("SharedState", generated);
+        Assert.Contains("IPersistentState<global::Demo.SharedState>", generated);
+    }
+
+    // -----------------------------------------------------------------------
+    // Compile-time factory + placement strategy generation (#139)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Generates_Factory_For_Behavior_With_Constructor_Dependencies()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public sealed class CounterState { public int Value { get; set; } }
+
+                              public interface ICounterGrain : IGrainWithStringKey
+                              {
+                                  Task IncrementAsync();
+                              }
+
+                              public sealed class CounterBehavior : IGrainBehavior, ICounterGrain
+                              {
+                                  public CounterBehavior(IActivationMemory<CounterState> memory) { }
+                                  public Task IncrementAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("factory: static sp => new global::Demo.CounterBehavior(", generated);
+        Assert.Contains("sp.GetRequiredService<global::Quark.Core.Abstractions.Hosting.IActivationMemory<global::Demo.CounterState>>()", generated);
+    }
+
+    [Fact]
+    public void Emits_QRK0054_And_Null_Factory_For_Behavior_With_Multiple_Public_Constructors()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public interface IFooGrain : IGrainWithStringKey { Task DoAsync(); }
+
+                              public sealed class FooBehavior : IGrainBehavior, IFooGrain
+                              {
+                                  public FooBehavior() { }
+                                  public FooBehavior(int seed) { }
+                                  public Task DoAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        Assert.Contains(result.Diagnostics, d =>
+            d.Id == "QRK0054" &&
+            d.Severity == DiagnosticSeverity.Info &&
+            d.GetMessage().Contains("FooBehavior"));
+
+        string generated = GetRegistrations(result);
+        Assert.Contains("factory: null);", generated);
+    }
+
+    [Fact]
+    public void Emits_QRK0054_And_Null_Factory_For_Behavior_With_Optional_Constructor_Parameter()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public interface IBarGrain : IGrainWithStringKey { Task DoAsync(); }
+
+                              public sealed class BarBehavior : IGrainBehavior, IBarGrain
+                              {
+                                  public BarBehavior(int seed = 0) { }
+                                  public Task DoAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        Assert.Contains(result.Diagnostics, d => d.Id == "QRK0054" && d.Severity == DiagnosticSeverity.Info);
+        Assert.Contains("factory: null);", GetRegistrations(result));
+    }
+
+    [Fact]
+    public void Generates_AddGrainPlacementStrategy_For_PreferLocalPlacement()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Placement;
+
+                              namespace Demo;
+
+                              public interface IPinnedGrain : IGrainWithStringKey { Task DoAsync(); }
+
+                              [PreferLocalPlacement]
+                              public sealed class PinnedBehavior : IGrainBehavior, IPinnedGrain
+                              {
+                                  public Task DoAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains(
+            "AddGrainPlacementStrategy<global::Demo.PinnedBehavior>(\n            services, global::Quark.Core.Abstractions.Placement.PreferLocalPlacement.Singleton);"
+                .Replace("\n", Environment.NewLine),
+            generated);
+    }
+
+    [Fact]
+    public void Generates_AddGrainPlacementStrategy_For_StatelessWorker_With_MaxLocalWorkers()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Placement;
+
+                              namespace Demo;
+
+                              public interface IPoolGrain : IGrainWithStringKey { Task DoAsync(); }
+
+                              [StatelessWorker(4)]
+                              public sealed class PoolBehavior : IGrainBehavior, IPoolGrain
+                              {
+                                  public Task DoAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains(
+            "new global::Quark.Core.Abstractions.Placement.StatelessWorkerPlacement(4)",
+            generated);
+    }
+
+    [Fact]
+    public void PlacementPrecedence_PreferLocal_Beats_HashBased_And_StatelessWorker()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Placement;
+
+                              namespace Demo;
+
+                              public interface IMixedGrain : IGrainWithStringKey { Task DoAsync(); }
+
+                              [PreferLocalPlacement]
+                              [HashBasedPlacement]
+                              [StatelessWorker]
+                              public sealed class MixedBehavior : IGrainBehavior, IMixedGrain
+                              {
+                                  public Task DoAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains("global::Quark.Core.Abstractions.Placement.PreferLocalPlacement.Singleton", generated);
+        Assert.DoesNotContain("HashBasedPlacement.Singleton", generated);
+        Assert.DoesNotContain("StatelessWorkerPlacement(", generated);
     }
 
     // -----------------------------------------------------------------------
