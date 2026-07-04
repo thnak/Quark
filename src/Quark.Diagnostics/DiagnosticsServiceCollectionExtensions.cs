@@ -5,7 +5,7 @@ using Quark.Diagnostics.Abstractions;
 
 namespace Quark.Diagnostics;
 
-public static class DiagnosticsServiceCollectionExtensions
+public static class DiagnosticsServiceCollectionExtensions// TODO did not implemented or used in any elsewhere
 {
     /// <summary>
     ///     Registers the Quark diagnostic system with a custom listener.

@@ -17,7 +17,7 @@ public sealed class ObserverProxyFactoryRegistry
         where TInterface : IGrainObserver
         where TProxy : class, TInterface
     {
-        _factories[typeof(TInterface)] = (grainId, invoker) => factory(grainId, invoker);
+        _factories[typeof(TInterface)] = factory;
     }
 
     /// <summary>Creates a proxy for <typeparamref name="TInterface" /> with the given identity and invoker.</summary>

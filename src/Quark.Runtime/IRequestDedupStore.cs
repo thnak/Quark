@@ -36,32 +36,3 @@ public interface IRequestDedupStore
     /// </summary>
     void EvictGrain(GrainId grainId);
 }
-
-/// <summary>Result of <see cref="IRequestDedupStore.TryBeginAsync" />.</summary>
-public readonly struct DedupLease
-{
-    public DedupLease(DedupOutcome outcome, ReadOnlyMemory<byte> recordedResponse)
-    {
-        Outcome = outcome;
-        RecordedResponse = recordedResponse;
-    }
-
-    /// <summary>What the caller should do.</summary>
-    public DedupOutcome Outcome { get; }
-
-    /// <summary>The originally serialized response bytes. Valid only when <see cref="Outcome" /> is <see cref="DedupOutcome.Replay" />.</summary>
-    public ReadOnlyMemory<byte> RecordedResponse { get; }
-}
-
-/// <summary>Outcome returned by <see cref="IRequestDedupStore.TryBeginAsync" />.</summary>
-public enum DedupOutcome
-{
-    /// <summary>No prior entry; the caller must execute the method and call <see cref="IRequestDedupStore.Complete" />.</summary>
-    Execute,
-
-    /// <summary>A completed entry exists; the caller must return <see cref="DedupLease.RecordedResponse" /> without re-executing.</summary>
-    Replay,
-
-    /// <summary>A prior entry exists but with a different argument hash (key reuse with different args); the call must be rejected.</summary>
-    Conflict,
-}

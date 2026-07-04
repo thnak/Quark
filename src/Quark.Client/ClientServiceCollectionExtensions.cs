@@ -44,6 +44,7 @@ public static class ClientServiceCollectionExtensions
     ///     The generated proxy class that implements <typeparamref name="TInterface" />
     ///     and routes calls through <see cref="IGrainCallInvoker" />.
     /// </typeparam>
+    /// <param name="services"></param>
     /// <param name="grainTypeName">
     ///     Optional override for the grain-type name (defaults to the implementation class name
     ///     without the leading "I", e.g. <c>CounterGrain</c>).
