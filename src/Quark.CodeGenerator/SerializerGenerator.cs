@@ -24,6 +24,12 @@ public sealed class SerializerGenerator : IIncrementalGenerator
     private const string IdAttributeFqn =
         "Quark.Serialization.Abstractions.Attributes.IdAttribute";
 
+    // Like FullyQualifiedFormat but also emits the '?' suffix for nullable reference types,
+    // so generated generic type arguments match nullable-annotated DTO members.
+    private static readonly SymbolDisplayFormat FullyQualifiedNullableFormat =
+        SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
+            SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
     internal static readonly DiagnosticDescriptor UnsupportedCollectionElementType = new(
         id: "QRK0054",
         title: "Unsupported element type in collection member",
@@ -123,6 +129,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                 members.Add(new MemberModel(
                     id,
                     member.Name,
+                    memberType.ToDisplayString(FullyQualifiedNullableFormat),
                     memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                     isProperty,
                     info));
@@ -150,7 +157,8 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         Location memberLocation,
         List<Diagnostic> diagnostics)
     {
-        string fq = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        string fq = type.ToDisplayString(FullyQualifiedNullableFormat);
+        string runtimeFq = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
         MemberSerializeKind kind = type.SpecialType switch
         {
@@ -170,13 +178,13 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             _                          => MemberSerializeKind.Fallback
         };
 
-        if (kind != MemberSerializeKind.Fallback) return new SerializeInfo(kind, fq);
+        if (kind != MemberSerializeKind.Fallback) return new SerializeInfo(kind, fq, runtimeFq);
 
         if (type.ToDisplayString() == "System.Guid")
-            return new SerializeInfo(MemberSerializeKind.Guid, fq);
+            return new SerializeInfo(MemberSerializeKind.Guid, fq, runtimeFq);
 
         if (type.ToDisplayString() == "System.DateTimeOffset")
-            return new SerializeInfo(MemberSerializeKind.DateTimeOffset, fq);
+            return new SerializeInfo(MemberSerializeKind.DateTimeOffset, fq, runtimeFq);
 
         // Plain single-dimensional arrays (T[]). byte[] is excluded — it already has a
         // dedicated ByteArrayCodec / GrainMessageSerializer.ByteArray fast path that a generic
@@ -194,10 +202,10 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                     memberLocation,
                     memberName,
                     elemType.ToDisplayString()));
-                return new SerializeInfo(MemberSerializeKind.Invalid, fq);
+                return new SerializeInfo(MemberSerializeKind.Invalid, fq, runtimeFq);
             }
 
-            return new SerializeInfo(MemberSerializeKind.Array, fq, element: elemInfo);
+            return new SerializeInfo(MemberSerializeKind.Array, fq, runtimeFq, element: elemInfo);
         }
 
         if (type is INamedTypeSymbol named)
@@ -210,7 +218,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                     string nsPrefix = named.ContainingNamespace.IsGlobalNamespace
                         ? "global::"
                         : $"global::{named.ContainingNamespace.ToDisplayString()}.";
-                    return new SerializeInfo(MemberSerializeKind.GeneratedCodec, fq,
+                    return new SerializeInfo(MemberSerializeKind.GeneratedCodec, fq, runtimeFq,
                         copierFqTypeName: $"{nsPrefix}{named.Name}Copier");
                 }
             }
@@ -248,10 +256,10 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                         memberLocation,
                         memberName,
                         elemType.ToDisplayString()));
-                    return new SerializeInfo(MemberSerializeKind.Invalid, fq);
+                    return new SerializeInfo(MemberSerializeKind.Invalid, fq, runtimeFq);
                 }
 
-                return new SerializeInfo(seqKind, fq, element: elemInfo);
+                return new SerializeInfo(seqKind, fq, runtimeFq, element: elemInfo);
             }
 
             // Map-shaped collections: Immutable{Sorted}Dictionary plus mutable Dictionary<K,V>.
@@ -276,7 +284,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                         memberLocation,
                         memberName,
                         keyType.ToDisplayString()));
-                    return new SerializeInfo(MemberSerializeKind.Invalid, fq);
+                    return new SerializeInfo(MemberSerializeKind.Invalid, fq, runtimeFq);
                 }
 
                 // Collection-of-collection values aren't supported yet — see the sequence-shape
@@ -290,10 +298,10 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                         memberLocation,
                         memberName,
                         valType.ToDisplayString()));
-                    return new SerializeInfo(MemberSerializeKind.Invalid, fq);
+                    return new SerializeInfo(MemberSerializeKind.Invalid, fq, runtimeFq);
                 }
 
-                return new SerializeInfo(mpKind, fq, key: keyInfo, element: valInfo);
+                return new SerializeInfo(mpKind, fq, runtimeFq, key: keyInfo, element: valInfo);
             }
         }
 
@@ -312,10 +320,10 @@ public sealed class SerializerGenerator : IIncrementalGenerator
                 SpecialType.System_UInt64  => MemberSerializeKind.UInt64,
                 _                          => MemberSerializeKind.Int32
             };
-            return new SerializeInfo(MemberSerializeKind.Enum, fq, underlyingKind: underlyingKind);
+            return new SerializeInfo(MemberSerializeKind.Enum, fq, runtimeFq, underlyingKind: underlyingKind);
         }
 
-        return new SerializeInfo(MemberSerializeKind.Fallback, fq);
+        return new SerializeInfo(MemberSerializeKind.Fallback, fq, runtimeFq);
     }
 
     // -----------------------------------------------------------------------
@@ -649,7 +657,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         if (!IsCollectionKind(member.SerializeKind))
         {
             sb.AppendLine(
-                $"        _codecs.GetRequiredCodec<{member.FqTypeName}>().WriteField(writer, {member.Id}u, typeof({member.FqTypeName}), value.{member.Name});");
+                $"        _codecs.GetRequiredCodec<{member.FqTypeName}>().WriteField(writer, {member.Id}u, typeof({member.RuntimeFqTypeName}), value.{member.Name});");
             return;
         }
 
@@ -672,7 +680,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             sb.AppendLine("        {");
             sb.AppendLine($"            writer.WriteFieldHeader({id}, global::Quark.Serialization.Abstractions.Buffers.WireType.TagDelimited);");
             sb.AppendLine($"            foreach (var _item in {val})");
-            sb.AppendLine($"                _codecs.GetRequiredCodec<{info.Element!.FqTypeName}>().WriteField(writer, 1u, typeof({info.Element!.FqTypeName}), _item);");
+            sb.AppendLine($"                _codecs.GetRequiredCodec<{info.Element!.FqTypeName}>().WriteField(writer, 1u, typeof({info.Element!.RuntimeFqTypeName}), _item);");
             sb.AppendLine("            writer.WriteFieldHeader(0u, global::Quark.Serialization.Abstractions.Buffers.WireType.EndTagDelimited);");
             sb.AppendLine("        }");
         }
@@ -680,7 +688,9 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         {
             // ImmutableDictionary / ImmutableSortedDictionary / Dictionary
             string keyFq = info.Key!.FqTypeName;
+            string keyRuntimeFq = info.Key!.RuntimeFqTypeName;
             string valFq = info.Element!.FqTypeName;
+            string valRuntimeFq = info.Element!.RuntimeFqTypeName;
             sb.AppendLine($"        if ({emptyCheck})");
             sb.AppendLine("        {");
             sb.AppendLine($"            writer.WriteFieldHeader({id}, global::Quark.Serialization.Abstractions.Buffers.WireType.Extended);");
@@ -691,8 +701,8 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             sb.AppendLine($"            writer.WriteFieldHeader({id}, global::Quark.Serialization.Abstractions.Buffers.WireType.TagDelimited);");
             sb.AppendLine($"            foreach (var _kvp in {val})");
             sb.AppendLine("            {");
-            sb.AppendLine($"                _codecs.GetRequiredCodec<{keyFq}>().WriteField(writer, 1u, typeof({keyFq}), _kvp.Key);");
-            sb.AppendLine($"                _codecs.GetRequiredCodec<{valFq}>().WriteField(writer, 2u, typeof({valFq}), _kvp.Value);");
+            sb.AppendLine($"                _codecs.GetRequiredCodec<{keyFq}>().WriteField(writer, 1u, typeof({keyRuntimeFq}), _kvp.Key);");
+            sb.AppendLine($"                _codecs.GetRequiredCodec<{valFq}>().WriteField(writer, 2u, typeof({valRuntimeFq}), _kvp.Value);");
             sb.AppendLine("            }");
             sb.AppendLine("            writer.WriteFieldHeader(0u, global::Quark.Serialization.Abstractions.Buffers.WireType.EndTagDelimited);");
             sb.AppendLine("        }");
@@ -1192,6 +1202,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
     private sealed class SerializeInfo(
         MemberSerializeKind kind,
         string fqTypeName,
+        string runtimeFqTypeName,
         string? copierFqTypeName = null,
         MemberSerializeKind underlyingKind = MemberSerializeKind.Fallback,
         SerializeInfo? element = null,
@@ -1199,6 +1210,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
     {
         public MemberSerializeKind Kind { get; } = kind;
         public string FqTypeName { get; } = fqTypeName;
+        public string RuntimeFqTypeName { get; } = runtimeFqTypeName;
         public string? CopierFqTypeName { get; } = copierFqTypeName;
         public MemberSerializeKind UnderlyingKind { get; } = underlyingKind;
         public SerializeInfo? Element { get; } = element;
@@ -1209,12 +1221,14 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         uint id,
         string name,
         string fqTypeName,
+        string runtimeFqTypeName,
         bool isProperty,
         SerializeInfo info)
     {
         public uint Id { get; } = id;
         public string Name { get; } = name;
         public string FqTypeName { get; } = fqTypeName;
+        public string RuntimeFqTypeName { get; } = runtimeFqTypeName;
         public bool IsProperty { get; } = isProperty;
         public SerializeInfo Info { get; } = info;
 

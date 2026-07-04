@@ -52,6 +52,40 @@ public sealed class SerializerGeneratorTests
     }
 
     [Fact]
+    public void Nullable_Reference_Members_Preserve_Nullability_In_Codec_And_Copier_Type_Arguments()
+    {
+        const string source = """
+                              #nullable enable
+                              using Quark.Serialization.Abstractions.Attributes;
+
+                              namespace Demo;
+
+                              [GenerateSerializer]
+                              public sealed class Address
+                              {
+                                  [Id(0)] public string? Street { get; set; }
+                              }
+
+                              [GenerateSerializer]
+                              public sealed class Move
+                              {
+                                  [Id(0)] public string? Label { get; set; }
+                                  [Id(1)] public Address? Target { get; set; }
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new SerializerGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = result.GeneratedSources.Single(s => s.Contains("class MoveCodec"));
+
+        Assert.Contains("_codecs.GetRequiredCodec<string?>().WriteField(writer, 0u, typeof(string), value.Label);", generated);
+        Assert.Contains("_codecs.GetRequiredCodec<global::Demo.Address?>().WriteField(writer, 1u, typeof(global::Demo.Address), value.Target);", generated);
+        Assert.Contains("_copiers.GetRequiredCopier<string?>().DeepCopy(input.Label, context)", generated);
+        Assert.Contains("_copiers.GetRequiredCopier<global::Demo.Address?>().DeepCopy(input.Target, context)", generated);
+    }
+
+    [Fact]
     public void Ignores_Types_Without_Id_Members()
     {
         const string source = """
@@ -436,7 +470,7 @@ public sealed class SerializerGeneratorTests
         // Collection member: identity copy (immutable collections are safe to share by reference)
         Assert.Contains("copy.Numbers = input.Numbers;", generated);
         // Scalar member: copier-based deep copy (string uses keyword form)
-        Assert.Contains("_copiers.GetRequiredCopier<string>().DeepCopy(input.Label, context)", generated);
+        Assert.Contains("_copiers.GetRequiredCopier<string?>().DeepCopy(input.Label, context)", generated);
     }
 
     // -----------------------------------------------------------------------
@@ -563,7 +597,7 @@ public sealed class SerializerGeneratorTests
         AssertNoErrors(result.Diagnostics);
         string generated = Assert.Single(result.GeneratedSources);
 
-        Assert.Contains("_codecs.GetRequiredCodec<byte[]>().WriteField(writer, 0u, typeof(byte[]), value.Data);", generated);
+        Assert.Contains("_codecs.GetRequiredCodec<byte[]?>().WriteField(writer, 0u, typeof(byte[]), value.Data);", generated);
         Assert.DoesNotContain("ReadCollection_Data", generated);
     }
 
