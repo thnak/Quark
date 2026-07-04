@@ -661,10 +661,16 @@ public sealed class BehaviorRegistrationGeneratorTests
             d.Severity == DiagnosticSeverity.Error &&
             d.GetMessage().Contains("global::Demo.SharedState"));
 
-        // With conflicting persistent state slots, the generator emits both registrations
-        // but reports the diagnostic warning about the conflict
+        // The conflicting IPersistentState<T> registration itself is correctly omitted
+        // (QRK0052 is DiagnosticSeverity.Error, which fails the consuming project's build,
+        // so this scenario can never actually reach runtime). Both behaviors' compile-time
+        // factory expressions still reference IPersistentState<SharedState> as a constructor
+        // parameter type, which is expected and unrelated to this diagnostic, so we assert
+        // against the exact registration-statement prefix rather than the bare type name.
         string generated = GetRegistrations(result);
-        Assert.Contains("IPersistentState<global::Demo.SharedState>", generated);
+        Assert.DoesNotContain(
+            "services.AddScoped<global::Quark.Persistence.Abstractions.IPersistentState<global::Demo.SharedState>>(",
+            generated);
     }
 
     // -----------------------------------------------------------------------
