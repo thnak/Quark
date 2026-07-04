@@ -175,9 +175,10 @@ The generator emits a `BehaviorModel` for any class that:
 
 | Code | Meaning |
 |---|---|
-| `QRK0010` | Behavior class does not implement any `IGrain`-derived interface |
-| `QRK0011` | Behavior class implements multiple `IGrain`-derived interfaces — ambiguous; add `[GrainBehavior("typeName")]` |
-| `QRK0023` | Behavior carries `[ImplicitStreamSubscription]` but the assembly does not reference `Quark.Streaming.InMemory` — auto-registration is skipped (warning) |
+| `QRK0050` | Behavior class does not implement any `IGrain`-derived interface |
+| `QRK0051` | Behavior class implements multiple `IGrain`-derived interfaces — ambiguous; add `[GrainBehavior("typeName")]` |
+| `QRK0052` | Two behaviors use `IPersistentState<T>` on the same `T` with conflicting (stateName, providerName) combinations |
+| `QRK0053` | Behavior carries `[ImplicitStreamSubscription]` but the assembly does not reference `Quark.Streaming.InMemory` — auto-registration is skipped (warning) |
 
 ### State type detection
 
@@ -214,7 +215,7 @@ services.AddImplicitStreamSubscription("chat", "RoomGrain");
 The grain-type key honors `[GrainBehavior("key")]`; multiple `[ImplicitStreamSubscription]`
 attributes on one behavior each emit a line. Emission is **guarded**: if the assembly does not
 reference `Quark.Streaming.InMemory` (so `AddImplicitStreamSubscription` is unresolvable), the
-generator skips emission and reports **QRK0023** instead of emitting code that would not compile.
+generator skips emission and reports **QRK0053** instead of emitting code that would not compile.
 Add a `Quark.Streaming.InMemory` reference to silence the warning and enable auto-wiring.
 
 ## SerializerGenerator

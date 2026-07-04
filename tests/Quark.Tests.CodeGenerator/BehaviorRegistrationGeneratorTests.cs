@@ -212,7 +212,7 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
-    public void Emits_QRK0020_For_Behavior_Without_Grain_Interface()
+    public void Emits_QRK0050_For_Behavior_Without_Grain_Interface()
     {
         const string source = """
                               using Quark.Core.Abstractions.Grains;
@@ -225,7 +225,7 @@ public sealed class BehaviorRegistrationGeneratorTests
         GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
 
         Assert.Contains(result.Diagnostics, d =>
-            d.Id == "QRK0020" &&
+            d.Id == "QRK0050" &&
             d.Severity == DiagnosticSeverity.Error &&
             d.GetMessage().Contains("OrphanBehavior"));
 
@@ -623,7 +623,7 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
-    public void Emits_QRK0022_For_Same_T_Different_State_Names()
+    public void Emits_QRK0052_For_Same_T_Different_State_Names()
     {
         const string source = """
                               using System.Threading.Tasks;
@@ -653,7 +653,7 @@ public sealed class BehaviorRegistrationGeneratorTests
         GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
 
         Assert.Contains(result.Diagnostics, d =>
-            d.Id == "QRK0022" &&
+            d.Id == "QRK0052" &&
             d.Severity == DiagnosticSeverity.Error &&
             d.GetMessage().Contains("global::Demo.SharedState"));
 

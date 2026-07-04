@@ -43,7 +43,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
     private const string DefaultStorageName = "Default";
 
     internal static readonly DiagnosticDescriptor MissingGrainInterface = new(
-        id: "QRK0020",
+        id: "QRK0050",
         title: "Behavior missing grain interface",
         messageFormat: "'{0}' implements IGrainBehavior but no IGrain-derived interface. Add [GrainBehavior(\"typeName\")] or implement the grain interface.",
         category: "Quark.CodeGenerator",
@@ -51,7 +51,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         isEnabledByDefault: true);
 
     internal static readonly DiagnosticDescriptor AmbiguousGrainInterface = new(
-        id: "QRK0021",
+        id: "QRK0051",
         title: "Behavior implements multiple grain interfaces",
         messageFormat: "'{0}' implements multiple IGrain-derived interfaces. The first ('{1}') is used. Add a single grain interface to silence.",
         category: "Quark.CodeGenerator",
@@ -59,7 +59,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         isEnabledByDefault: true);
 
     internal static readonly DiagnosticDescriptor ConflictingPersistentStateSlots = new(
-        id: "QRK0022",
+        id: "QRK0052",
         title: "Conflicting IPersistentState<T> state names",
         messageFormat: "'{0}' is used as IPersistentState<T> with different (stateName, providerName) combinations in this assembly. Use distinct state types for each logical slot.",
         category: "Quark.CodeGenerator",
@@ -67,7 +67,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         isEnabledByDefault: true);
 
     internal static readonly DiagnosticDescriptor ImplicitStreamSubscriptionNoProvider = new(
-        id: "QRK0023",
+        id: "QRK0053",
         title: "[ImplicitStreamSubscription] auto-registration skipped",
         messageFormat: "'{0}' is marked [ImplicitStreamSubscription] but this assembly does not reference Quark.Streaming.InMemory. Auto-registration was skipped — reference the package or call AddImplicitStreamSubscription(...) manually.",
         category: "Quark.CodeGenerator",
@@ -471,7 +471,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
 
     private sealed class BehaviorModel
     {
-        // Error-only model (QRK0020): only diagnostics are populated.
+        // Error-only model (QRK0050): only diagnostics are populated.
         public BehaviorModel(ImmutableArray<Diagnostic> diagnostics)
         {
             Diagnostics = diagnostics;

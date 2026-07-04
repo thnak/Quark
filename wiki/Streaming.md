@@ -117,7 +117,7 @@ silo.Services.AddImplicitStreamSubscription("Alerts", "AlertProcessor");
 ```
 
 > The generator emits this call only when the assembly references `Quark.Streaming.InMemory`.
-> Otherwise it skips emission and reports diagnostic **QRK0023** — add the reference to enable
+> Otherwise it skips emission and reports diagnostic **QRK0053** — add the reference to enable
 > auto-wiring. See [Source Generators](Source-Generators#implicit-stream-subscriptions).
 
 ## TCP client streams (`Quark.Client.Tcp`)

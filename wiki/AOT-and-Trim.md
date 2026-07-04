@@ -67,9 +67,9 @@ These analyzers fire on any code in packages that set `EnableAotAnalyzer=true`.
 
 > `Quark.Analyzers` also ships data-isolation (`QRK0010`–`QRK0012`), behavior-lifecycle
 > (`QRK0020`–`QRK0022`), reentrancy (`QRK0040`), and determinism (`QRK0041`) analyzers; see their
-> release notes in `AnalyzerReleases.Unshipped.md`. Note: `Quark.CodeGenerator` independently uses
-> `QRK0020`–`QRK0023` for unrelated registration-validation diagnostics under a different category
-> — a known ID collision tracked in [#135](https://github.com/thnak/Quark/issues/135).
+> release notes in `AnalyzerReleases.Unshipped.md`. `Quark.CodeGenerator` uses its own decade,
+> `QRK0050`–`QRK0053`, for registration-validation diagnostics — previously it collided with
+> `QRK0020`–`QRK0023` above; renumbered to close [#135](https://github.com/thnak/Quark/issues/135).
 
 ## Native AOT smoke build
 
