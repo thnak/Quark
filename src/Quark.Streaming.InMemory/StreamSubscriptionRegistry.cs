@@ -29,11 +29,12 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
     public Guid Subscribe<T>(StreamId streamId, IAsyncObserver<T> observer)
     {
-        List<Subscription> list = _subs.GetOrAdd(streamId, _ => []);
+        List<Subscription> list = _subs.GetOrAdd(streamId, ValueFactory);
+
         var sub = new Subscription
         {
             Id = Guid.NewGuid(),
-            OnNext = (item, token) => observer.OnNextAsync((T)item, token),
+            OnNext = OnNext,
             OnError = observer.OnErrorAsync,
             OnCompleted = observer.OnCompletedAsync
         };
@@ -43,6 +44,13 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         }
 
         return sub.Id;
+
+        Task OnNext(object item, StreamSequenceToken? token) => observer.OnNextAsync((T)item, token);
+    }
+
+    private static List<Subscription> ValueFactory(StreamId _)
+    {
+        return [];
     }
 
     public void Unsubscribe(StreamId streamId, Guid subscriptionId)
@@ -61,12 +69,25 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
     public Guid SubscribeUntyped(StreamId streamId, IUntypedStreamObserver observer)
     {
         var subId = Guid.NewGuid();
+
         _untyped.AddOrUpdate(
             streamId,
-            _ => [(subId, observer)],
-            (_, list) => { lock (list) { list.Add((subId, observer)); } return list; });
+            AddValueFactory,
+            UpdateValueFactory);
         _untypedIndex[subId] = streamId;
         return subId;
+
+        List<(Guid SubId, IUntypedStreamObserver Observer)> AddValueFactory(StreamId _) => [(subId, observer)];
+
+        List<(Guid SubId, IUntypedStreamObserver Observer)> UpdateValueFactory(StreamId _, List<(Guid SubId, IUntypedStreamObserver Observer)> list)
+        {
+            lock (list)
+            {
+                list.Add((subId, observer));
+            }
+
+            return list;
+        }
     }
 
     public void UnsubscribeUntyped(Guid subId)

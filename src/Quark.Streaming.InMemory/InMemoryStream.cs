@@ -30,9 +30,21 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
         var subscriptionId = _registry.Subscribe(StreamId, observer);
         var handle = new InMemorySubscriptionHandle<T>(
             subscriptionId, StreamId, _registry,
-            id => { lock (_handles) _handles.RemoveAll(h => h.HandleId == id); });
-        lock (_handles) _handles.Add(handle);
+            OnUnsubscribe);
+        lock (_handles)
+        {
+            _handles.Add(handle);
+        }
+
         return Task.FromResult<StreamSubscriptionHandle<T>>(handle);
+    }
+
+    private void OnUnsubscribe(Guid id)
+    {
+        lock (_handles)
+        {
+            _handles.RemoveAll(h => h.HandleId == id);
+        }
     }
 
     public Task<StreamSubscriptionHandle<T>> SubscribeAsync(
@@ -43,6 +55,9 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
 
     public Task<IList<StreamSubscriptionHandle<T>>> GetAllSubscriptionHandles()
     {
-        lock (_handles) return Task.FromResult<IList<StreamSubscriptionHandle<T>>>([.._handles]);
+        lock (_handles)
+        {
+            return Task.FromResult<IList<StreamSubscriptionHandle<T>>>([.._handles]);
+        }
     }
 }

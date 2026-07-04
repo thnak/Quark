@@ -306,11 +306,15 @@ public sealed class GrainActivation : IAsyncDisposable
         if (!vt.IsCompletedSuccessfully)
         {
             vt.AsTask().ContinueWith(
-                static t => { },
+                ContinuationFunction,
                 CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }
+    }
+
+    private static void ContinuationFunction(Task _)
+    {
     }
 
     /// <inheritdoc cref="IGrainContext.DelayDeactivation" />
