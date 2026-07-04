@@ -7,6 +7,6 @@ namespace Quark.Transactions;
 public interface ITransactionalState<TState> where TState : new()
 {
     Task<TResult> PerformRead<TResult>(Func<TState, TResult> readFunction);
-    Task PerformUpdate(Action<TState> updateFunction);
+    Task PerformUpdate(Action<TState> updateFunction);// TODO did not implemented or used in any elsewhere
     Task<TResult> PerformUpdate<TResult>(Func<TState, TResult> updateFunction);
 }

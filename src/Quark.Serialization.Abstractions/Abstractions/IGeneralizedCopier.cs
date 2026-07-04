@@ -10,5 +10,5 @@ public interface IGeneralizedCopier
     bool IsSupportedType(Type type);
 
     /// <summary>Returns a deep copy of <paramref name="original" />.</summary>
-    object? DeepCopy(object? original, CopyContext context);
+    object? DeepCopy(object? original, CopyContext context);// TODO did not implemented or used in any elsewhere
 }

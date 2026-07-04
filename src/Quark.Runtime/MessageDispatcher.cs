@@ -82,7 +82,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
 
         if (isDedupCall)
         {
-            ulong argHash = ComputeFnv1aHash(request.ArgumentPayload);
+            ulong argHash = ComputeFnv1AHash(request.ArgumentPayload);
             DedupLease lease = await _dedupStore!.TryBeginAsync(
                 request.GrainId, idempotencyKey!, argHash, cancellationToken).ConfigureAwait(false);
 
@@ -190,7 +190,7 @@ public sealed class MessageDispatcher : IMessageDispatcher
         }
     }
 
-    private static ulong ComputeFnv1aHash(ReadOnlyMemory<byte> payload)
+    private static ulong ComputeFnv1AHash(ReadOnlyMemory<byte> payload)
     {
         const ulong fnvPrime = 0x100000001B3UL;
         const ulong offsetBasis = 0xCBF29CE484222325UL;

@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Clustering;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Core.Abstractions.Placement;
 using Quark.Diagnostics.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Runtime.StatelessWorker;

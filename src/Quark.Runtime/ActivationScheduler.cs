@@ -14,7 +14,10 @@ internal readonly record struct ActivationDrainResult(
 
 /// <summary>
 ///     Stateless fallback scheduler: dispatches each activation drain as a fire-and-forget
-///     <see cref="Task.Run"/> call.  Used by default when no scheduler is registered in DI
+///     <see>
+///         <cref>Task.Run</cref>
+///     </see>
+///     call.  Used by default when no scheduler is registered in DI
 ///     and by tests that construct <see cref="GrainActivation"/> directly.
 /// </summary>
 internal sealed class SimpleActivationScheduler : IActivationScheduler
@@ -24,7 +27,7 @@ internal sealed class SimpleActivationScheduler : IActivationScheduler
     public ValueTask ScheduleAsync(GrainActivation activation, CancellationToken cancellationToken = default)
     {
         if (activation.TryMarkScheduled())
-            _ = Task.Run(() => RunDrainAsync(activation, cancellationToken));
+            _ = Task.Run(() => RunDrainAsync(activation, cancellationToken), cancellationToken);
         return ValueTask.CompletedTask;
     }
 

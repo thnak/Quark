@@ -8,12 +8,12 @@ public sealed class TcpTransportOptions : TransportOptions
     /// <summary>
     ///     Enable Nagle's algorithm. <c>false</c> (TCP_NODELAY on) by default for low-latency RPC.
     /// </summary>
-    public bool EnableNagle { get; set; } = false;
+    public bool EnableNagle { get; set; } = false;// TODO did not implemented or used in any elsewhere
 
     /// <summary>
     ///     Enable SO_KEEPALIVE. Default: <c>true</c>.
     /// </summary>
-    public bool KeepAlive { get; set; } = true;
+    public bool KeepAlive { get; set; } = true;// TODO did not implemented or used in any elsewhere
 
     /// <summary>
     ///     Optional TLS configuration. When set, all TCP connections are wrapped in <c>SslStream</c>.

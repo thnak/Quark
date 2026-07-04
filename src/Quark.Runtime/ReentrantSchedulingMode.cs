@@ -1,3 +1,5 @@
+using Quark.Diagnostics.Abstractions;
+
 namespace Quark.Runtime;
 
 /// <summary>

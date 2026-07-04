@@ -13,7 +13,7 @@ public interface ITransportConnection : IAsyncDisposable
     string ConnectionId { get; }
 
     /// <summary>Local endpoint of this connection.</summary>
-    EndPoint? LocalEndPoint { get; }
+    EndPoint? LocalEndPoint { get; }// TODO did not implemented or used in any elsewhere
 
     /// <summary>Remote endpoint of this connection.</summary>
     EndPoint? RemoteEndPoint { get; }

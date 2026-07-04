@@ -10,8 +10,8 @@ public enum ExtendedWireType : byte
     ExpectedType = 1,
 
     /// <summary>The value's type differs from the declared type (polymorphic).</summary>
-    PolymorphicType = 2,
+    PolymorphicType = 2,// TODO did not implemented or used in any elsewhere
 
     /// <summary>The field holds its default (zero/empty) value.</summary>
-    DefaultValue = 3
+    DefaultValue = 3// TODO did not implemented or used in any elsewhere
 }

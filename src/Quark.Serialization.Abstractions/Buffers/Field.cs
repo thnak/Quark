@@ -20,5 +20,5 @@ public readonly struct Field
     public bool IsEndObject => WireType == WireType.EndTagDelimited;
 
     /// <summary>Whether this field represents a default/null value.</summary>
-    public bool HasExpectedType => ExtendedWireType == ExtendedWireType.ExpectedType;
+    public bool HasExpectedType => ExtendedWireType == ExtendedWireType.ExpectedType;// TODO did not implemented or used in any elsewhere
 }

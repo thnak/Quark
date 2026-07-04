@@ -15,19 +15,19 @@ public class TransportOptions
     ///     Size in bytes of the initial receive buffer per connection.
     ///     Default: 16 KB.
     /// </summary>
-    public int ReceiveBufferSize { get; set; } = 16 * 1024;
+    public int ReceiveBufferSize { get; set; } = 16 * 1024;// TODO did not implemented or used in any elsewhere
 
     /// <summary>
     ///     Size in bytes of the initial send buffer per connection.
     ///     Default: 16 KB.
     /// </summary>
-    public int SendBufferSize { get; set; } = 16 * 1024;
+    public int SendBufferSize { get; set; } = 16 * 1024;// TODO did not implemented or used in any elsewhere
 
     /// <summary>
     ///     Idle connection timeout. Default: 5 minutes.
     ///     Set to <see cref="Timeout.InfiniteTimeSpan" /> to disable.
     /// </summary>
-    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(5);// TODO did not implemented or used in any elsewhere
 
     /// <summary>
     ///     Connection attempt timeout.  Default: 30 seconds.

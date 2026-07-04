@@ -5,7 +5,7 @@ using Quark.Runtime;
 
 namespace Quark.Tests.Unit.Integration;
 
-public sealed class EagerResourceBehavior : IGrainBehavior, IEagerResourceGrain, IActivationLifecycle
+public sealed class EagerResourceBehavior : IEagerResourceGrain, IActivationLifecycle
 {
     private readonly IEagerActivationMemory<EagerResource> _eager;
     private readonly IActivationShellAccessor _shell;

@@ -7,6 +7,6 @@ namespace Quark.Streaming.Abstractions;
 public interface IUntypedStreamObserver
 {
     Task OnNextAsync(object item, StreamSequenceToken? token);
-    Task OnErrorAsync(Exception ex);
-    Task OnCompletedAsync();
+    Task OnErrorAsync(Exception ex); // TODO did not implemented or used in any elsewhere
+    Task OnCompletedAsync(); // TODO did not implemented or used in any elsewhere
 }

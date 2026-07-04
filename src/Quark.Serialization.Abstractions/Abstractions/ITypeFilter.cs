@@ -5,7 +5,7 @@ namespace Quark.Serialization.Abstractions.Abstractions;
 ///     by a given codec or copier.  Implement this on the same class as your codec/copier
 ///     to narrow the types it claims to support.
 /// </summary>
-public interface ITypeFilter
+public interface ITypeFilter// TODO did not implemented or used in any elsewhere
 {
     /// <summary>
     ///     Returns <c>true</c> if this implementation is willing to handle <paramref name="type" />.

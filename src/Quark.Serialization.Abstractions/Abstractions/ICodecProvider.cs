@@ -7,7 +7,7 @@ namespace Quark.Serialization.Abstractions.Abstractions;
 public interface ICodecProvider
 {
     /// <summary>Returns a typed codec for <typeparamref name="T" />, or <c>null</c> if none is registered.</summary>
-    IFieldCodec<T>? TryGetCodec<T>();
+    IFieldCodec<T>? TryGetCodec<T>();// TODO did not implemented or used in any elsewhere
 
     /// <summary>Returns a typed codec for <typeparamref name="T" />.</summary>
     /// <exception cref="Exceptions.SerializationException">Thrown when no codec is registered.</exception>

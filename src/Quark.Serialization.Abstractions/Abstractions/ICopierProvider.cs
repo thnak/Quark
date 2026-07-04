@@ -14,5 +14,5 @@ public interface ICopierProvider
     IDeepCopier<T> GetRequiredCopier<T>();
 
     /// <summary>Returns a generalized copier for <paramref name="type" />, or <c>null</c>.</summary>
-    IGeneralizedCopier? TryGetGeneralizedCopier(Type type);
+    IGeneralizedCopier? TryGetGeneralizedCopier(Type type);// TODO did not implemented or used in any elsewhere
 }

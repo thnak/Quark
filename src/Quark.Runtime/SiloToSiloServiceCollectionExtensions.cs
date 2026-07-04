@@ -8,7 +8,6 @@ using Quark.Diagnostics.Abstractions;
 using Quark.Runtime.Clustering;
 using Quark.Runtime.StatelessWorker;
 using Quark.Serialization.Abstractions.Abstractions;
-using Quark.Transport.Abstractions;
 
 namespace Quark.Runtime;
 
@@ -19,7 +18,7 @@ namespace Quark.Runtime;
 ///     <c>UseLocalhostClustering</c> does <em>not</em> call this — the in-process shared
 ///     router is strictly cheaper and already correct for same-process silos.
 /// </summary>
-public static class SiloToSiloServiceCollectionExtensions
+public static class SiloToSiloServiceCollectionExtensions// TODO did not implemented or used in any elsewhere
 {
     public static IServiceCollection AddSiloToSiloTransport(this IServiceCollection services)
     {
