@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Quark.Core.Abstractions.Grains;
+using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Core.Abstractions.Placement;
 using Quark.Runtime;
@@ -81,6 +84,64 @@ public sealed class PlacementTests
     public void GetPlacementStrategy_NullGrainClass_Throws()
         => Assert.Throws<ArgumentNullException>(
             () => new AttributePlacementStrategyResolver().GetPlacementStrategy(null!));
+
+    [Fact]
+    public void Register_TakesPrecedence_OverAttributeReflection()
+    {
+        var resolver = new AttributePlacementStrategyResolver();
+        // PreferLocalGrain carries [PreferLocalPlacement], but an explicit Register() call
+        // (as the generator would emit) must win over the attribute-reflection fallback.
+        resolver.Register(typeof(PreferLocalGrain), HashBasedPlacement.Singleton);
+
+        Assert.Same(HashBasedPlacement.Singleton, resolver.GetPlacementStrategy(typeof(PreferLocalGrain)));
+    }
+
+    [Fact]
+    public void UnregisteredType_StillFallsBackToAttributeReflection()
+    {
+        var resolver = new AttributePlacementStrategyResolver();
+        resolver.Register(typeof(PreferLocalGrain), HashBasedPlacement.Singleton);
+
+        // HashGrain was never Register()'d — must still resolve via attribute reflection.
+        Assert.Same(HashBasedPlacement.Singleton, resolver.GetPlacementStrategy(typeof(HashGrain)));
+    }
+
+    // =====================================================================
+    // AddGrainPlacementStrategy — end-to-end DI wiring (issue: silent no-op if
+    // AttributePlacementStrategyResolver isn't resolvable as its own concrete singleton)
+    // =====================================================================
+
+    [Fact]
+    public void AddGrainPlacementStrategy_AppliedThroughBuiltServiceProvider_ResolvesRegisteredStrategy()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.Configure<SiloRuntimeOptions>(o =>
+        {
+            o.ClusterId = "test";
+            o.ServiceId = "placement-strategy-di";
+            o.SiloName = "silo0";
+        });
+        services.AddQuarkRuntime();
+        services.AddGrainPlacementStrategy<TestBehavior>(HashBasedPlacement.Singleton);
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        // Mirrors SiloHostedService.ApplyPlacementStrategyRegistrations().
+        var resolver = provider.GetRequiredService<AttributePlacementStrategyResolver>();
+        foreach (RuntimeServiceCollectionExtensions.IGrainPlacementStrategyRegistration registration
+                 in provider.GetServices<RuntimeServiceCollectionExtensions.IGrainPlacementStrategyRegistration>())
+        {
+            registration.Apply(resolver);
+        }
+
+        PlacementStrategy resolved = provider.GetRequiredService<IPlacementStrategyResolver>()
+            .GetPlacementStrategy(typeof(TestBehavior));
+
+        Assert.Same(HashBasedPlacement.Singleton, resolved);
+    }
+
+    private sealed class TestBehavior : IGrainBehavior;
 
     // =====================================================================
     // PlacementDirector

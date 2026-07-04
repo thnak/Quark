@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Quark.Core.Abstractions.Clustering;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Placement;
 using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime.Clustering;
@@ -32,6 +33,9 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<GrainTypeRegistry>();
         services.TryAddSingleton<IGrainTypeRegistry>(sp => sp.GetRequiredService<GrainTypeRegistry>());
 
+        // Compile-time behavior construction factories (populated by generated registrations only)
+        services.TryAddSingleton<GrainBehaviorFactoryRegistry>();
+
         // Silo identity
         services.TryAddSingleton<ILocalSiloDetails, LocalSiloDetails>();
 
@@ -40,7 +44,8 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
 
         // Placement services
-        services.TryAddSingleton<IPlacementStrategyResolver, AttributePlacementStrategyResolver>();
+        services.TryAddSingleton<AttributePlacementStrategyResolver>();
+        services.TryAddSingleton<IPlacementStrategyResolver>(sp => sp.GetRequiredService<AttributePlacementStrategyResolver>());
         services.TryAddSingleton<IPlacementDirector, PlacementDirector>();
 
         // Activation table
@@ -140,20 +145,45 @@ public static class RuntimeServiceCollectionExtensions
     /// <summary>
     ///     Registers a grain behavior implementation and maps it to its grain type key.
     ///     The behavior type is registered as <c>Transient</c> so
-    ///     <c>ActivatorUtilities.CreateInstance</c> can construct it per call.
+    ///     <c>ActivatorUtilities.CreateInstance</c> can construct it per call, unless
+    ///     <paramref name="factory"/> is supplied, in which case behavior construction never reflects.
     /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="behaviorId">
+    ///     Explicit grain type key, known at compile time. When <c>null</c> (the default — used by
+    ///     hand-wired registrations), falls back to reflecting <see cref="GrainBehaviorAttribute"/> or the
+    ///     interface name at runtime, exactly as before. The generated <c>QuarkRegistrations.g.cs</c> path
+    ///     always supplies this explicitly.
+    /// </param>
+    /// <param name="factory">
+    ///     Explicit compile-time construction factory. When <c>null</c> (the default — used by hand-wired
+    ///     registrations), behavior construction falls back to <see cref="ReflectionBehaviorActivator"/>.
+    ///     The generated <c>QuarkRegistrations.g.cs</c> path always supplies this when the behavior class
+    ///     has exactly one public constructor with only required parameters.
+    /// </param>
     public static IServiceCollection AddGrainBehavior<TInterface, [DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
-        this IServiceCollection services)
+        this IServiceCollection services,
+        string? behaviorId = null,
+        Func<IServiceProvider, TBehavior>? factory = null)
         where TInterface : IGrain
         where TBehavior : class, IGrainBehavior, TInterface
     {
         services.AddTransient<TBehavior>();
 
-        string key = GetGrainTypeKey<TInterface, TBehavior>();
+#pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) registrations.
+        string key = behaviorId ?? GetGrainTypeKey<TInterface, TBehavior>();
+#pragma warning restore IL2026
+        var grainType = new GrainType(key);
 
         services.AddSingleton<IGrainBehaviorRegistration>(
-            new GrainBehaviorRegistration(new GrainType(key), typeof(TBehavior)));
+            new GrainBehaviorRegistration(grainType, typeof(TBehavior)));
+
+        if (factory is not null)
+        {
+            services.AddSingleton<IGrainBehaviorFactoryRegistration>(
+                new GrainBehaviorFactoryRegistration(grainType, factory));
+        }
 
         return services;
     }
@@ -162,19 +192,48 @@ public static class RuntimeServiceCollectionExtensions
     ///     Registers a delegate that configures this grain type's per-call scope before
     ///     the behavior instance and its scoped dependencies are resolved.
     /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="initializer">The per-call scope initializer delegate.</param>
+    /// <param name="behaviorId">
+    ///     Explicit grain type key, known at compile time. Must match the <c>behaviorId</c> passed to the
+    ///     corresponding <see cref="AddGrainBehavior{TInterface,TBehavior}"/> call for the same
+    ///     <typeparamref name="TInterface"/>/<typeparamref name="TBehavior"/> pair — otherwise this
+    ///     initializer registers under a different key than the behavior and silently never runs. When
+    ///     <c>null</c> (the default), falls back to reflecting <see cref="GrainBehaviorAttribute"/> or the
+    ///     interface name at runtime, exactly as <see cref="AddGrainBehavior{TInterface,TBehavior}"/> does
+    ///     when its own <c>behaviorId</c> is omitted.
+    /// </param>
     public static IServiceCollection AddGrainScopeInitializer<TInterface, [DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
         this IServiceCollection services,
-        GrainScopeInitializer initializer)
+        GrainScopeInitializer initializer,
+        string? behaviorId = null)
         where TInterface : IGrain
         where TBehavior : class, IGrainBehavior, TInterface
     {
         ArgumentNullException.ThrowIfNull(initializer);
 
-        string key = GetGrainTypeKey<TInterface, TBehavior>();
+#pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) registrations.
+        string key = behaviorId ?? GetGrainTypeKey<TInterface, TBehavior>();
+#pragma warning restore IL2026
         services.AddSingleton<IGrainScopeInitializerRegistration>(
             new GrainScopeInitializerRegistration(new GrainType(key), initializer));
 
+        return services;
+    }
+
+    /// <summary>
+    ///     Explicitly registers the placement strategy for a behavior class, bypassing the runtime
+    ///     attribute-reflection fallback in <see cref="AttributePlacementStrategyResolver"/>.
+    /// </summary>
+    public static IServiceCollection AddGrainPlacementStrategy<TBehavior>(
+        this IServiceCollection services,
+        PlacementStrategy strategy)
+        where TBehavior : class, IGrainBehavior
+    {
+        ArgumentNullException.ThrowIfNull(strategy);
+        services.AddSingleton<IGrainPlacementStrategyRegistration>(
+            new GrainPlacementStrategyRegistration(typeof(TBehavior), strategy));
         return services;
     }
 
@@ -239,6 +298,17 @@ public static class RuntimeServiceCollectionExtensions
         public void Apply(GrainTypeRegistry registry) => registry.Register(grainType, behaviorType);
     }
 
+    internal interface IGrainBehaviorFactoryRegistration
+    {
+        void Apply(GrainBehaviorFactoryRegistry registry);
+    }
+
+    private sealed class GrainBehaviorFactoryRegistration(GrainType grainType, Func<IServiceProvider, IGrainBehavior> factory)
+        : IGrainBehaviorFactoryRegistration
+    {
+        public void Apply(GrainBehaviorFactoryRegistry registry) => registry.Register(grainType, factory);
+    }
+
     internal interface IGrainTransportDispatcherRegistration
     {
         void Apply(TransportGrainDispatcherRegistry registry);
@@ -261,6 +331,21 @@ public static class RuntimeServiceCollectionExtensions
         public void Apply(IGrainScopeInitializerRegistry registry) => registry.Register(grainType, initializer);
     }
 
+    internal interface IGrainPlacementStrategyRegistration
+    {
+        void Apply(AttributePlacementStrategyResolver registry);
+    }
+
+    private sealed class GrainPlacementStrategyRegistration(Type behaviorType, PlacementStrategy strategy)
+        : IGrainPlacementStrategyRegistration
+    {
+        public void Apply(AttributePlacementStrategyResolver registry) => registry.Register(behaviorType, strategy);
+    }
+
+    [RequiresUnreferencedCode(
+        "Reflects [GrainBehaviorAttribute] off TBehavior when AddGrainBehavior<,>() is called without an " +
+        "explicit behaviorId — i.e. hand-wired (non-generator) registrations. The generated " +
+        "QuarkRegistrations.g.cs path always supplies behaviorId explicitly and never calls this.")]
     private static string GetGrainTypeKey<TInterface, [DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>()
         where TInterface : IGrain

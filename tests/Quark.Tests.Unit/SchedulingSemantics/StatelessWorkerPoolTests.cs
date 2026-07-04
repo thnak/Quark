@@ -182,6 +182,7 @@ internal sealed class StatelessWorkerFixture : IAsyncDisposable
         services.AddSingleton<InMemoryGrainDirectory>();
         services.AddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
         services.AddSingleton<GrainActivationTable>();
+        services.AddSingleton<GrainBehaviorFactoryRegistry>();
 
         services.AddScoped<ActivationShellAccessor>();
         services.AddScoped<IActivationShellAccessor>(sp => sp.GetRequiredService<ActivationShellAccessor>());

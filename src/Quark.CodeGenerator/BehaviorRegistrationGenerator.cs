@@ -41,6 +41,10 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
     private const string IPersistentStateName = "IPersistentState";
     private const string PersistentStateAttributeFqn = "Quark.Persistence.Abstractions.PersistentStateAttribute";
     private const string DefaultStorageName = "Default";
+    private const string PreferLocalPlacementAttributeFqn = "Quark.Core.Abstractions.Placement.PreferLocalPlacementAttribute";
+    private const string LocalPlacementAttributeFqn = "Quark.Core.Abstractions.Placement.LocalPlacementAttribute";
+    private const string HashBasedPlacementAttributeFqn = "Quark.Core.Abstractions.Placement.HashBasedPlacementAttribute";
+    private const string StatelessWorkerAttributeFqn = "Quark.Core.Abstractions.Placement.StatelessWorkerAttribute";
 
     internal static readonly DiagnosticDescriptor MissingGrainInterface = new(
         id: "QRK0050",
@@ -72,6 +76,16 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         messageFormat: "'{0}' is marked [ImplicitStreamSubscription] but this assembly does not reference Quark.Streaming.InMemory. Auto-registration was skipped — reference the package or call AddImplicitStreamSubscription(...) manually.",
         category: "Quark.CodeGenerator",
         defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    internal static readonly DiagnosticDescriptor AmbiguousBehaviorConstructor = new(
+        id: "QRK0055",
+        title: "Cannot generate compile-time factory for behavior",
+        messageFormat: "'{0}' does not have exactly one public constructor with only required parameters, " +
+                       "so a compile-time factory cannot be generated. The behavior will be constructed via " +
+                       "a runtime-reflection fallback (ActivatorUtilities) instead of the AOT-safe generated factory.",
+        category: "Quark.CodeGenerator",
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
     /// <inheritdoc />
@@ -134,6 +148,78 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
                 Diagnostic.Create(AmbiguousGrainInterface, location, type.Name, grainIface.Name));
         }
 
+        string behaviorNs = type.ContainingNamespace.IsGlobalNamespace
+            ? string.Empty
+            : type.ContainingNamespace.ToDisplayString();
+        string behaviorFqn = string.IsNullOrEmpty(behaviorNs)
+            ? $"global::{type.Name}"
+            : $"global::{behaviorNs}.{type.Name}";
+
+        // Placement strategy: mirrors AttributePlacementStrategyResolver.ResolveCore's exact precedence
+        // (PreferLocal > Local > HashBased > StatelessWorker > Random).
+        ImmutableArray<AttributeData> classAttributes = type.GetAttributes();
+        string placementStrategyExpression;
+        if (classAttributes.Any(a => a.AttributeClass?.ToDisplayString() == PreferLocalPlacementAttributeFqn))
+        {
+            placementStrategyExpression = "global::Quark.Core.Abstractions.Placement.PreferLocalPlacement.Singleton";
+        }
+        else if (classAttributes.Any(a => a.AttributeClass?.ToDisplayString() == LocalPlacementAttributeFqn))
+        {
+            placementStrategyExpression = "global::Quark.Core.Abstractions.Placement.LocalPlacement.Singleton";
+        }
+        else if (classAttributes.Any(a => a.AttributeClass?.ToDisplayString() == HashBasedPlacementAttributeFqn))
+        {
+            placementStrategyExpression = "global::Quark.Core.Abstractions.Placement.HashBasedPlacement.Singleton";
+        }
+        else
+        {
+            AttributeData? statelessAttr = classAttributes
+                .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == StatelessWorkerAttributeFqn);
+            if (statelessAttr is not null)
+            {
+                int maxLocalWorkers = statelessAttr.ConstructorArguments.Length > 0 &&
+                                       statelessAttr.ConstructorArguments[0].Value is int m
+                    ? m
+                    : -1;
+                placementStrategyExpression =
+                    $"new global::Quark.Core.Abstractions.Placement.StatelessWorkerPlacement({maxLocalWorkers})";
+            }
+            else
+            {
+                placementStrategyExpression = "global::Quark.Core.Abstractions.Placement.RandomPlacement.Singleton";
+            }
+        }
+
+        // Compile-time construction factory: requires exactly one public, non-static constructor with
+        // only required parameters. Anything else falls back to the runtime reflection path and warns.
+        string? factoryExpression = null;
+        Diagnostic? factoryDiagnostic = null;
+        ImmutableArray<IMethodSymbol> publicCtors = type.InstanceConstructors
+            .Where(static c => c.DeclaredAccessibility == Accessibility.Public)
+            .ToImmutableArray();
+
+        if (publicCtors.Length == 1 && publicCtors[0].Parameters.All(static p => !p.HasExplicitDefaultValue))
+        {
+            IMethodSymbol ctor = publicCtors[0];
+            var argExprs = new List<string>();
+            foreach (IParameterSymbol p in ctor.Parameters)
+            {
+                string paramFqn = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                argExprs.Add($"sp.GetRequiredService<{paramFqn}>()");
+            }
+            factoryExpression = $"static sp => new {behaviorFqn}({string.Join(", ", argExprs)})";
+        }
+        else
+        {
+            Location ctorLocation = type.Locations.FirstOrDefault() ?? Location.None;
+            factoryDiagnostic = Diagnostic.Create(AmbiguousBehaviorConstructor, ctorLocation, type.Name);
+        }
+
+        if (factoryDiagnostic is not null)
+        {
+            diagList.Add(factoryDiagnostic);
+        }
+
         string grainTypeName = GetGrainTypeName(type, grainIface);
 
         string ifaceNs = grainIface.ContainingNamespace.IsGlobalNamespace
@@ -149,13 +235,6 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         string grainIfaceFqn = string.IsNullOrEmpty(ifaceNs)
             ? $"global::{ifaceShortName}"
             : $"global::{ifaceNs}.{ifaceShortName}";
-
-        string behaviorNs = type.ContainingNamespace.IsGlobalNamespace
-            ? string.Empty
-            : type.ContainingNamespace.ToDisplayString();
-        string behaviorFqn = string.IsNullOrEmpty(behaviorNs)
-            ? $"global::{type.Name}"
-            : $"global::{behaviorNs}.{type.Name}";
 
         var inMemory = new List<string>();
         var persistent = new List<string>();
@@ -230,6 +309,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             grainInterfaceFqn: grainIfaceFqn,
             grainTypeName: grainTypeName,
             proxyFqn: proxyFqn,
+            placementStrategyExpression: placementStrategyExpression,
+            factoryExpression: factoryExpression,
             inMemoryStateTypes: inMemory.Distinct().ToImmutableArray(),
             persistentStateTypes: persistent.Distinct().ToImmutableArray(),
             managedStateTypes: managed.Distinct().ToImmutableArray(),
@@ -343,7 +424,14 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
 
         foreach (BehaviorModel m in valid)
         {
-            sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddGrainBehavior<{m.GrainInterfaceFqn}, {m.BehaviorFqn}>(services);");
+            sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddGrainBehavior<{m.GrainInterfaceFqn}, {m.BehaviorFqn}>(");
+            sb.AppendLine("            services,");
+            sb.AppendLine($"            behaviorId: \"{m.GrainTypeName}\",");
+            sb.AppendLine(m.FactoryExpression is not null
+                ? $"            factory: {m.FactoryExpression});"
+                : "            factory: null);");
+            sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddGrainPlacementStrategy<{m.BehaviorFqn}>(");
+            sb.AppendLine($"            services, {m.PlacementStrategyExpression});");
             sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddGrainTransportDispatcher(services,");
             sb.AppendLine($"            new global::Quark.Core.Abstractions.Identity.GrainType(\"{m.GrainTypeName}\"),");
             sb.AppendLine($"            {m.ProxyFqn}_TransportDispatcher.Instance);");
@@ -479,6 +567,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             GrainInterfaceFqn = string.Empty;
             GrainTypeName = string.Empty;
             ProxyFqn = string.Empty;
+            PlacementStrategyExpression = string.Empty;
+            FactoryExpression = null;
             InMemoryStateTypes = ImmutableArray<string>.Empty;
             PersistentStateTypes = ImmutableArray<string>.Empty;
             ManagedStateTypes = ImmutableArray<string>.Empty;
@@ -492,6 +582,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             string grainInterfaceFqn,
             string grainTypeName,
             string proxyFqn,
+            string placementStrategyExpression,
+            string? factoryExpression,
             ImmutableArray<string> inMemoryStateTypes,
             ImmutableArray<string> persistentStateTypes,
             ImmutableArray<string> managedStateTypes,
@@ -504,6 +596,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             GrainInterfaceFqn = grainInterfaceFqn;
             GrainTypeName = grainTypeName;
             ProxyFqn = proxyFqn;
+            PlacementStrategyExpression = placementStrategyExpression;
+            FactoryExpression = factoryExpression;
             InMemoryStateTypes = inMemoryStateTypes;
             PersistentStateTypes = persistentStateTypes;
             ManagedStateTypes = managedStateTypes;
@@ -518,6 +612,8 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         public string GrainInterfaceFqn { get; }
         public string GrainTypeName { get; }
         public string ProxyFqn { get; }
+        public string PlacementStrategyExpression { get; }
+        public string? FactoryExpression { get; }
         public ImmutableArray<string> InMemoryStateTypes { get; }
         public ImmutableArray<string> PersistentStateTypes { get; }
         public ImmutableArray<string> ManagedStateTypes { get; }

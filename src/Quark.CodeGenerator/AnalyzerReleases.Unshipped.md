@@ -9,3 +9,4 @@
  QRK0052 | Quark.CodeGenerator   | Error    | Conflicting IPersistentState<T> state names
  QRK0053 | Quark.CodeGenerator   | Warning  | [ImplicitStreamSubscription] auto-registration skipped (no Quark.Streaming.InMemory reference)
  QRK0054 | Quark.CodeGenerator   | Error    | Unsupported element/key/value type inside collection member
+ QRK0055 | Quark.CodeGenerator   | Info     | Cannot generate compile-time factory for behavior

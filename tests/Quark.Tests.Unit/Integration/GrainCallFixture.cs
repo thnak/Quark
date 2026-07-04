@@ -33,6 +33,7 @@ public sealed class GrainCallFixture : IAsyncDisposable
         services.AddSingleton<InMemoryGrainDirectory>();
         services.AddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
         services.AddSingleton<GrainActivationTable>();
+        services.AddSingleton<GrainBehaviorFactoryRegistry>();
 
         // Per-call scoped engine services
         services.AddScoped<ActivationShellAccessor>();

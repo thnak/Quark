@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 
 namespace Quark.Runtime;
@@ -13,7 +14,8 @@ namespace Quark.Runtime;
 internal sealed class BehaviorStartupValidator(
     IGrainTypeRegistry typeRegistry,
     IServiceProvider root,
-    ILogger<BehaviorStartupValidator> logger) : IHostedService
+    ILogger<BehaviorStartupValidator> logger,
+    GrainBehaviorFactoryRegistry factoryRegistry) : IHostedService
 {
     public Task StartAsync(CancellationToken ct)
     {
@@ -29,7 +31,17 @@ internal sealed class BehaviorStartupValidator(
                     .Shell = GrainActivation.CreateProbe(probeId, grainType, root);
                 sp.GetRequiredService<ICallContextSetter>().Set(probeId);
 
-                ActivatorUtilities.CreateInstance(sp, behaviorType);
+                if (factoryRegistry.TryGetFactory(grainType, out Func<IServiceProvider, IGrainBehavior>? factory) &&
+                    factory is not null)
+                {
+                    factory(sp);
+                }
+                else
+                {
+#pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) behavior registrations.
+                    ReflectionBehaviorActivator.Create(sp, behaviorType);
+#pragma warning restore IL2026
+                }
 
                 logger.LogDebug("Behavior {Type} DI validated", behaviorType.Name);
             }
