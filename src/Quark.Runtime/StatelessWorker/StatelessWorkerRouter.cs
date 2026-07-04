@@ -20,11 +20,16 @@ internal sealed class StatelessWorkerRouter
     private readonly ConcurrentDictionary<GrainId, StatelessWorkerPool> _pools = new();
     private readonly ConcurrentDictionary<GrainType, StatelessWorkerPoolPolicy?> _policyCache = new();
     private readonly IGrainTypeRegistry _typeRegistry;
+    private readonly IPlacementStrategyResolver _placementResolver;
     private readonly SiloRuntimeOptions _options;
 
-    public StatelessWorkerRouter(IGrainTypeRegistry typeRegistry, IOptions<SiloRuntimeOptions> options)
+    public StatelessWorkerRouter(
+        IGrainTypeRegistry typeRegistry,
+        IPlacementStrategyResolver placementResolver,
+        IOptions<SiloRuntimeOptions> options)
     {
         _typeRegistry = typeRegistry;
+        _placementResolver = placementResolver;
         _options = options.Value;
     }
 
@@ -122,12 +127,11 @@ internal sealed class StatelessWorkerRouter
         if (!_typeRegistry.TryGetGrainClass(grainType, out Type? behaviorType) || behaviorType is null)
             return null;
 
-        object[] attrs = behaviorType.GetCustomAttributes(typeof(StatelessWorkerAttribute), inherit: true);
-        if (attrs.Length == 0 || attrs[0] is not StatelessWorkerAttribute attr)
+        if (_placementResolver.GetPlacementStrategy(behaviorType) is not StatelessWorkerPlacement placement)
             return null;
 
-        int maxLocalActivations = attr.MaxLocalWorkers >= 1
-            ? attr.MaxLocalWorkers
+        int maxLocalActivations = placement.MaxLocalWorkers >= 1
+            ? placement.MaxLocalWorkers
             : Math.Max(1, _options.StatelessWorkerDefaultMaxLocalActivations);
 
         return new StatelessWorkerPoolPolicy(

@@ -207,6 +207,7 @@ internal sealed class StatelessWorkerFixture : IAsyncDisposable
         services.AddSingleton<IGrainFactory>(_ =>
             grainFactoryRef ?? throw new InvalidOperationException("Not yet wired."));
 
+        services.AddSingleton<IPlacementStrategyResolver, AttributePlacementStrategyResolver>();
         services.AddSingleton<StatelessWorkerRouter>();
 
         _serviceProvider = services.BuildServiceProvider();
