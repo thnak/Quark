@@ -79,7 +79,7 @@ The following primitives have built-in codecs:
 
 `bool`, `byte`, `sbyte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal`, `char`, `string`, `DateTime`, `DateTimeOffset`, `TimeSpan`, `Guid`
 
-Arrays and common collection types (`List<T>`, `Dictionary<K,V>`, etc.) are handled by generic wrapper codecs that delegate to the element codec.
+`List<T>`, `Dictionary<K,V>`, `T[]`, and the six `System.Collections.Immutable` shapes are supported as `[GenerateSerializer]` DTO members — see [Collection support](#collection-support) below. There are no standalone, generically-usable `IFieldCodec<List<T>>`-style wrapper codecs; the generator emits the read/write logic per DTO member instead.
 
 ## Wire format
 
@@ -132,6 +132,36 @@ public sealed class PointCodec : IFieldCodec<Point>
     }
 }
 ```
+
+## Collection support
+
+`[GenerateSerializer]` DTOs support the following collection member types out of the box — no extra registration needed:
+
+| Type | Notes |
+|---|---|
+| `ImmutableArray<T>` | Value type; `IsDefault` (uninitialized) round-trips as a null/absent token |
+| `ImmutableList<T>` | |
+| `ImmutableHashSet<T>` | Deserialized with the default equality comparer |
+| `ImmutableSortedSet<T>` | Deserialized with the default comparer |
+| `ImmutableDictionary<K,V>` | Deserialized with the default key equality comparer |
+| `ImmutableSortedDictionary<K,V>` | Deserialized with the default key comparer |
+| `ImmutableStack<T>` | LIFO order round-trips correctly (see note below) |
+| `ImmutableQueue<T>` | FIFO order |
+| `List<T>` | Mutable — see DeepCopy/Clone note below |
+| `Dictionary<K,V>` | Mutable |
+| `T[]` (single-dimensional) | Mutable; `byte[]` is handled separately (see note below), not by this generic path |
+
+The element, key, and value types must themselves be serializable (primitives, `Guid`, `DateTimeOffset`, enum, or another `[GenerateSerializer]` type). Using an unsupported element type produces diagnostic **QRK0054** (Error) at code-generation time. This includes nesting one collection inside another (e.g. `ImmutableList<ImmutableList<int>>`, `List<List<int>>`, `Dictionary<string, int[]>`) — collection-of-collection members aren't supported and are rejected via QRK0054 rather than emitting broken generated code. Multi-dimensional or non-zero-based arrays (`int[,]`) are also not recognized.
+
+**Comparer note:** sets and dictionaries deserialized with the default comparer. If the original collection was built with a custom comparer (e.g., `StringComparer.OrdinalIgnoreCase`), that comparer is lost on the round-trip.
+
+**`ImmutableStack<T>` ordering:** `ImmutableStack<T>` enumerates top-to-bottom (LIFO) and has no efficient way to reconstruct itself from an enumerable in that same order via sequential pushes — doing so would reverse the stack. The generated code buffers elements in wire order on read, then pushes back-to-front, so the reconstructed stack has the same top as the original.
+
+**`byte[]` note:** a `byte[]` DTO member is *not* routed through the generic array path above — it keeps using the existing dedicated `ByteArrayCodec` / `GrainMessageSerializer.ByteArray` blob encoding, which is far more efficient than writing one field header per byte.
+
+**DeepCopy / CloneStatic:**
+- Immutable collections (`ImmutableArray`/`List`/`HashSet`/`SortedSet`/`Dictionary`/`SortedDictionary`/`Stack`/`Queue`) are shared by reference — no per-element copy is needed because the collection itself cannot be mutated.
+- Mutable collections (`List<T>`, `Dictionary<K,V>`, `T[]`) get a **new container** on copy (`new List<T>(input)`, `new Dictionary<K,V>(input)`, `(T[])input.Clone()`) so the copy and the original don't alias the same mutable instance — but element references themselves are still shared. This matches the convention `GrainProxyGenerator` already uses for top-level grain-call arguments (`CloneKind.NewList`/`NewArray`/`NewDictionary`).
 
 ## AOT constraints
 
