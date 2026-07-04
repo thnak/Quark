@@ -82,6 +82,27 @@ public sealed class PlacementTests
         => Assert.Throws<ArgumentNullException>(
             () => new AttributePlacementStrategyResolver().GetPlacementStrategy(null!));
 
+    [Fact]
+    public void Register_TakesPrecedence_OverAttributeReflection()
+    {
+        var resolver = new AttributePlacementStrategyResolver();
+        // PreferLocalGrain carries [PreferLocalPlacement], but an explicit Register() call
+        // (as the generator would emit) must win over the attribute-reflection fallback.
+        resolver.Register(typeof(PreferLocalGrain), HashBasedPlacement.Singleton);
+
+        Assert.Same(HashBasedPlacement.Singleton, resolver.GetPlacementStrategy(typeof(PreferLocalGrain)));
+    }
+
+    [Fact]
+    public void UnregisteredType_StillFallsBackToAttributeReflection()
+    {
+        var resolver = new AttributePlacementStrategyResolver();
+        resolver.Register(typeof(PreferLocalGrain), HashBasedPlacement.Singleton);
+
+        // HashGrain was never Register()'d — must still resolve via attribute reflection.
+        Assert.Same(HashBasedPlacement.Singleton, resolver.GetPlacementStrategy(typeof(HashGrain)));
+    }
+
     // =====================================================================
     // PlacementDirector
     // =====================================================================

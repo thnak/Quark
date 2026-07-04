@@ -44,7 +44,8 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<IGrainDirectory>(sp => sp.GetRequiredService<InMemoryGrainDirectory>());
 
         // Placement services
-        services.TryAddSingleton<IPlacementStrategyResolver, AttributePlacementStrategyResolver>();
+        services.TryAddSingleton<AttributePlacementStrategyResolver>();
+        services.TryAddSingleton<IPlacementStrategyResolver>(sp => sp.GetRequiredService<AttributePlacementStrategyResolver>());
         services.TryAddSingleton<IPlacementDirector, PlacementDirector>();
 
         // Activation table
@@ -210,6 +211,21 @@ public static class RuntimeServiceCollectionExtensions
     }
 
     /// <summary>
+    ///     Explicitly registers the placement strategy for a behavior class, bypassing the runtime
+    ///     attribute-reflection fallback in <see cref="AttributePlacementStrategyResolver"/>.
+    /// </summary>
+    public static IServiceCollection AddGrainPlacementStrategy<TBehavior>(
+        this IServiceCollection services,
+        PlacementStrategy strategy)
+        where TBehavior : class, IGrainBehavior
+    {
+        ArgumentNullException.ThrowIfNull(strategy);
+        services.AddSingleton<IGrainPlacementStrategyRegistration>(
+            new GrainPlacementStrategyRegistration(typeof(TBehavior), strategy));
+        return services;
+    }
+
+    /// <summary>
     ///     Registers a scoped <see cref="IManagedActivationMemory{T}" /> backed by the activation shell.
     ///     The resource is lazily initialized on first <c>GetAsync()</c> call and cleaned up after
     ///     <c>OnDeactivateAsync</c> runs. Configure init/destroy delegates on the injected instance
@@ -301,6 +317,17 @@ public static class RuntimeServiceCollectionExtensions
         : IGrainScopeInitializerRegistration
     {
         public void Apply(IGrainScopeInitializerRegistry registry) => registry.Register(grainType, initializer);
+    }
+
+    internal interface IGrainPlacementStrategyRegistration
+    {
+        void Apply(AttributePlacementStrategyResolver registry);
+    }
+
+    private sealed class GrainPlacementStrategyRegistration(Type behaviorType, PlacementStrategy strategy)
+        : IGrainPlacementStrategyRegistration
+    {
+        public void Apply(AttributePlacementStrategyResolver registry) => registry.Register(behaviorType, strategy);
     }
 
     [RequiresUnreferencedCode(
