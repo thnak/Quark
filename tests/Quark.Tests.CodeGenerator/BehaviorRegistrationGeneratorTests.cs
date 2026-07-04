@@ -711,7 +711,7 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
-    public void Emits_QRK0054_And_Null_Factory_For_Behavior_With_Multiple_Public_Constructors()
+    public void Emits_QRK0055_And_Null_Factory_For_Behavior_With_Multiple_Public_Constructors()
     {
         const string source = """
                               using System.Threading.Tasks;
@@ -732,7 +732,7 @@ public sealed class BehaviorRegistrationGeneratorTests
         GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
 
         Assert.Contains(result.Diagnostics, d =>
-            d.Id == "QRK0054" &&
+            d.Id == "QRK0055" &&
             d.Severity == DiagnosticSeverity.Info &&
             d.GetMessage().Contains("FooBehavior"));
 
@@ -741,7 +741,7 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
-    public void Emits_QRK0054_And_Null_Factory_For_Behavior_With_Optional_Constructor_Parameter()
+    public void Emits_QRK0055_And_Null_Factory_For_Behavior_With_Optional_Constructor_Parameter()
     {
         const string source = """
                               using System.Threading.Tasks;
@@ -760,7 +760,7 @@ public sealed class BehaviorRegistrationGeneratorTests
 
         GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
 
-        Assert.Contains(result.Diagnostics, d => d.Id == "QRK0054" && d.Severity == DiagnosticSeverity.Info);
+        Assert.Contains(result.Diagnostics, d => d.Id == "QRK0055" && d.Severity == DiagnosticSeverity.Info);
         Assert.Contains("factory: null);", GetRegistrations(result));
     }
 

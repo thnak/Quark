@@ -79,7 +79,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         isEnabledByDefault: true);
 
     internal static readonly DiagnosticDescriptor AmbiguousBehaviorConstructor = new(
-        id: "QRK0054",
+        id: "QRK0055",
         title: "Cannot generate compile-time factory for behavior",
         messageFormat: "'{0}' does not have exactly one public constructor with only required parameters, " +
                        "so a compile-time factory cannot be generated. The behavior will be constructed via " +
