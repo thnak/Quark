@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <PackageId>Quark.Core.Abstractions</PackageId>
     <Description>Foundational contracts and abstractions for the Quark distributed actor framework.</Description>
   </PropertyGroup>

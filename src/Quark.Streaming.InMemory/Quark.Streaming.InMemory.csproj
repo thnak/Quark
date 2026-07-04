@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <PackageId>Quark.Streaming.InMemory</PackageId>
     <Description>In-memory stream provider for the Quark distributed actor framework.</Description>
   </PropertyGroup>

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <PackageId>Quark.Transactions</PackageId>
     <Description>ACID transaction support for the Quark distributed actor framework.</Description>
   </PropertyGroup>
