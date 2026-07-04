@@ -44,6 +44,8 @@ public sealed class SiloHostedService : IHostedService
 
         // Apply deferred grain-type registrations (AddGrainBehavior<TInterface, TBehavior> calls).
         ApplyGrainRegistrations();
+        // Apply deferred compile-time behavior factories (AddGrainBehavior<,>(factory: ...) calls).
+        ApplyBehaviorFactoryRegistrations();
         // Apply deferred per-call scope initializers (AddGrainScopeInitializer<TInterface, TBehavior> calls).
         ApplyScopeInitializerRegistrations();
         // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
@@ -106,6 +108,20 @@ public sealed class SiloHostedService : IHostedService
         foreach (RuntimeServiceCollectionExtensions.IGrainBehaviorRegistration reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainBehaviorRegistration>())
         {
             reg.Apply(typeRegistry);
+        }
+    }
+
+    private void ApplyBehaviorFactoryRegistrations()
+    {
+        if (_services.GetService<GrainBehaviorFactoryRegistry>() is not { } factoryRegistry)
+        {
+            return;
+        }
+
+        foreach (RuntimeServiceCollectionExtensions.IGrainBehaviorFactoryRegistration reg in
+                 _services.GetServices<RuntimeServiceCollectionExtensions.IGrainBehaviorFactoryRegistration>())
+        {
+            reg.Apply(factoryRegistry);
         }
     }
 
