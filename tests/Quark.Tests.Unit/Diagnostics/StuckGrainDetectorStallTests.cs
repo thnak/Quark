@@ -53,36 +53,19 @@ public sealed class StuckGrainDetectorStallTests
         Assert.True(activation.ConsecutiveEmptyDrains >= 3);
 
         var listener = new RecordingListener();
-        IOptions<DiagnosticOptions> options = Options.Create(new DiagnosticOptions
-        {
-            PollInterval = TimeSpan.FromMilliseconds(20),
-            StalledDrainThreshold = 3,
-        });
+        IOptions<DiagnosticOptions> options = Options.Create(new DiagnosticOptions { StalledDrainThreshold = 3 });
         var detector = new StuckGrainDetector(table, listener, options, NullLogger<StuckGrainDetector>.Instance);
 
-        await detector.StartAsync(CancellationToken.None);
-        try
-        {
-            await WaitForAsync(() => listener.StalledEvents.Count > 0);
-        }
-        finally
-        {
-            await detector.StopAsync(CancellationToken.None);
-        }
+        // Call the poll step directly instead of starting the BackgroundService and waiting on its
+        // real PeriodicTimer: under a full parallel test run, ThreadPool contention could delay that
+        // timer's callback past a fixed wall-clock assertion window, making the test flaky for a
+        // reason unrelated to the detector's actual logic (see DrainStallDetectionTests for the same
+        // "avoid wall-clock races" approach applied to GrainActivation).
+        detector.PollOnce();
 
         SchedulerDrainStalledEvent fired = Assert.Single(listener.StalledEvents);
         Assert.Equal(grainId, fired.GrainId);
         Assert.True(fired.ConsecutiveEmptyDrains >= 3);
-    }
-
-    private static async Task WaitForAsync(Func<bool> predicate)
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (!predicate())
-        {
-            cts.Token.ThrowIfCancellationRequested();
-            await Task.Delay(10, cts.Token);
-        }
     }
 
     private sealed class RecordingListener : IQuarkDiagnosticListener
