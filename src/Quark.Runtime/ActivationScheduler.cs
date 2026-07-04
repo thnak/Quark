@@ -65,14 +65,19 @@ internal sealed class ActivationScheduler : IActivationScheduler
     private readonly int _queueCapacity;
     private readonly SchedulerOverloadMode _overloadMode;
     private readonly IQuarkDiagnosticListener _diagnostics;
+    private readonly TimeSpan _shutdownStalledThreshold;
 
-    public ActivationScheduler(SiloRuntimeOptions options, IQuarkDiagnosticListener? diagnostics = null)
+    public ActivationScheduler(
+        SiloRuntimeOptions options,
+        IQuarkDiagnosticListener? diagnostics = null,
+        DiagnosticOptions? diagnosticOptions = null)
     {
         int concurrency = Math.Max(1, options.SchedulerMaxConcurrentActivations);
         _drainBudget = Math.Max(1, options.SchedulerDrainBudget);
         _queueCapacity = options.SchedulerReadyQueueCapacity;
         _overloadMode = options.SchedulerOverloadMode;
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
+        _shutdownStalledThreshold = (diagnosticOptions ?? new DiagnosticOptions()).ShutdownStalledThreshold;
 
         _readyQueue = _queueCapacity > 0
             ? Channel.CreateBounded<GrainActivation>(
@@ -124,9 +129,27 @@ internal sealed class ActivationScheduler : IActivationScheduler
     {
         _readyQueue.Writer.TryComplete();
         await _cts.CancelAsync().ConfigureAwait(false);
+
+        Task allWorkers = Task.WhenAll(_workers);
+
+        // Surface a stuck shutdown instead of just hanging silently — a hung drain worker
+        // otherwise blocks host shutdown indefinitely with no other observable signal. The wait
+        // itself is never abandoned; this only reports that it is taking unusually long.
+        if (await Task.WhenAny(allWorkers, Task.Delay(_shutdownStalledThreshold)).ConfigureAwait(false) != allWorkers)
+        {
+            int pending = 0;
+            foreach (Task worker in _workers)
+            {
+                if (!worker.IsCompleted) pending++;
+            }
+
+            _diagnostics.OnSchedulerShutdownStalled(
+                new SchedulerShutdownStalledEvent(pending, _workers.Length, _shutdownStalledThreshold));
+        }
+
         try
         {
-            await Task.WhenAll(_workers).ConfigureAwait(false);
+            await allWorkers.ConfigureAwait(false);
         }
         catch
         {

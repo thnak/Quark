@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Quark.Streaming.InMemory\Quark.Streaming.InMemory.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Transactions\Quark.Transactions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Client.Tcp\Quark.Client.Tcp.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Diagnostics\Quark.Diagnostics.csproj"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
     <PackageReference Include="Microsoft.Extensions.Hosting"/>

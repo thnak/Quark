@@ -72,7 +72,8 @@ public static class RuntimeServiceCollectionExtensions
         // Factory reads SiloRuntimeOptions so concurrency, drain budget, and queue capacity are configurable.
         services.TryAddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
             sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
-            sp.GetService<IQuarkDiagnosticListener>()));
+            sp.GetService<IQuarkDiagnosticListener>(),
+            sp.GetService<IOptions<DiagnosticOptions>>()?.Value));
 
         // Stateless-worker pool router (singleton; pool dictionaries keyed by logical grain id)
         services.TryAddSingleton<StatelessWorkerRouter>();

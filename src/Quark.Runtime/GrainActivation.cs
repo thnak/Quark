@@ -49,6 +49,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private long _activatedAtTicks; // Stopwatch ticks when MarkActive() is called
     private long _workItemStartedAt; // Stopwatch ticks when a work item starts executing; 0 = idle
     private int _pendingWorkCount; // work items queued but not yet executing
+    private int _consecutiveEmptyDrains; // drain passes in a row that processed 0 items while work remained queued
     private volatile GrainActivationStatus _status = GrainActivationStatus.Activating;
 
     // Stored so Deactivate() can schedule teardown without capturing a lambda closure.
@@ -151,6 +152,14 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     Read by <see cref="StuckGrainDetector" /> for diagnostic context.
     /// </summary>
     internal int PendingWorkCount => Volatile.Read(ref _pendingWorkCount);
+
+    /// <summary>
+    ///     Number of consecutive drain passes that processed zero items while the mailbox still
+    ///     reported pending work (see <see cref="DrainAsync"/>). A rising count without ever
+    ///     resetting to 0 indicates a livelock — the scheduler keeps rescheduling this activation
+    ///     but it never makes progress. Read by <see cref="StuckGrainDetector" />.
+    /// </summary>
+    internal int ConsecutiveEmptyDrains => Volatile.Read(ref _consecutiveEmptyDrains);
 
     // Phase 2: scheduler polls this after a drain to decide whether to reschedule.
     internal bool HasPendingWork
@@ -364,7 +373,14 @@ public sealed class GrainActivation : IAsyncDisposable
             }
             catch
             {
-                // Deactivation errors are logged inside RunDeactivationAsync.
+                // The mailbox/scheduler could not accept the deactivation work item — e.g. a
+                // bounded mailbox still full of pre-dispose items (MailboxFullException), or the
+                // scheduler's own ready-queue already completed by a racing shutdown
+                // (ChannelClosedException). Either way RunDeactivationAsync never ran and never
+                // will via the scheduler, so _completion would wait forever below. Drain whatever
+                // is left and run teardown directly instead of relying on a scheduler that can no
+                // longer service this activation.
+                await DrainDirectlyAndDeactivateAsync().ConfigureAwait(false);
             }
         }
 
@@ -384,6 +400,33 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         _cts.Dispose();
+    }
+
+    /// <summary>
+    ///     Fallback teardown used when posting the shutdown deactivation through the normal
+    ///     mailbox/scheduler path fails. Waits for any drain already in flight to finish (via the
+    ///     same <see cref="TryBeginDrain"/> claim the scheduler uses, so this never runs
+    ///     concurrently with a scheduler-driven drain), then drains remaining items and lets
+    ///     <see cref="DrainAsync"/>'s own Deactivating-status check run teardown, exactly as it
+    ///     would have if the scheduler had serviced the post.
+    /// </summary>
+    private async Task DrainDirectlyAndDeactivateAsync()
+    {
+        _pendingDeactivationReason = DeactivationReason.ShuttingDown;
+        _status = GrainActivationStatus.Deactivating;
+
+        var spin = new SpinWait();
+        while (!TryBeginDrain())
+        {
+            if (_status == GrainActivationStatus.Inactive)
+            {
+                return; // A concurrent drain already reached Deactivating and tore this down.
+            }
+            spin.SpinOnce();
+        }
+
+        ActivationDrainResult result = await DrainAsync(int.MaxValue, CancellationToken.None).ConfigureAwait(false);
+        CompleteDrain(result);
     }
 
     // -----------------------------------------------------------------------
@@ -446,6 +489,19 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         bool hasMore = _queue.Reader.TryPeek(out _);
+
+        // Livelock detection: a drain pass that processes nothing while work remains queued means
+        // this activation is being rescheduled without ever making progress (e.g. its own
+        // cancellation token fired mid-drain, so TryRead keeps short-circuiting while TryPeek —
+        // which ignores cancellation — keeps reporting the stranded items as "more work").
+        if (count == 0 && hasMore)
+        {
+            Interlocked.Increment(ref _consecutiveEmptyDrains);
+        }
+        else
+        {
+            Interlocked.Exchange(ref _consecutiveEmptyDrains, 0);
+        }
 
         // Phase 3: deactivation reliability. Deactivate() no longer writes to the bounded mailbox;
         // instead DrainAsync detects Deactivating status here, after all pre-queued work drains
@@ -761,6 +817,13 @@ public sealed class GrainActivation : IAsyncDisposable
             _context = ctx;
             _isFireAndForget = false;
             _core.Reset();
+            // Force the caller's continuation (PostCoreAsync's `await item.WaitAsync()`) onto the
+            // thread pool instead of running it inline inside SetResult below. Without this, a
+            // caller whose continuation chain reaches back into disposing the very scheduler
+            // driving this drain (e.g. a grain's own shutdown deactivation) deadlocks: the worker
+            // thread is still nested inside ExecuteAsync when the scheduler's DisposeAsync tries to
+            // Task.WhenAll the same worker's Task, which can only complete once this call returns.
+            _core.RunContinuationsAsynchronously = true;
         }
 
         /// <summary>
@@ -803,8 +866,11 @@ public sealed class GrainActivation : IAsyncDisposable
                 if (!_isFireAndForget)
                 {
                     _core.SetResult(true);
-                    // SetResult may run the caller's continuation synchronously (and thus GetResult),
-                    // but pool return is deferred to the finally block below — after SetResult returns.
+                    // RunContinuationsAsynchronously defers the awaiter's continuation (and its
+                    // GetResult call) to the thread pool, so it can run strictly after this method
+                    // returns. Pool return therefore happens in GetResult below, not here — handing
+                    // this instance back out in this finally block could re-rent it to a new
+                    // Initialize() call before the original awaiter has read its result.
                 }
             }
             catch (Exception ex)
@@ -818,22 +884,35 @@ public sealed class GrainActivation : IAsyncDisposable
             }
             finally
             {
-                // Clear state and return to pool. Runs after SetResult/SetException completes
-                // (including any synchronous continuations), so no concurrent renter sees stale state.
                 _workItem = null;
                 _context = null;
                 _pendingVt = default;
+                if (_isFireAndForget && _tCachedItem is null)
+                {
+                    // No GetResult caller will ever run for a fire-and-forget item, so return it here.
+                    _tCachedItem = this;
+                }
+            }
+        }
+
+        // IValueTaskSource — called by the awaiter in PostCoreAsync after WaitAsync(). Pool return
+        // happens here (after reading the result), never in ExecuteAsync's finally — because
+        // RunContinuationsAsynchronously means this call can land after ExecuteAsync has already
+        // returned, so returning the item there could hand it back out before this ran.
+        void IValueTaskSource.GetResult(short token)
+        {
+            try
+            {
+                _core.GetResult(token);
+            }
+            finally
+            {
                 if (!_isFireAndForget && _tCachedItem is null)
                 {
                     _tCachedItem = this;
                 }
             }
         }
-
-        // IValueTaskSource — called by the awaiter in PostCoreAsync after WaitAsync().
-        // No pool return here: GetResult may fire synchronously inside SetResult, before
-        // ExecuteAsync's finally runs, which would cause a re-rented item's state to be corrupted.
-        void IValueTaskSource.GetResult(short token) => _core.GetResult(token);
 
         ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _core.GetStatus(token);
 

@@ -86,4 +86,16 @@ public interface IQuarkDiagnosticListener
 
     /// <summary>Called at the start of a drain, reporting how long the activation waited in the ready queue.</summary>
     void OnSchedulerActivationWaited(in SchedulerActivationWaitedEvent e) { }
+
+    /// <summary>
+    ///     Called once when an activation has been rescheduled repeatedly without a single drain
+    ///     pass processing any work — a livelock, distinct from a single stuck work item.
+    /// </summary>
+    void OnSchedulerDrainStalled(in SchedulerDrainStalledEvent e) { }
+
+    /// <summary>
+    ///     Called when the activation scheduler's shutdown has been waiting on its drain workers
+    ///     longer than <see cref="DiagnosticOptions.ShutdownStalledThreshold" />.
+    /// </summary>
+    void OnSchedulerShutdownStalled(in SchedulerShutdownStalledEvent e) { }
 }

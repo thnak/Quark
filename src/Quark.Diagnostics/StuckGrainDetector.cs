@@ -9,11 +9,13 @@ using Quark.Runtime;
 namespace Quark.Diagnostics;
 
 /// <summary>
-///     Background service that polls active grain activations and fires
-///     <see cref="IQuarkDiagnosticListener.OnMailboxStuck" /> when a work item has been
-///     running longer than <see cref="DiagnosticOptions.StuckThreshold" />.
-///     Fires <see cref="IQuarkDiagnosticListener.OnMailboxStuckResolved" /> once the grain
-///     becomes idle again.
+///     Background service that polls active grain activations for two distinct hang shapes:
+///     a single work item running longer than <see cref="DiagnosticOptions.StuckThreshold" />
+///     (fires <see cref="IQuarkDiagnosticListener.OnMailboxStuck" />, resolved via
+///     <see cref="IQuarkDiagnosticListener.OnMailboxStuckResolved" />), and a livelock — the
+///     scheduler rescheduling an activation <see cref="DiagnosticOptions.StalledDrainThreshold" />
+///     times in a row without a single drain pass making progress (fires
+///     <see cref="IQuarkDiagnosticListener.OnSchedulerDrainStalled" />).
 /// </summary>
 public sealed class StuckGrainDetector : BackgroundService
 {
@@ -24,6 +26,9 @@ public sealed class StuckGrainDetector : BackgroundService
 
     // grainId → Stopwatch ticks at which we first reported it as stuck
     private readonly Dictionary<GrainId, long> _stuckSince = new();
+
+    // grainIds already reported as livelocked — reported once, not re-armed (see class doc).
+    private readonly HashSet<GrainId> _reportedStalled = new();
 
     public StuckGrainDetector(
         GrainActivationTable activationTable,
@@ -48,9 +53,25 @@ public sealed class StuckGrainDetector : BackgroundService
             var active = _activationTable.GetActiveActivations();
 
             var currentlyStuck = new HashSet<GrainId>();
+            var currentlyActive = new HashSet<GrainId>();
 
             foreach ((GrainId grainId, GrainActivation activation) in active)
             {
+                currentlyActive.Add(grainId);
+
+                int consecutiveEmptyDrains = activation.ConsecutiveEmptyDrains;
+                if (consecutiveEmptyDrains >= _options.StalledDrainThreshold && _reportedStalled.Add(grainId))
+                {
+                    int pending = activation.PendingWorkCount;
+
+                    _logger.LogWarning(
+                        "Grain {GrainId} scheduler drain appears livelocked: {Count} consecutive drain passes processed nothing with {Pending} items still queued.",
+                        grainId, consecutiveEmptyDrains, pending);
+
+                    _listener.OnSchedulerDrainStalled(
+                        new SchedulerDrainStalledEvent(grainId, consecutiveEmptyDrains, pending));
+                }
+
                 long started = activation.WorkItemStartedAt;
                 if (started == 0) continue; // idle
 
@@ -89,6 +110,10 @@ public sealed class StuckGrainDetector : BackgroundService
 
                 _listener.OnMailboxStuckResolved(new MailboxStuckResolvedEvent(grainId, totalDuration));
             }
+
+            // Drop stalled-drain reports for activations no longer active (deactivated, or table
+            // entry cleared) so a future activation reusing the same key can be reported again.
+            _reportedStalled.RemoveWhere(grainId => !currentlyActive.Contains(grainId));
         }
     }
 }
