@@ -192,17 +192,29 @@ public static class RuntimeServiceCollectionExtensions
     ///     Registers a delegate that configures this grain type's per-call scope before
     ///     the behavior instance and its scoped dependencies are resolved.
     /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="initializer">The per-call scope initializer delegate.</param>
+    /// <param name="behaviorId">
+    ///     Explicit grain type key, known at compile time. Must match the <c>behaviorId</c> passed to the
+    ///     corresponding <see cref="AddGrainBehavior{TInterface,TBehavior}"/> call for the same
+    ///     <typeparamref name="TInterface"/>/<typeparamref name="TBehavior"/> pair — otherwise this
+    ///     initializer registers under a different key than the behavior and silently never runs. When
+    ///     <c>null</c> (the default), falls back to reflecting <see cref="GrainBehaviorAttribute"/> or the
+    ///     interface name at runtime, exactly as <see cref="AddGrainBehavior{TInterface,TBehavior}"/> does
+    ///     when its own <c>behaviorId</c> is omitted.
+    /// </param>
     public static IServiceCollection AddGrainScopeInitializer<TInterface, [DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
         this IServiceCollection services,
-        GrainScopeInitializer initializer)
+        GrainScopeInitializer initializer,
+        string? behaviorId = null)
         where TInterface : IGrain
         where TBehavior : class, IGrainBehavior, TInterface
     {
         ArgumentNullException.ThrowIfNull(initializer);
 
 #pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) registrations.
-        string key = GetGrainTypeKey<TInterface, TBehavior>();
+        string key = behaviorId ?? GetGrainTypeKey<TInterface, TBehavior>();
 #pragma warning restore IL2026
         services.AddSingleton<IGrainScopeInitializerRegistration>(
             new GrainScopeInitializerRegistration(new GrainType(key), initializer));

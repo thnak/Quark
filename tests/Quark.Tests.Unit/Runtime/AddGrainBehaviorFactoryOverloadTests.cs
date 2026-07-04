@@ -52,6 +52,41 @@ public sealed class AddGrainBehaviorFactoryOverloadTests
         Assert.Equal(7, behavior.Widget.Value);
     }
 
+    [Fact]
+    public void AddGrainScopeInitializer_WithMatchingBehaviorId_RegistersUnderSameKeyAsAddGrainBehavior()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.Configure<SiloRuntimeOptions>(o =>
+        {
+            o.ClusterId = "test";
+            o.ServiceId = "scope-initializer-key-alignment";
+            o.SiloName = "silo0";
+        });
+        services.AddQuarkRuntime();
+
+        // Without an explicit behaviorId on AddGrainScopeInitializer, this initializer would
+        // register under the reflected key ("Widget", from IWidgetGrain), not "custom-widget-id" —
+        // silently never firing. Passing the same behaviorId to both calls keeps them aligned.
+        services.AddGrainBehavior<IWidgetGrain, WidgetBehavior>(
+            behaviorId: "custom-widget-id",
+            factory: static _ => new WidgetBehavior(new Widget(7)));
+        services.AddGrainScopeInitializer<IWidgetGrain, WidgetBehavior>(
+            (_, _, _) => ValueTask.CompletedTask,
+            behaviorId: "custom-widget-id");
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        var initializerRegistry = provider.GetRequiredService<IGrainScopeInitializerRegistry>();
+        foreach (RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration reg in
+                 provider.GetServices<RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration>())
+        {
+            reg.Apply(initializerRegistry);
+        }
+
+        Assert.True(initializerRegistry.TryGet(new GrainType("custom-widget-id"), out _));
+    }
+
     private interface IWidgetGrain : IGrain
     {
     }
