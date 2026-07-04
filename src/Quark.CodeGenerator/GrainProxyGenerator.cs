@@ -43,7 +43,12 @@ public sealed class GrainProxyGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(
             models.Collect(),
-            static (ctx, items) => Emit(ctx, items!));
+            Action);
+    }
+
+    private static void Action(SourceProductionContext ctx, ImmutableArray<InterfaceModel?> items)
+    {
+        Emit(ctx, items!);
     }
 
     // -----------------------------------------------------------------------

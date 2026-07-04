@@ -30,12 +30,17 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         IncrementalValuesProvider<TypeModel?> models = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 GenerateSerializerFqn,
-                static (node, _) => node is TypeDeclarationSyntax,
+                Predicate,
                 ExtractModel);
 
         context.RegisterSourceOutput(
             models.Where(static m => m is not null).Collect(),
             static (ctx, items) => Emit(ctx, items!));
+    }
+
+    private static bool Predicate(SyntaxNode node, CancellationToken _)
+    {
+        return node is TypeDeclarationSyntax;
     }
 
     // -----------------------------------------------------------------------

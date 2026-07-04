@@ -54,9 +54,14 @@ internal sealed class StatelessWorkerRouter
         StatelessWorkerPoolPolicy policy,
         CancellationToken ct)
     {
-        StatelessWorkerPool pool = _pools.GetOrAdd(logicalId, static (_, p) => new StatelessWorkerPool(p), policy);
+        StatelessWorkerPool pool = _pools.GetOrAdd(logicalId, ValueFactory, policy);
         (int slotIndex, GrainId workerId) = await pool.AcquireAsync(logicalId, ct).ConfigureAwait(false);
         return new StatelessWorkerLease(workerId, slotIndex, pool);
+    }
+
+    private static StatelessWorkerPool ValueFactory(GrainId _, StatelessWorkerPoolPolicy p)
+    {
+        return new StatelessWorkerPool(p);
     }
 
     /// <summary>
