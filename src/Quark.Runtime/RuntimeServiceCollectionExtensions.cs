@@ -33,6 +33,9 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddSingleton<GrainTypeRegistry>();
         services.TryAddSingleton<IGrainTypeRegistry>(sp => sp.GetRequiredService<GrainTypeRegistry>());
 
+        // Compile-time behavior construction factories (populated by generated registrations only)
+        services.TryAddSingleton<GrainBehaviorFactoryRegistry>();
+
         // Silo identity
         services.TryAddSingleton<ILocalSiloDetails, LocalSiloDetails>();
 
