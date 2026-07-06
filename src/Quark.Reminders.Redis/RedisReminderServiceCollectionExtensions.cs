@@ -38,6 +38,11 @@ public static class RedisReminderServiceCollectionExtensions
             return ConnectionMultiplexer.Connect(connectionString);
         });
 
+        ServiceDescriptor? existing = services.FirstOrDefault(sd => sd.ServiceType == typeof(IReminderStorage));
+        if (existing is not null && existing.ImplementationType != typeof(RedisReminderStorage))
+            throw new InvalidOperationException(
+                "A reminders provider is already configured. Remove the duplicate Add*Reminders() call.");
+
         services.TryAddSingleton<IReminderStorage, RedisReminderStorage>();
         services.TryAddSingleton<DefaultReminderService>();
         services.TryAddSingleton<IReminderService>(sp => sp.GetRequiredService<DefaultReminderService>());

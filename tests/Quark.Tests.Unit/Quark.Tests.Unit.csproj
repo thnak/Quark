@@ -16,6 +16,8 @@
     <ProjectReference Include="..\..\src\Quark.Persistence.Redis\Quark.Persistence.Redis.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Reminders.Abstractions\Quark.Reminders.Abstractions.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Reminders.InMemory\Quark.Reminders.InMemory.csproj"/>
+    <ProjectReference Include="..\..\src\Quark.Reminders.Redis\Quark.Reminders.Redis.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Streaming.InMemory\Quark.Streaming.InMemory.csproj"/>
     <ProjectReference Include="..\..\src\Quark.Transactions\Quark.Transactions.csproj"/>
