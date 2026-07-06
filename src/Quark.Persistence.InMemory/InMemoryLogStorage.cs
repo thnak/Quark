@@ -23,7 +23,12 @@ public sealed class InMemoryLogStorage : ILogStorage
         List<LogEntry> slice;
         lock (log)
         {
-            slice = log.Where(e => e.Version >= fromVersion && e.Version < toVersion).ToList();
+            // AppendEntriesAsync enforces log[i].Version == i, so version maps directly to index.
+            int start = Math.Max(0, fromVersion);
+            int end = Math.Min(log.Count, toVersion);
+            if (start >= end)
+                return Task.FromResult<IReadOnlyList<LogEntry>>([]);
+            slice = log.GetRange(start, end - start);
         }
         return Task.FromResult<IReadOnlyList<LogEntry>>(slice);
     }
