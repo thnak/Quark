@@ -14,15 +14,24 @@ public sealed class GrainMessageSerializer
     public byte[] SerializeRequest(GrainInvocationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return SerializeRequest(request.GrainId, request.MethodId, request.ArgumentPayload.Span);
+    }
 
+    /// <summary>
+    ///     Serializes a grain invocation request from its components into a single buffer,
+    ///     avoiding the intermediate <c>byte[]</c> allocation that the
+    ///     <see cref="GrainInvocationRequest" /> overload requires.
+    /// </summary>
+    public byte[] SerializeRequest(GrainId grainId, uint methodId, ReadOnlySpan<byte> argBytes)
+    {
         ArrayBufferWriter<byte> buffer = new();
         CodecWriter writer = new(buffer);
-        writer.WriteString(request.GrainId.Type.Value);
-        writer.WriteString(request.GrainId.Key);
-        writer.WriteVarUInt32(request.MethodId);
-        if (request.ArgumentPayload.Length > 0)
+        writer.WriteString(grainId.Type.Value);
+        writer.WriteString(grainId.Key);
+        writer.WriteVarUInt32(methodId);
+        if (argBytes.Length > 0)
         {
-            writer.WriteRaw(request.ArgumentPayload.Span);
+            writer.WriteRaw(argBytes);
         }
 
         return buffer.WrittenMemory.ToArray();

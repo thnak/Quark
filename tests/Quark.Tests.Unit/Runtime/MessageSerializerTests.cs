@@ -69,6 +69,55 @@ public sealed class MessageSerializerTests
     }
 
     [Fact]
+    public void SerializeRequest_ComponentsOverload_ProducesIdenticalBytesToRecordOverload()
+    {
+        var grainId = new GrainId(new GrainType("CounterGrain"), "key-99");
+        uint methodId = 3u;
+        ReadOnlyMemory<byte> argPayload = GrainMessageSerializer.SerializeArgs(100, "world");
+
+        GrainMessageSerializer serializer = new();
+
+        byte[] fromRecord = serializer.SerializeRequest(
+            new GrainInvocationRequest(grainId, methodId, argPayload));
+        byte[] fromComponents = serializer.SerializeRequest(grainId, methodId, argPayload.Span);
+
+        Assert.Equal(fromRecord, fromComponents);
+    }
+
+    [Fact]
+    public void SerializeRequest_ComponentsOverload_RoundTrips()
+    {
+        var grainId = new GrainId(new GrainType("InventoryGrain"), "warehouse-7");
+        uint methodId = 5u;
+        ReadOnlyMemory<byte> argPayload = GrainMessageSerializer.SerializeArgs(42L, false);
+
+        GrainMessageSerializer serializer = new();
+
+        byte[] bytes = serializer.SerializeRequest(grainId, methodId, argPayload.Span);
+        GrainInvocationRequest decoded = serializer.DeserializeRequest(bytes);
+
+        Assert.Equal(grainId, decoded.GrainId);
+        Assert.Equal(methodId, decoded.MethodId);
+        Assert.Equal(argPayload.ToArray(), decoded.ArgumentPayload.ToArray());
+    }
+
+    [Fact]
+    public void SerializeRequest_ComponentsOverload_EmptyArgs_RoundTrips()
+    {
+        var grainId = new GrainId(new GrainType("PingGrain"), "srv");
+        uint methodId = 1u;
+
+        GrainMessageSerializer serializer = new();
+
+        byte[] bytes = serializer.SerializeRequest(grainId, methodId, ReadOnlySpan<byte>.Empty);
+        GrainInvocationRequest decoded = serializer.DeserializeRequest(bytes);
+
+        Assert.Equal(grainId, decoded.GrainId);
+        Assert.Equal(methodId, decoded.MethodId);
+        Assert.Empty(decoded.ArgumentPayload.ToArray());
+    }
+
+    [Fact]
     public async Task ReadAsync_Rejects_Negative_Frame_Length()
     {
         Pipe pipe = new();
@@ -110,5 +159,67 @@ public sealed class MessageSerializerTests
         MessageSerializer serializer = new();
 
         Assert.Throws<InvalidDataException>(() => serializer.Deserialize(buffer.WrittenMemory));
+    }
+
+    [Fact]
+    public void Deserialize_SingleSegment_Sequence_Produces_Same_Result_As_Memory_Overload()
+    {
+        MessageSerializer serializer = new();
+        MessageEnvelope original = new()
+        {
+            CorrelationId = 99,
+            MessageType = MessageType.Response,
+            Payload = new byte[] { 10, 20, 30, 40 }
+        };
+
+        byte[] bytes = serializer.Serialize(original);
+        ReadOnlySequence<byte> sequence = new(bytes);
+
+        MessageEnvelope fromSequence = serializer.Deserialize(in sequence);
+        MessageEnvelope fromMemory = serializer.Deserialize(bytes);
+
+        Assert.Equal(fromMemory.CorrelationId, fromSequence.CorrelationId);
+        Assert.Equal(fromMemory.MessageType, fromSequence.MessageType);
+        Assert.Equal(fromMemory.Payload.ToArray(), fromSequence.Payload.ToArray());
+    }
+
+    [Fact]
+    public void Deserialize_MultiSegment_Sequence_Produces_Same_Result_As_Memory_Overload()
+    {
+        MessageSerializer serializer = new();
+        MessageEnvelope original = new()
+        {
+            CorrelationId = 77,
+            MessageType = MessageType.OneWayRequest,
+            Payload = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }
+        };
+
+        byte[] bytes = serializer.Serialize(original);
+
+        int splitAt = bytes.Length / 2;
+        MemorySegment<byte> firstSegment = new(bytes.AsMemory(0, splitAt));
+        MemorySegment<byte> lastSegment = firstSegment.Append(bytes.AsMemory(splitAt));
+        ReadOnlySequence<byte> sequence = new(firstSegment, 0, lastSegment, lastSegment.Memory.Length);
+
+        Assert.False(sequence.IsSingleSegment, "Sequence must be multi-segment for this test to exercise the fallback path.");
+
+        MessageEnvelope fromSequence = serializer.Deserialize(in sequence);
+        MessageEnvelope fromMemory = serializer.Deserialize(bytes);
+
+        Assert.Equal(fromMemory.CorrelationId, fromSequence.CorrelationId);
+        Assert.Equal(fromMemory.MessageType, fromSequence.MessageType);
+        Assert.Equal(fromMemory.Payload.ToArray(), fromSequence.Payload.ToArray());
+    }
+
+    private sealed class MemorySegment<T> : ReadOnlySequenceSegment<T>
+    {
+        public MemorySegment(ReadOnlyMemory<T> memory) => Memory = memory;
+
+        public MemorySegment<T> Append(ReadOnlyMemory<T> memory)
+        {
+            MemorySegment<T> next = new(memory) { RunningIndex = RunningIndex + Memory.Length };
+            Next = next;
+            return next;
+        }
     }
 }

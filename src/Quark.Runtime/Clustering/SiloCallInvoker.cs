@@ -52,7 +52,7 @@ public sealed class SiloCallInvoker : IGrainCallInvoker
         invokable.Serialize(ref writer);
 
         MessageEnvelope response = await SendAsync(
-            grainId, invokable.MethodId, buffer.WrittenMemory.ToArray(), cancellationToken)
+            grainId, invokable.MethodId, buffer.WrittenMemory, cancellationToken)
             .ConfigureAwait(false);
 
         GrainInvocationResponse result = _grainSerializer.DeserializeResponse(response.Payload);
@@ -74,7 +74,7 @@ public sealed class SiloCallInvoker : IGrainCallInvoker
         invokable.Serialize(ref writer);
 
         MessageEnvelope response = await SendAsync(
-            grainId, invokable.MethodId, buffer.WrittenMemory.ToArray(), cancellationToken)
+            grainId, invokable.MethodId, buffer.WrittenMemory, cancellationToken)
             .ConfigureAwait(false);
 
         GrainInvocationResponse result = _grainSerializer.DeserializeResponse(response.Payload);
@@ -119,10 +119,9 @@ public sealed class SiloCallInvoker : IGrainCallInvoker
     }
 
     private Task<MessageEnvelope> SendAsync(
-        GrainId grainId, uint methodId, byte[] argBytes, CancellationToken ct)
+        GrainId grainId, uint methodId, ReadOnlyMemory<byte> argBytes, CancellationToken ct)
     {
-        byte[] requestPayload = _grainSerializer.SerializeRequest(
-            new GrainInvocationRequest(grainId, methodId, argBytes));
+        byte[] requestPayload = _grainSerializer.SerializeRequest(grainId, methodId, argBytes.Span);
 
         long id = Interlocked.Increment(ref _nextCorrelationId);
 
