@@ -6,12 +6,12 @@ namespace Quark.Serialization.Abstractions.Abstractions;
 /// </summary>
 public sealed class CopyContext
 {
-    private readonly Dictionary<object, object> _copies = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<object, object>? _copies;
 
     /// <summary>Records that <paramref name="original" /> was copied to <paramref name="copy" />.</summary>
     public void RecordCopy(object original, object copy)
     {
-        _copies.TryAdd(original, copy);
+        (_copies ??= new Dictionary<object, object>(ReferenceEqualityComparer.Instance)).TryAdd(original, copy);
     }
 
     /// <summary>
@@ -20,12 +20,13 @@ public sealed class CopyContext
     /// </summary>
     public T? TryGetCopy<T>(object original) where T : class
     {
+        if (_copies is null) return null;
         return _copies.TryGetValue(original, out object? copy) ? (T)copy : null;
     }
 
     /// <summary>Resets the context for reuse.</summary>
     public void Reset()
     {
-        _copies.Clear();
+        _copies?.Clear();
     }
 }

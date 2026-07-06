@@ -123,23 +123,24 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
             target = lease.WorkerId;
         }
 
-        TResult result = default!;
         try
         {
             GrainActivation activation = await GetOrActivateAsync(target, cancellationToken).ConfigureAwait(false);
 
-            await activation.PostAsync(async () =>
-            {
-                using IServiceScope scope = _services.CreateScope();
-                IServiceProvider sp = scope.ServiceProvider;
-                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
-                TResult r = await invokable.Invoke(behavior).ConfigureAwait(false);
-                if (_copierProvider?.TryGetCopier<TResult>() is { } copier)
+            TResult result = await activation.PostAsync(
+                new InvokeCallState<TInvokable, TResult>(_services, activation, cancellationToken, invokable, _copierProvider),
+                static async s =>
                 {
-                    r = copier.DeepCopy(r, new CopyContext());
-                }
-                result = r;
-            }).ConfigureAwait(false);
+                    using IServiceScope scope = s.Services.CreateScope();
+                    IServiceProvider sp = scope.ServiceProvider;
+                    IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, s.Activation, s.CancellationToken).ConfigureAwait(false);
+                    TResult r = await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                    if (s.CopierProvider?.TryGetCopier<TResult>() is { } copier)
+                    {
+                        r = copier.DeepCopy(r, new CopyContext());
+                    }
+                    return r;
+                }).ConfigureAwait(false);
 
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: false, elapsed, null));
@@ -212,13 +213,15 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             GrainActivation activation = await GetOrActivateAsync(target, cancellationToken).ConfigureAwait(false);
 
-            await activation.PostAsync(async () =>
-            {
-                using IServiceScope scope = _services.CreateScope();
-                IServiceProvider sp = scope.ServiceProvider;
-                IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, activation, cancellationToken).ConfigureAwait(false);
-                await invokable.Invoke(behavior).ConfigureAwait(false);
-            }).ConfigureAwait(false);
+            await activation.PostAsync(
+                new InvokeVoidState<TInvokable>(_services, activation, cancellationToken, invokable),
+                static async s =>
+                {
+                    using IServiceScope scope = s.Services.CreateScope();
+                    IServiceProvider sp = scope.ServiceProvider;
+                    IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, s.Activation, s.CancellationToken).ConfigureAwait(false);
+                    await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                }).ConfigureAwait(false);
 
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
             _diagnostics.OnInvocationEnd(new InvocationEndEvent(grainId, invokable.MethodId, isObserver: false, elapsed, null));
@@ -355,6 +358,44 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         {
             _activationTable.RemoveIfFaulted(grainId);
             throw;
+        }
+    }
+
+    private readonly struct InvokeVoidState<TInvokable>
+        where TInvokable : struct, IGrainVoidInvokable
+    {
+        public readonly IServiceProvider Services;
+        public readonly GrainActivation Activation;
+        public readonly CancellationToken CancellationToken;
+        public readonly TInvokable Invokable;
+
+        public InvokeVoidState(IServiceProvider services, GrainActivation activation,
+            CancellationToken cancellationToken, TInvokable invokable)
+        {
+            Services = services;
+            Activation = activation;
+            CancellationToken = cancellationToken;
+            Invokable = invokable;
+        }
+    }
+
+    private readonly struct InvokeCallState<TInvokable, TResult>
+        where TInvokable : struct, IGrainInvokable<TResult>
+    {
+        public readonly IServiceProvider Services;
+        public readonly GrainActivation Activation;
+        public readonly CancellationToken CancellationToken;
+        public readonly TInvokable Invokable;
+        public readonly ICopierProvider? CopierProvider;
+
+        public InvokeCallState(IServiceProvider services, GrainActivation activation,
+            CancellationToken cancellationToken, TInvokable invokable, ICopierProvider? copierProvider)
+        {
+            Services = services;
+            Activation = activation;
+            CancellationToken = cancellationToken;
+            Invokable = invokable;
+            CopierProvider = copierProvider;
         }
     }
 
