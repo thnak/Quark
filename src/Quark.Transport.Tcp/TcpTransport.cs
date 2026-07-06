@@ -38,7 +38,7 @@ public sealed class TcpTransport : ITransport
         CancellationToken cancellationToken = default)
     {
         Socket socket = new(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-        socket.NoDelay = true;
+        ApplySocketOptions(socket, _options);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(_options.ConnectTimeout);
@@ -74,10 +74,18 @@ public sealed class TcpTransport : ITransport
 
             await sslStream.AuthenticateAsClientAsync(authOptions, cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("TLS handshake complete (client) to {EndPoint}.", endPoint);
-            return new TcpTransportConnection(socket, sslStream, _logger);
+            return new TcpTransportConnection(socket, sslStream, _options, _logger);
         }
 
-        return new TcpTransportConnection(socket, _logger);
+        return new TcpTransportConnection(socket, _options, _logger);
+    }
+
+    internal static void ApplySocketOptions(Socket socket, TcpTransportOptions options)
+    {
+        socket.NoDelay = !options.EnableNagle;
+        socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, options.KeepAlive);
+        socket.ReceiveBufferSize = options.ReceiveBufferSize;
+        socket.SendBufferSize = options.SendBufferSize;
     }
 
     internal static RemoteCertificateValidationCallback? BuildRemoteCallback(TlsOptions tls)

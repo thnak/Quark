@@ -30,10 +30,14 @@ public sealed class TcpTransportConnectionTests
         await using Pair pair = await Pair.CreateAsync();
         // 256 KiB — far larger than the 4096-byte GetMemory hint, so it crosses many
         // receive segments and several DrainOutputPipe write loops.
+        // Read and write concurrently: with explicit small TCP buffer sizes the server's
+        // receive buffer fills quickly, causing flow-control if nobody drains the server
+        // input pipe in parallel with the client write.
         byte[] payload = Pattern(256 * 1024);
 
+        Task<byte[]> readTask = ReadExactlyAsync(pair.Server.Transport.Input, payload.Length);
         await pair.Client.Transport.Output.WriteAsync(payload);
-        byte[] received = await ReadExactlyAsync(pair.Server.Transport.Input, payload.Length);
+        byte[] received = await readTask;
 
         Assert.Equal(payload, received);
     }
@@ -254,7 +258,14 @@ public sealed class TcpTransportConnectionTests
 
         public static async Task<Pair> CreateAsync()
         {
-            var options = new TcpTransportOptions();
+            // Disable idle timeout so it doesn't interfere with data-transfer tests.
+            // Use explicit large buffers so TCP flow control doesn't stall under stress.
+            var options = new TcpTransportOptions
+            {
+                IdleTimeout = System.Threading.Timeout.InfiniteTimeSpan,
+                ReceiveBufferSize = 512 * 1024,
+                SendBufferSize = 512 * 1024,
+            };
             var serverTransport = new TcpTransport(options, NullLogger<TcpTransport>.Instance);
             var clientTransport = new TcpTransport(options, NullLogger<TcpTransport>.Instance);
 

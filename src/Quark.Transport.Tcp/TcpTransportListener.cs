@@ -51,7 +51,7 @@ internal sealed class TcpTransportListener : ITransportListener
         try
         {
             client = await _serverSocket.AcceptAsync(cancellationToken).ConfigureAwait(false);
-            client.NoDelay = true;
+            TcpTransport.ApplySocketOptions(client, _options);
             _logger.LogDebug("TCP connection accepted from {RemoteEndPoint}.", client.RemoteEndPoint);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -90,10 +90,10 @@ internal sealed class TcpTransportListener : ITransportListener
                 return null;
             }
 
-            return new TcpTransportConnection(client, sslStream, _logger);
+            return new TcpTransportConnection(client, sslStream, _options, _logger);
         }
 
-        return new TcpTransportConnection(client, _logger);
+        return new TcpTransportConnection(client, _options, _logger);
     }
 
     /// <inheritdoc />

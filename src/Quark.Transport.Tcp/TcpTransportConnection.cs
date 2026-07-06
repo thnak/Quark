@@ -1,8 +1,10 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using Quark.Transport.Abstractions;
 
@@ -17,22 +19,26 @@ internal sealed class TcpTransportConnection : ITransportConnection
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Pipe _inputPipe = new();
     private readonly ILogger _logger;
+    private readonly TcpTransportOptions _options;
     private readonly Pipe _outputPipe = new();
     private readonly Socket _socket;
     private readonly Stream _stream;
+    private long _lastActivity;
 
     /// <summary>Creates a plain-TCP connection.</summary>
-    internal TcpTransportConnection(Socket socket, ILogger logger)
-        : this(socket, new NetworkStream(socket, ownsSocket: false), logger) { }
+    internal TcpTransportConnection(Socket socket, TcpTransportOptions options, ILogger logger)
+        : this(socket, new NetworkStream(socket, ownsSocket: false), options, logger) { }
 
     /// <summary>Creates a TLS connection backed by the provided <paramref name="sslStream" />.</summary>
-    internal TcpTransportConnection(Socket socket, SslStream sslStream, ILogger logger)
-        : this(socket, (Stream)sslStream, logger) { }
+    internal TcpTransportConnection(Socket socket, SslStream sslStream, TcpTransportOptions options, ILogger logger)
+        : this(socket, (Stream)sslStream, options, logger) { }
 
-    private TcpTransportConnection(Socket socket, Stream stream, ILogger logger)
+    private TcpTransportConnection(Socket socket, Stream stream, TcpTransportOptions options, ILogger logger)
     {
         _socket = socket;
         _stream = stream;
+        _options = options;
+        _lastActivity = Stopwatch.GetTimestamp();
         ConnectionId = Guid.NewGuid().ToString("N");
         LocalEndPoint = socket.LocalEndPoint;
         RemoteEndPoint = socket.RemoteEndPoint;
@@ -58,17 +64,43 @@ internal sealed class TcpTransportConnection : ITransportConnection
     /// <inheritdoc />
     public async Task ExecuteAsync(CancellationToken cancellationToken = default)
     {
+        bool hasIdleTimeout = _options.IdleTimeout > TimeSpan.Zero
+                              && _options.IdleTimeout != Timeout.InfiniteTimeSpan;
+
+        CancellationTokenSource? linkedCts = hasIdleTimeout
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        CancellationToken ct = linkedCts?.Token ?? cancellationToken;
+
         try
         {
-            Task fillTask = FillInputPipeAsync(cancellationToken);
-            Task drainTask = DrainOutputPipeAsync(cancellationToken);
-            await Task.WhenAll(fillTask, drainTask).ConfigureAwait(false);
+            Task fillTask = FillInputPipeAsync(ct);
+            Task drainTask = DrainOutputPipeAsync(ct);
+
+            if (hasIdleTimeout && linkedCts is not null)
+            {
+                Task pumpTask = Task.WhenAll(fillTask, drainTask);
+                Task idleTask = IdleCheckAsync(linkedCts);
+                Task completed = await Task.WhenAny(pumpTask, idleTask).ConfigureAwait(false);
+                if (ReferenceEquals(completed, pumpTask))
+                    linkedCts.Cancel();
+                await Task.WhenAll(pumpTask, idleTask).ConfigureAwait(false);
+            }
+            else
+            {
+                await Task.WhenAll(fillTask, drainTask).ConfigureAwait(false);
+            }
+
             _completion.TrySetResult();
         }
         catch (Exception ex)
         {
             _completion.TrySetException(ex);
             throw;
+        }
+        finally
+        {
+            linkedCts?.Dispose();
         }
     }
 
@@ -101,6 +133,7 @@ internal sealed class TcpTransportConnection : ITransportConnection
                 }
 
                 writer.Advance(read);
+                Interlocked.Exchange(ref _lastActivity, Stopwatch.GetTimestamp());
                 FlushResult result = await writer.FlushAsync(ct).ConfigureAwait(false);
                 if (result.IsCompleted)
                 {
@@ -133,6 +166,11 @@ internal sealed class TcpTransportConnection : ITransportConnection
                     await _stream.WriteAsync(segment, ct).ConfigureAwait(false);
                 }
 
+                if (buffer.Length > 0)
+                {
+                    Interlocked.Exchange(ref _lastActivity, Stopwatch.GetTimestamp());
+                }
+
                 reader.AdvanceTo(buffer.End);
                 if (result.IsCompleted)
                 {
@@ -148,6 +186,27 @@ internal sealed class TcpTransportConnection : ITransportConnection
         }
 
         await reader.CompleteAsync().ConfigureAwait(false);
+    }
+
+    private async Task IdleCheckAsync(CancellationTokenSource connectionCts)
+    {
+        TimeSpan checkPeriod = TimeSpan.FromMilliseconds(
+            Math.Max(50.0, _options.IdleTimeout.TotalMilliseconds / 2));
+
+        using var timer = new PeriodicTimer(checkPeriod);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(connectionCts.Token).ConfigureAwait(false))
+            {
+                if (Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastActivity)) >= _options.IdleTimeout)
+                {
+                    _logger.LogDebug("Idle timeout reached for connection {ConnectionId}.", ConnectionId);
+                    await connectionCts.CancelAsync().ConfigureAwait(false);
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private sealed class DuplexPipe : IDuplexPipe
