@@ -142,13 +142,24 @@ public sealed class SerializerGenerator : IIncrementalGenerator
             return null;
         }
 
+        bool generateCopier = true;
+        foreach (var namedArg in ctx.Attributes[0].NamedArguments)
+        {
+            if (namedArg.Key == "GenerateCopier" && namedArg.Value.Value is bool b)
+            {
+                generateCopier = b;
+                break;
+            }
+        }
+
         return new TypeModel(
             ns,
             typeSymbol.Name,
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             members.OrderBy(m => m.Id).ToList(),
             typeSymbol.IsValueType,
-            diagnostics);
+            diagnostics,
+            generateCopier);
     }
 
     private static SerializeInfo ResolveSerializeInfo(
@@ -524,6 +535,8 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         sb.AppendLine("}");
         sb.AppendLine();
 
+        if (m.GenerateCopier)
+        {
         // ---- IDeepCopier<T> ------------------------------------------------
         sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"Quark.CodeGenerator\", \"0.1.0\")]");
         sb.AppendLine($"internal sealed class {m.TypeName}Copier");
@@ -644,6 +657,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("}");
+        }
 
         return sb.ToString();
     }
@@ -1172,7 +1186,8 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         string fqTypeName,
         IReadOnlyList<MemberModel> members,
         bool isValueType,
-        IReadOnlyList<Diagnostic> diagnostics)
+        IReadOnlyList<Diagnostic> diagnostics,
+        bool generateCopier = true)
     {
         public string Namespace { get; } = @namespace;
         public string TypeName { get; } = typeName;
@@ -1180,6 +1195,7 @@ public sealed class SerializerGenerator : IIncrementalGenerator
         public IReadOnlyList<MemberModel> Members { get; } = members;
         public bool IsValueType { get; } = isValueType;
         public IReadOnlyList<Diagnostic> Diagnostics { get; } = diagnostics;
+        public bool GenerateCopier { get; } = generateCopier;
     }
 
     private enum MemberSerializeKind

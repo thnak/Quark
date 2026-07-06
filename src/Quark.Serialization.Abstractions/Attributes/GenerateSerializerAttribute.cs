@@ -13,5 +13,5 @@ public sealed class GenerateSerializerAttribute : Attribute
     ///     When <c>true</c> (default), the generator also emits a deep-copy helper.
     ///     Set to <c>false</c> for immutable types where a copy is always a reference to the original.
     /// </summary>
-    public bool GenerateCopier { get; set; } = true;// TODO did not implemented or used in any elsewhere
+    public bool GenerateCopier { get; set; } = true;
 }

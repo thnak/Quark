@@ -778,6 +778,32 @@ public sealed class SerializerGeneratorTests
         Assert.Contains("copy.Pending = input.Pending;", generated);
     }
 
+    [Fact]
+    public void GenerateCopier_False_Omits_Copier_Class_But_Keeps_Codec()
+    {
+        const string source = """
+                              using Quark.Serialization.Abstractions.Attributes;
+
+                              namespace Demo;
+
+                              [GenerateSerializer(GenerateCopier = false)]
+                              public sealed class ImmutablePoint
+                              {
+                                  [Id(0)] public int X { get; set; }
+                                  [Id(1)] public int Y { get; set; }
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new SerializerGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = Assert.Single(result.GeneratedSources);
+        Assert.Contains("internal sealed class ImmutablePointCodec", generated);
+        Assert.DoesNotContain("internal sealed class ImmutablePointCopier", generated);
+        Assert.DoesNotContain("IDeepCopier<", generated);
+        Assert.DoesNotContain("DeepCopy(", generated);
+    }
+
     private static void AssertNoErrors(ImmutableArray<Diagnostic> diagnostics)
     {
         Diagnostic[] errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
