@@ -64,6 +64,14 @@ public sealed class MessageSerializer
         return bytes;
     }
 
+    /// <summary>Deserializes a <see cref="MessageEnvelope" /> from <paramref name="sequence" />.</summary>
+    public MessageEnvelope Deserialize(in ReadOnlySequence<byte> sequence)
+    {
+        return sequence.IsSingleSegment
+            ? Deserialize(sequence.First)
+            : Deserialize(sequence.ToArray());
+    }
+
     /// <summary>Deserializes a <see cref="MessageEnvelope" /> from <paramref name="buffer" />.</summary>
     public MessageEnvelope Deserialize(ReadOnlyMemory<byte> buffer)
     {
@@ -171,7 +179,7 @@ public sealed class MessageSerializer
         }
 
         ReadOnlySequence<byte> payload = buffer.Slice(sizeof(int), payloadLength);
-        envelope = Deserialize(payload.ToArray());
+        envelope = Deserialize(in payload);
         buffer = buffer.Slice(frameLength);
         return true;
     }
