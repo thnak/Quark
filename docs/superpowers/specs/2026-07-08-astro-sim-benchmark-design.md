@@ -151,13 +151,32 @@ dotnet run --project tests/Quark.Performance -- AstroSim [--bodies N] [--grid N]
 Defaults chosen to land around 10M bodies out of the box: `--bodies 10000000 --grid 32 --duration 10`
 (32³ = 32,768 chunks → ~305 bodies/chunk average).
 
-**Verified expectation, not a target**: at this density the O(k²) local step and the 26-neighbor loop
-(sequential awaits, one round-trip at a time, inside `TickAsync`) dominate a tick's wall-clock cost more
-than raw dispatch overhead does — a mid-scale check (1M bodies, 16³ grid, ~244 bodies/chunk) took ~14s for
-a *single* tick. The resulting sustained-throughput figure at default settings will land well under the
-~90M msg/s ceiling; that gap (realistic per-chunk work + sequential neighbor round-trips vs. a synthetic
-tight loop) is itself the interesting result, not a bug to chase before this ships. `--grid` is the knob to
-trade off: a larger grid lowers bodies/chunk (cheaper local step) at the cost of more chunks/messages.
+**Verified expectation, not a target**: even with the driver's tick loop dispatching every chunk's
+`TickAsync` through `Task.Run` (see below — required for genuine multi-core parallelism), the O(k²) local
+step and the 26-neighbor loop (sequential awaits, one round-trip at a time, inside `TickAsync`) still
+dominate a tick's wall-clock cost more than raw dispatch overhead does. The resulting sustained-throughput
+figure at default settings lands well under the ~90M msg/s ceiling; that gap (realistic per-chunk work +
+sequential neighbor round-trips vs. a synthetic tight loop) is itself the interesting result, not a bug to
+chase before this ships. `--grid` is the knob to trade off: a larger grid lowers bodies/chunk (cheaper
+local step) at the cost of more chunks/messages.
+
+**Fixed post-ship (2026-07-08): the tick loop must dispatch through `Task.Run`, not bare `Task.WhenAll` +
+lazy `Select`.** The original driver code —
+`await Task.WhenAll(chunkGrains.Select(g => g.TickAsync().AsTask()))` — does not actually parallelize
+across chunks. `Select` is lazily enumerated by `WhenAll`, and since `[Reentrant]` in-process grain calls
+complete synchronously (no real I/O, no thread hop anywhere in the call chain), each `TickAsync()` runs to
+full completion on the calling thread before the next chunk's call even starts. Verified via
+`dotnet-trace`: with the original code, one thread showed ~99.6% `CPU_TIME` for the entire trace window
+while all 7 ThreadPool worker threads combined logged under 150ms of activity over a 15s trace — the whole
+simulation ran on a single core regardless of chunk count. Wrapping the per-chunk dispatch in `Task.Run` —
+`await Task.WhenAll(chunkGrains.Select(g => Task.Run(() => g.TickAsync().AsTask())))` — forces genuine
+thread-pool scheduling; verified via `pidstat` showing 1800%+ total process CPU (~18 cores) with multiple
+`.NET TP Worker` threads each independently busy. Measured throughput at default settings (10M bodies,
+32³ grid) went from 26,312 msg/s to **203,832 msg/s** (~7.7x) on a 32-core machine; correctness (clamped
+center-of-mass bounds, no exceptions) was unaffected — the `[Reentrant]` snapshot/lock/commit discipline in
+`ChunkGrainBehavior` (§4a) was designed for concurrent access and held up under genuinely concurrent
+execution exactly as intended. This was a benchmark-driver bug, not a Quark runtime limitation: the runtime
+never forced single-threaded execution, the driver simply never asked for concurrency.
 
 ## 8. Testing / validation
 

@@ -104,7 +104,13 @@ public static class AstroSimRunner
 
         while (totalSw.Elapsed < duration)
         {
-            await Task.WhenAll(chunkGrains.Select(static g => g.TickAsync().AsTask()));
+            // Task.WhenAll(chunkGrains.Select(g => g.TickAsync().AsTask())) would NOT actually
+            // parallelize this: Select is lazily enumerated by WhenAll, and since [Reentrant]
+            // in-process grain calls complete synchronously (no real I/O, no thread hop), each
+            // TickAsync() runs to full completion on the calling thread before the next one even
+            // starts — the whole tick collapses onto a single core. Task.Run forces each chunk's
+            // tick onto the thread pool so they genuinely run concurrently.
+            await Task.WhenAll(chunkGrains.Select(static g => Task.Run(() => g.TickAsync().AsTask())));
             ticks++;
 
             if (reportSw.Elapsed.TotalSeconds >= 1)
