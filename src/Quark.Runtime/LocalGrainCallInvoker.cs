@@ -299,8 +299,8 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
     // -----------------------------------------------------------------------
 
-    internal Task EnsureActivatedAsync(GrainId grainId, CancellationToken cancellationToken = default)
-        => GetOrActivateAsync(grainId, cancellationToken);
+    internal async ValueTask EnsureActivatedAsync(GrainId grainId, CancellationToken cancellationToken = default)
+        => await GetOrActivateAsync(grainId, cancellationToken);
 
     private IGrainCallInvoker? TryPlaceRemote(GrainId grainId)
     {
@@ -347,7 +347,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         return null;
     }
 
-    private async Task<GrainActivation> GetOrActivateAsync(GrainId grainId, CancellationToken ct)
+    private async ValueTask<GrainActivation> GetOrActivateAsync(GrainId grainId, CancellationToken ct)
     {
         try
         {
@@ -399,7 +399,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         }
     }
 
-    private async Task<GrainActivation> CreateActivationAsync(GrainId grainId, CancellationToken ct)
+    private async ValueTask<GrainActivation> CreateActivationAsync(GrainId grainId, CancellationToken ct)
     {
         if (!_typeRegistry.TryGetGrainClass(grainId.Type, out Type? behaviorType) || behaviorType is null)
         {

@@ -78,10 +78,10 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
         return ValueTask.FromResult<IList<StreamSubscriptionHandle<T>>>(handles);
     }
 
-    public Task OnNextAsync(T item, StreamSequenceToken? token = null)
+    public ValueTask OnNextAsync(T item, StreamSequenceToken? token = null)
         => throw new NotSupportedException("Clients cannot publish to streams.");
 
-    public Task OnErrorAsync(Exception ex)
+    public ValueTask OnErrorAsync(Exception ex)
         => throw new NotSupportedException("Clients cannot publish to streams.");
 
     public ValueTask OnCompletedAsync()

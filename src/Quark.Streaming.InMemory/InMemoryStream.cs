@@ -16,13 +16,13 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
 
     public StreamId StreamId { get; }
 
-    public Task OnNextAsync(T item, StreamSequenceToken? token = null)
+    public ValueTask OnNextAsync(T item, StreamSequenceToken? token = null)
     {
         var seq = new SequentialToken(Interlocked.Increment(ref _sequence));
         return _registry.PublishAsync(StreamId, item, token ?? seq);
     }
 
-    public Task OnErrorAsync(Exception ex) => _registry.PublishErrorAsync(StreamId, ex);
+    public ValueTask OnErrorAsync(Exception ex) => _registry.PublishErrorAsync(StreamId, ex);
     public ValueTask OnCompletedAsync() => _registry.PublishCompletedAsync(StreamId);
 
     public Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)

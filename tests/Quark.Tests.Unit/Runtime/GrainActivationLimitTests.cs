@@ -31,11 +31,11 @@ public sealed class GrainActivationLimitTests
     public async Task GetOrCreateAsync_Rejects_New_Grain_When_MaxActivations_Reached()
     {
         GrainActivationTable table = Table(maxActivations: 2);
-        await table.GetOrCreateAsync(Id("a"), () => Task.FromResult(Probe(Id("a"))));
-        await table.GetOrCreateAsync(Id("b"), () => Task.FromResult(Probe(Id("b"))));
+        await table.GetOrCreateAsync(Id("a"), () => ValueTask.FromResult(Probe(Id("a"))));
+        await table.GetOrCreateAsync(Id("b"), () => ValueTask.FromResult(Probe(Id("b"))));
 
         await Assert.ThrowsAsync<GrainActivationLimitExceededException>(
-            () => table.GetOrCreateAsync(Id("c"), () => Task.FromResult(Probe(Id("c")))));
+            async () => await table.GetOrCreateAsync(Id("c"), () => ValueTask.FromResult(Probe(Id("c")))));
 
         Assert.Equal(2, table.Count);
     }
@@ -45,10 +45,10 @@ public sealed class GrainActivationLimitTests
     {
         GrainActivationTable table = Table(maxActivations: 1);
         GrainActivation a = Probe(Id("a"));
-        await table.GetOrCreateAsync(Id("a"), () => Task.FromResult(a));
+        await table.GetOrCreateAsync(Id("a"), () => ValueTask.FromResult(a));
 
         // Re-requesting the SAME grain must not be rejected — it is already counted.
-        GrainActivation again = await table.GetOrCreateAsync(Id("a"), () => Task.FromResult(Probe(Id("a"))));
+        GrainActivation again = await table.GetOrCreateAsync(Id("a"), () => ValueTask.FromResult(Probe(Id("a"))));
 
         Assert.Same(a, again);
     }
@@ -60,7 +60,7 @@ public sealed class GrainActivationLimitTests
         for (int i = 0; i < 50; i++)
         {
             GrainId id = Id(i.ToString());
-            await table.GetOrCreateAsync(id, () => Task.FromResult(Probe(id)));
+            await table.GetOrCreateAsync(id, () => ValueTask.FromResult(Probe(id)));
         }
 
         Assert.Equal(50, table.Count);

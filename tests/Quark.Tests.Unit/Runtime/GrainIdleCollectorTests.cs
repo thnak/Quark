@@ -36,7 +36,7 @@ public sealed class GrainIdleCollectorTests
     {
         var table = new GrainActivationTable(NullLogger<GrainActivationTable>.Instance);
         foreach ((GrainId id, GrainActivation act) in entries)
-            await table.GetOrCreateAsync(id, () => Task.FromResult(act));
+            await table.GetOrCreateAsync(id, () => ValueTask.FromResult(act));
         return table;
     }
 

@@ -49,7 +49,7 @@ public class UntypedSubscriptionTests
         registry.SubscribeUntyped(streamId, healthyObserver);
 
         var ex = await Assert.ThrowsAsync<AggregateException>(
-            () => registry.PublishAsync(streamId, "hello", null));
+            async () => await registry.PublishAsync(streamId, "hello", null));
 
         Assert.Single(received);
         Assert.Equal("hello", received[0]);

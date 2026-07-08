@@ -103,7 +103,7 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         }
     }
 
-    public async Task PublishAsync<T>(StreamId streamId, T item, StreamSequenceToken? token)
+    public async ValueTask PublishAsync<T>(StreamId streamId, T item, StreamSequenceToken? token)
     {
         // Ensure implicitly-subscribed grains are activated before fanning out so the
         // first published item is delivered to a freshly-activated grain in the same call.
@@ -152,7 +152,7 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         }
     }
 
-    public async Task PublishErrorAsync(StreamId streamId, Exception ex)
+    public async ValueTask PublishErrorAsync(StreamId streamId, Exception ex)
     {
         if (!_subs.TryGetValue(streamId, out List<Subscription>? list))
         {

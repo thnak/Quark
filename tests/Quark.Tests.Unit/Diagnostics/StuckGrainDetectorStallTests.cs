@@ -31,7 +31,7 @@ public sealed class StuckGrainDetectorStallTests
             new ServiceCollection().BuildServiceProvider(),
             NullLogger<GrainActivation>.Instance);
         activation.MarkActive();
-        await table.GetOrCreateAsync(grainId, () => Task.FromResult(activation));
+        await table.GetOrCreateAsync(grainId, () => ValueTask.FromResult(activation));
 
         // Manufacture the livelock shape directly: queue work, then drain repeatedly with an
         // already-cancelled token so DrainAsync never actually processes it (TryRead

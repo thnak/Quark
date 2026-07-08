@@ -5,8 +5,8 @@ public interface IAsyncStream<T>
 {
     StreamId StreamId { get; } // TODO did not implemented or used in any elsewhere
 
-    Task OnNextAsync(T item, StreamSequenceToken? token = null);
-    Task OnErrorAsync(Exception ex); // TODO did not implemented or used in any elsewhere
+    ValueTask OnNextAsync(T item, StreamSequenceToken? token = null);
+    ValueTask OnErrorAsync(Exception ex); // TODO did not implemented or used in any elsewhere
     ValueTask OnCompletedAsync(); // TODO did not implemented or used in any elsewhere
 
     Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer);

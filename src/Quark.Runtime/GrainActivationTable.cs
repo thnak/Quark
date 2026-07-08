@@ -14,7 +14,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
 {
     // Lazy<Task<>> pattern: two concurrent callers both get the same Lazy; only one
     // actually runs the factory; both await the same Task.
-    private readonly ConcurrentDictionary<GrainId, Lazy<Task<GrainActivation>>> _activations = new();
+    private readonly ConcurrentDictionary<GrainId, Lazy<ValueTask<GrainActivation>>> _activations = new();
     private readonly ILogger<GrainActivationTable> _logger;
     private readonly int _maxActivations;
 
@@ -32,7 +32,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        foreach (Lazy<Task<GrainActivation>> lazy in _activations.Values)
+        foreach (Lazy<ValueTask<GrainActivation>> lazy in _activations.Values)
         {
             if (!lazy.IsValueCreated)
             {
@@ -58,10 +58,10 @@ public sealed class GrainActivationTable : IAsyncDisposable
     ///     <paramref name="factory" />.  The factory is only invoked once per grain, even under
     ///     concurrent access.
     /// </summary>
-    public Task<GrainActivation> GetOrCreateAsync(GrainId grainId, Func<Task<GrainActivation>> factory)
+    public ValueTask<GrainActivation> GetOrCreateAsync(GrainId grainId, Func<ValueTask<GrainActivation>> factory)
     {
         // Existing grains are always reachable — only the creation of *new* activations is capped.
-        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? existing))
+        if (_activations.TryGetValue(grainId, out Lazy<ValueTask<GrainActivation>>? existing))
         {
             return existing.Value;
         }
@@ -74,7 +74,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
         }
 
         return _activations.GetOrAdd(grainId,
-            static (_, f) => new Lazy<Task<GrainActivation>>(f),
+            static (_, f) => new Lazy<ValueTask<GrainActivation>>(f),
             factory).Value;
     }
 
@@ -85,10 +85,10 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public void RemoveIfFaulted(GrainId grainId)
     {
-        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? lazy)
+        if (_activations.TryGetValue(grainId, out Lazy<ValueTask<GrainActivation>>? lazy)
             && lazy is { IsValueCreated: true, Value.IsFaulted: true })
         {
-            _activations.TryRemove(new KeyValuePair<GrainId, Lazy<Task<GrainActivation>>>(grainId, lazy));
+            _activations.TryRemove(new KeyValuePair<GrainId, Lazy<ValueTask<GrainActivation>>>(grainId, lazy));
         }
     }
 
@@ -120,9 +120,9 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public bool TryGetActivation(GrainId grainId, out GrainActivation? activation)
     {
-        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? lazy) && lazy.IsValueCreated)
+        if (_activations.TryGetValue(grainId, out Lazy<ValueTask<GrainActivation>>? lazy) && lazy.IsValueCreated)
         {
-            Task<GrainActivation> task = lazy.Value;
+            ValueTask<GrainActivation> task = lazy.Value;
             if (task.IsCompletedSuccessfully)
             {
                 activation = task.Result;
@@ -148,7 +148,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public async Task TryDeactivateAsync(GrainId grainId) // TODO did not called anywhere
     {
-        if (_activations.TryRemove(grainId, out Lazy<Task<GrainActivation>>? lazy) && lazy.IsValueCreated)
+        if (_activations.TryRemove(grainId, out Lazy<ValueTask<GrainActivation>>? lazy) && lazy.IsValueCreated)
         {
             try
             {
