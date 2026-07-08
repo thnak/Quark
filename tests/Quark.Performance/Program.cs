@@ -1,4 +1,5 @@
 using BenchmarkDotNet.Running;
+using Quark.Performance.AstroSim;
 
 namespace Quark.Performance;
 
@@ -10,6 +11,13 @@ public class Program
         if (args.Length > 0 && args[0].Equals("LocalStreaming", StringComparison.OrdinalIgnoreCase))
         {
             await LocalStreamingTest.RunAsync();
+            return;
+        }
+
+        // Check if user wants to run the astro-sim throughput benchmark
+        if (args.Length > 0 && args[0].Equals("AstroSim", StringComparison.OrdinalIgnoreCase))
+        {
+            await AstroSimRunner.RunAsync(args);
             return;
         }
 
