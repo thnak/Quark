@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Quark.Core\Quark.Core.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Core.Abstractions\Quark.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Runtime\Quark.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Client\Quark.Client.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Testing\Quark.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Streaming.InMemory\Quark.Streaming.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

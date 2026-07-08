@@ -26,6 +26,7 @@
         <Project Path="src/Quark.Transport.Tcp/Quark.Transport.Tcp.csproj"/>
     </Folder>
     <Folder Name="/tests/">
+        <Project Path="tests/Quark.Performance/Quark.Performance.csproj"/>
         <Project Path="tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj"/>
         <Project Path="tests/Quark.Tests.CodeGenerator/Quark.Tests.CodeGenerator.csproj"/>
         <Project Path="tests/Quark.Tests.Integration/Quark.Tests.Integration.csproj"/>
