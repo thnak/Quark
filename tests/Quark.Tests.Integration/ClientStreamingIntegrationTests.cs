@@ -97,7 +97,7 @@ public sealed class ClientStreamingIntegrationTests : IAsyncLifetime
                 if (received.Count == 1) firstTcs.TrySetResult(true);
                 if (received.Count >= 2) secondTcs.TrySetResult(true);
             }
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         });
 
         // Act: publish two items from the silo side in-process.
@@ -139,7 +139,7 @@ public sealed class ClientStreamingIntegrationTests : IAsyncLifetime
         {
             received.Add(msg);
             firstItemTcs.TrySetResult(true);
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         });
 
         IStreamProvider siloProvider =

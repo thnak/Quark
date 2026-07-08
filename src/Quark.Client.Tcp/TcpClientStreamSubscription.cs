@@ -30,7 +30,7 @@ internal sealed class TcpClientStreamSubscription<T> : IClientStreamSubscription
         _observer = observer;
     }
 
-    public async Task DispatchAsync(ReadOnlyMemory<byte> payload, StreamSequenceToken token)
+    public async ValueTask DispatchAsync(ReadOnlyMemory<byte> payload, StreamSequenceToken token)
     {
         var reader = new CodecReader(payload);
         Field field = reader.ReadFieldHeader();
@@ -38,5 +38,5 @@ internal sealed class TcpClientStreamSubscription<T> : IClientStreamSubscription
         await _observer.OnNextAsync(item!, token).ConfigureAwait(false);
     }
 
-    public Task ErrorAsync(Exception ex) => _observer.OnErrorAsync(ex);
+    public ValueTask ErrorAsync(Exception ex) => _observer.OnErrorAsync(ex);
 }

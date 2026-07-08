@@ -47,18 +47,18 @@ public sealed class ConsumerBehavior : IGrainBehavior, IConsumerGrain
 
     private sealed class LoggingObserver(ILogger logger) : IAsyncObserver<int>
     {
-        public Task OnNextAsync(int item, StreamSequenceToken? token = null)
+        public ValueTask OnNextAsync(int item, StreamSequenceToken? token = null)
         {
             logger.LogInformation("[Consumer] Received: {Item}", item);
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task OnErrorAsync(Exception ex)
+        public ValueTask OnErrorAsync(Exception ex)
         {
             logger.LogError(ex, "[Consumer] Stream error");
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task OnCompletedAsync() => Task.CompletedTask;
+        public ValueTask OnCompletedAsync() => ValueTask.CompletedTask;
     }
 }

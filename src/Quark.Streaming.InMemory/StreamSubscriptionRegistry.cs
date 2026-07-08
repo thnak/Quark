@@ -8,9 +8,9 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
     private sealed class Subscription
     {
         public required Guid Id { get; init; }
-        public required Func<object, StreamSequenceToken?, Task> OnNext { get; init; }
-        public required Func<Exception, Task> OnError { get; init; }
-        public required Func<Task> OnCompleted { get; init; }
+        public required Func<object, StreamSequenceToken?, ValueTask> OnNext { get; init; }
+        public required Func<Exception, ValueTask> OnError { get; init; }
+        public required Func<ValueTask> OnCompleted { get; init; }
     }
 
     private readonly ConcurrentDictionary<StreamId, List<Subscription>> _subs = new();
@@ -45,7 +45,7 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
 
         return sub.Id;
 
-        Task OnNext(object item, StreamSequenceToken? token) => observer.OnNextAsync((T)item, token);
+        ValueTask OnNext(object item, StreamSequenceToken? token) => observer.OnNextAsync((T)item, token);
     }
 
     private static List<Subscription> ValueFactory(StreamId _)
@@ -174,7 +174,7 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         if (errors is { Count: > 0 }) throw new AggregateException(errors);
     }
 
-    public async Task PublishCompletedAsync(StreamId streamId)
+    public async ValueTask PublishCompletedAsync(StreamId streamId)
     {
         if (!_subs.TryGetValue(streamId, out List<Subscription>? list))
         {

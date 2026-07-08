@@ -59,19 +59,23 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
     }
 
     public Task<StreamSubscriptionHandle<T>> SubscribeAsync(
-        Func<T, StreamSequenceToken?, Task> onNext,
-        Func<Exception, Task>? onError = null,
-        Func<Task>? onCompleted = null)
+        Func<T, StreamSequenceToken?, ValueTask> onNext,
+        Func<Exception, ValueTask>? onError = null,
+        Func<ValueTask>? onCompleted = null)
         => SubscribeAsync(new DelegateObserver<T>(onNext, onError, onCompleted));
 
-    public Task<IList<StreamSubscriptionHandle<T>>> GetAllSubscriptionHandles()
+    public Task<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(TContext context,
+        Func<TContext, T, StreamSequenceToken?, ValueTask> onNext, Func<Exception, ValueTask>? onError = null,
+        Func<ValueTask>? onCompleted = null)
+        => SubscribeAsync(new DelegateContextObserver<T, TContext>(context, onNext, onError, onCompleted));
+
+    public ValueTask<IList<StreamSubscriptionHandle<T>>> GetAllSubscriptionHandles()
     {
         var handles = _dispatcher.GetForStream(_streamId)
             .OfType<TcpClientStreamSubscription<T>>()
-            .Select(s => (StreamSubscriptionHandle<T>)
-                new TcpStreamSubscriptionHandle<T>(s.SubId, _streamId, _dispatcher, _connection, s))
+            .Select(StreamSubscriptionHandle<T> (s) => new TcpStreamSubscriptionHandle<T>(s.SubId, _streamId, _dispatcher, _connection, s))
             .ToList();
-        return Task.FromResult<IList<StreamSubscriptionHandle<T>>>(handles);
+        return ValueTask.FromResult<IList<StreamSubscriptionHandle<T>>>(handles);
     }
 
     public Task OnNextAsync(T item, StreamSequenceToken? token = null)
@@ -80,6 +84,6 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
     public Task OnErrorAsync(Exception ex)
         => throw new NotSupportedException("Clients cannot publish to streams.");
 
-    public Task OnCompletedAsync()
+    public ValueTask OnCompletedAsync()
         => throw new NotSupportedException("Clients cannot publish to streams.");
 }

@@ -35,7 +35,7 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly IQuarkDiagnosticListener _diagnostics;
 
     // Phase 2: scheduler-owned drain state (replaces per-activation _processingLoop).
-    internal int _scheduled;             // 0 = not in scheduler ready queue, 1 = scheduled
+    private int _scheduled;             // 0 = not in scheduler ready queue, 1 = scheduled
     private int _running;                // 0 = not draining, 1 = currently draining
     private long _schedulerEnqueueTime; // Stopwatch ticks when activation entered the scheduler ready queue
 

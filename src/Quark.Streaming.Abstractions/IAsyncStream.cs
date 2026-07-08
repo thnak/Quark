@@ -7,14 +7,21 @@ public interface IAsyncStream<T>
 
     Task OnNextAsync(T item, StreamSequenceToken? token = null);
     Task OnErrorAsync(Exception ex); // TODO did not implemented or used in any elsewhere
-    Task OnCompletedAsync(); // TODO did not implemented or used in any elsewhere
+    ValueTask OnCompletedAsync(); // TODO did not implemented or used in any elsewhere
 
     Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer);
 
     Task<StreamSubscriptionHandle<T>> SubscribeAsync(
-        Func<T, StreamSequenceToken?, Task> onNext,
-        Func<Exception, Task>? onError = null,
-        Func<Task>? onCompleted = null);
+        Func<T, StreamSequenceToken?, ValueTask> onNext,
+        Func<Exception, ValueTask>? onError = null,
+        Func<ValueTask>? onCompleted = null);
 
-    Task<IList<StreamSubscriptionHandle<T>>> GetAllSubscriptionHandles(); // TODO did not implemented or used in any elsewhere
+    Task<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(
+        TContext context,
+        Func<TContext, T, StreamSequenceToken?, ValueTask> onNext,
+        Func<Exception, ValueTask>? onError = null,
+        Func<ValueTask>? onCompleted = null);
+
+    ValueTask<IList<StreamSubscriptionHandle<T>>>
+        GetAllSubscriptionHandles(); // TODO did not implemented or used in any elsewhere
 }

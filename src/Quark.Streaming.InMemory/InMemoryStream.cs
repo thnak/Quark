@@ -23,7 +23,7 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
     }
 
     public Task OnErrorAsync(Exception ex) => _registry.PublishErrorAsync(StreamId, ex);
-    public Task OnCompletedAsync() => _registry.PublishCompletedAsync(StreamId);
+    public ValueTask OnCompletedAsync() => _registry.PublishCompletedAsync(StreamId);
 
     public Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
     {
@@ -48,16 +48,22 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
     }
 
     public Task<StreamSubscriptionHandle<T>> SubscribeAsync(
-        Func<T, StreamSequenceToken?, Task> onNext,
-        Func<Exception, Task>? onError = null,
-        Func<Task>? onCompleted = null)
+        Func<T, StreamSequenceToken?, ValueTask> onNext,
+        Func<Exception, ValueTask>? onError = null,
+        Func<ValueTask>? onCompleted = null)
         => SubscribeAsync(new DelegateObserver<T>(onNext, onError, onCompleted));
 
-    public Task<IList<StreamSubscriptionHandle<T>>> GetAllSubscriptionHandles()
+    public Task<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(
+        TContext context,
+        Func<TContext, T, StreamSequenceToken?, ValueTask> onNext, Func<Exception, ValueTask>? onError = null,
+        Func<ValueTask>? onCompleted = null)
+        => SubscribeAsync(new DelegateContextObserver<T, TContext>(context, onNext, onError, onCompleted));
+
+    public ValueTask<IList<StreamSubscriptionHandle<T>>> GetAllSubscriptionHandles()
     {
         lock (_handles)
         {
-            return Task.FromResult<IList<StreamSubscriptionHandle<T>>>([.._handles]);
+            return ValueTask.FromResult<IList<StreamSubscriptionHandle<T>>>([.._handles]);
         }
     }
 }

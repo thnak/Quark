@@ -10,18 +10,18 @@ public sealed class StreamObserver : IAsyncObserver<ChatMsg>
 
     public StreamObserver(string channelName) => _channelName = channelName;
 
-    public Task OnNextAsync(ChatMsg item, StreamSequenceToken? token)
+    public ValueTask OnNextAsync(ChatMsg item, StreamSequenceToken? token)
     {
         AnsiConsole.MarkupLine(
             $"[grey][[{item.Created:HH:mm:ss}]][/][green][[{_channelName}]][/] [bold]{Markup.Escape(item.Author)}:[/] {Markup.Escape(item.Text)}");
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task OnErrorAsync(Exception ex)
+    public ValueTask OnErrorAsync(Exception ex)
     {
         AnsiConsole.WriteException(ex);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task OnCompletedAsync() => Task.CompletedTask;
+    public ValueTask OnCompletedAsync() => ValueTask.CompletedTask;
 }

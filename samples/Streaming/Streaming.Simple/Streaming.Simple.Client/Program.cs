@@ -41,7 +41,7 @@ IAsyncStream<int> stream = streamProvider.GetStream<int>(StreamId.Create(Constan
 StreamSubscriptionHandle<int> handle = await stream.SubscribeAsync((item, _) =>
 {
     Console.WriteLine($"[Client] Received: {item}");
-    return Task.CompletedTask;
+    return ValueTask.CompletedTask;
 });
 Console.WriteLine("Client subscribed. Press Ctrl+C to stop.");
 

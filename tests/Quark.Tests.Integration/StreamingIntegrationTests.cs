@@ -25,7 +25,7 @@ public sealed class StreamingIntegrationTests
         var stream = provider.GetStream<string>(StreamId.Create("room", "general"));
 
         var received = new List<string>();
-        await stream.SubscribeAsync((msg, _) => { received.Add(msg); return Task.CompletedTask; });
+        await stream.SubscribeAsync((msg, _) => { received.Add(msg); return ValueTask.CompletedTask; });
 
         await stream.OnNextAsync("hello");
         await stream.OnNextAsync("world");
@@ -40,7 +40,7 @@ public sealed class StreamingIntegrationTests
         var stream = provider.GetStream<string>(StreamId.Create("room", "unsub"));
 
         var received = new List<string>();
-        var handle = await stream.SubscribeAsync((msg, _) => { received.Add(msg); return Task.CompletedTask; });
+        var handle = await stream.SubscribeAsync((msg, _) => { received.Add(msg); return ValueTask.CompletedTask; });
 
         await stream.OnNextAsync("before");
         await handle.UnsubscribeAsync();
@@ -57,8 +57,8 @@ public sealed class StreamingIntegrationTests
 
         var a = new List<int>();
         var b = new List<int>();
-        await stream.SubscribeAsync((n, _) => { a.Add(n); return Task.CompletedTask; });
-        await stream.SubscribeAsync((n, _) => { b.Add(n); return Task.CompletedTask; });
+        await stream.SubscribeAsync((n, _) => { a.Add(n); return ValueTask.CompletedTask; });
+        await stream.SubscribeAsync((n, _) => { b.Add(n); return ValueTask.CompletedTask; });
 
         await stream.OnNextAsync(1);
         await stream.OnNextAsync(2);
@@ -183,9 +183,9 @@ public sealed class StreamingIntegrationTests
         public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct) => Task.CompletedTask;
 
         public Task<int> GetLastValueAsync() => Task.FromResult(_memory.Value.Last);
-        public Task OnNextAsync(int item, StreamSequenceToken? token = null) { _memory.Value.Last = item; return Task.CompletedTask; }
-        public Task OnErrorAsync(Exception ex) => Task.CompletedTask;
-        public Task OnCompletedAsync() => Task.CompletedTask;
+        public ValueTask OnNextAsync(int item, StreamSequenceToken? token = null) { _memory.Value.Last = item; return ValueTask.CompletedTask; }
+        public ValueTask OnErrorAsync(Exception ex) => ValueTask.CompletedTask;
+        public ValueTask OnCompletedAsync() => ValueTask.CompletedTask;
     }
 
     private readonly struct StreamListenerGrain_GetLastValueInvokable : IGrainInvokable<int>
@@ -256,14 +256,14 @@ public sealed class StreamingIntegrationTests
 
         public Task<int> GetReceivedAsync() => Task.FromResult(_memory.Value.Last);
 
-        public Task OnNextAsync(int item, StreamSequenceToken? token = null)
+        public ValueTask OnNextAsync(int item, StreamSequenceToken? token = null)
         {
             _memory.Value.Last = item;
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task OnErrorAsync(Exception ex) => Task.CompletedTask;
-        public Task OnCompletedAsync() => Task.CompletedTask;
+        public ValueTask OnErrorAsync(Exception ex) => ValueTask.CompletedTask;
+        public ValueTask OnCompletedAsync() => ValueTask.CompletedTask;
     }
 
     private readonly struct ImplicitListenerGrain_GetReceivedInvokable : IGrainInvokable<int>

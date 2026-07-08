@@ -18,7 +18,7 @@ public class TcpStreamPushDispatcherTests
         var sub = new FakeSubscription(streamId, (payload, _) =>
         {
             dispatched.Add(payload.ToArray());
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         });
         dispatcher.Register(subId, sub);
 
@@ -44,7 +44,7 @@ public class TcpStreamPushDispatcherTests
         var dispatcher = new TcpStreamPushDispatcher();
         var streamId = StreamId.Create("ns", "key");
         var subId = Guid.NewGuid();
-        dispatcher.Register(subId, new FakeSubscription(streamId, (_, _) => Task.CompletedTask));
+        dispatcher.Register(subId, new FakeSubscription(streamId, (_, _) => ValueTask.CompletedTask));
         dispatcher.Unregister(subId);
         Assert.Empty(dispatcher.GetForStream(streamId));
     }
@@ -68,10 +68,10 @@ public class TcpStreamPushDispatcherTests
 
     private sealed class FakeSubscription(
         StreamId streamId,
-        Func<ReadOnlyMemory<byte>, StreamSequenceToken, Task> onDispatch) : IClientStreamSubscription
+        Func<ReadOnlyMemory<byte>, StreamSequenceToken, ValueTask> onDispatch) : IClientStreamSubscription
     {
         public StreamId StreamId => streamId;
-        public Task DispatchAsync(ReadOnlyMemory<byte> payload, StreamSequenceToken token) => onDispatch(payload, token);
-        public Task ErrorAsync(Exception ex) => Task.CompletedTask;
+        public ValueTask DispatchAsync(ReadOnlyMemory<byte> payload, StreamSequenceToken token) => onDispatch(payload, token);
+        public ValueTask ErrorAsync(Exception ex) => ValueTask.CompletedTask;
     }
 }
