@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quark.Core.Abstractions.Clustering;
 using Quark.Core.Hosting;
 using Quark.Runtime.Clustering;
-using Quark.Transport.Tcp;
 
 namespace Quark.Runtime;
 
@@ -52,20 +51,6 @@ public static class RuntimeSiloBuilderExtensions
             o.GatewayAddress = SiloAddress.Loopback(gatewayPort);
         });
 
-        return builder;
-    }
-
-    /// <summary>
-    ///     Configures TLS for all silo-to-silo TCP connections.
-    ///     Drop-in equivalent of Orleans' <c>UseTls()</c>.
-    /// </summary>
-    public static ISiloBuilder UseTls(this ISiloBuilder builder, Action<TlsOptions> configure)
-    {
-        builder.Configure<TcpTransportOptions>(o =>
-        {
-            o.Tls ??= new TlsOptions();
-            configure(o.Tls);
-        });
         return builder;
     }
 }

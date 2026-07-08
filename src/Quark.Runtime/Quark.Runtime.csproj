@@ -16,7 +16,7 @@
     <ProjectReference Include="..\Quark.Core\Quark.Core.csproj"/>
     <ProjectReference Include="..\Quark.Diagnostics.Abstractions\Quark.Diagnostics.Abstractions.csproj"/>
     <ProjectReference Include="..\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj"/>
-    <ProjectReference Include="..\Quark.Transport.Tcp\Quark.Transport.Tcp.csproj"/>
+    <ProjectReference Include="..\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
     <PackageReference Include="Microsoft.Extensions.Hosting"/>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
     <PackageReference Include="Microsoft.Extensions.Options"/>

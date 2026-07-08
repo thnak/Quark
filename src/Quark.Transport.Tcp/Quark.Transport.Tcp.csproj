@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Quark.Transport.Abstractions\Quark.Transport.Abstractions.csproj"/>
+    <ProjectReference Include="..\Quark.Core\Quark.Core.csproj"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
     <PackageReference Include="Microsoft.Extensions.Options"/>
