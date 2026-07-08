@@ -18,7 +18,4 @@ public readonly struct Field
 
     /// <summary>Whether this field is an end-of-object marker.</summary>
     public bool IsEndObject => WireType == WireType.EndTagDelimited;
-
-    /// <summary>Whether this field represents a default/null value.</summary>
-    public bool HasExpectedType => ExtendedWireType == ExtendedWireType.ExpectedType;// TODO did not implemented or used in any elsewhere
 }
