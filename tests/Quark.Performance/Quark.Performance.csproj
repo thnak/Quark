@@ -21,5 +21,8 @@
     <ProjectReference Include="..\..\src\Quark.Streaming.InMemory\Quark.Streaming.InMemory.csproj" />
     <ProjectReference Include="..\..\src\Quark.Serialization\Quark.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Quark.Serialization.Abstractions\Quark.Serialization.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Persistence.Abstractions\Quark.Persistence.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Diagnostics\Quark.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\src\Quark.Diagnostics.Abstractions\Quark.Diagnostics.Abstractions.csproj" />
   </ItemGroup>
 </Project>
