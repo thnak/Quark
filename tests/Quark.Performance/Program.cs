@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Running;
 using Quark.Performance.AstroSim;
+using Quark.Performance.PingPong;
 
 namespace Quark.Performance;
 
@@ -18,6 +19,13 @@ public class Program
         if (args.Length > 0 && args[0].Equals("AstroSim", StringComparison.OrdinalIgnoreCase))
         {
             await AstroSimRunner.RunAsync(args);
+            return;
+        }
+
+        // Check if user wants to run the ping-pong throughput benchmark
+        if (args.Length > 0 && args[0].Equals("PingPong", StringComparison.OrdinalIgnoreCase))
+        {
+            await PingPongRunner.RunAsync(args);
             return;
         }
 
