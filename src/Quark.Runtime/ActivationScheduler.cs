@@ -29,6 +29,17 @@ internal sealed class ActivationScheduler : IActivationScheduler
 {
     private readonly ConcurrentQueue<GrainActivation>[] _shards;
 
+    // Per-shard depth counter, used both as the sweep's "worth trying" pre-check and to gate the
+    // idle-wake signal on an exact empty->non-empty transition. ConcurrentQueue<T>.Count cannot be
+    // used for this: two concurrent same-shard enqueues can both observe a post-Enqueue Count != 1
+    // and both skip Release() -- and because no worker is guaranteed to later go idle and re-sweep
+    // (all of them may already be parked), that can strand ready work indefinitely. The
+    // Interlocked.Increment(...) == 1 return value is atomic and unique: exactly one concurrent
+    // enqueuer observes the transition and releases exactly once. Same pattern proven in the
+    // sharded-Channel<T> predecessor of this design
+    // (docs/superpowers/specs/2026-07-08-scheduler-ready-queue-contention-fix.md).
+    private readonly int[] _shardCounts;
+
     // Per-shard capacity gate, only allocated when SchedulerReadyQueueCapacity > 0. ConcurrentQueue<T>
     // has no native capacity limit (unlike the Channel<T> it replaces), so bounded-queue backpressure
     // is layered on top via a counting semaphore: ScheduleAsync acquires a slot before enqueueing,
@@ -36,14 +47,12 @@ internal sealed class ActivationScheduler : IActivationScheduler
     // the common path (PingPong, AstroSim, most workloads) pays nothing for this.
     private readonly SemaphoreSlim[]? _capacityGates;
 
-    // Idle-wake signal: released only on a shard's empty->non-empty transition (ConcurrentQueue.Count
-    // == 1 right after Enqueue -- a best-effort, not exact, check: it can race with a concurrent
-    // dequeue on the same shard and occasionally double- or under-release. That's safe by
-    // construction, not just acceptable -- an extra Release() just wakes a worker slightly early (it
-    // re-sweeps, finds nothing, waits again); a missed Release() cannot strand work, because any
-    // worker that later goes idle re-sweeps every shard from scratch before waiting again, and will
-    // find the item. SemaphoreSlim.Release()/WaitAsync() never lose a wakeup regardless of ordering.
-    // See docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md section 4.
+    // Idle-wake signal, released only on a shard's exact empty->non-empty transition. Gated by
+    // _shardCounts (see that field's comment) via Interlocked.Increment(...) == 1 -- an atomic,
+    // race-free transition detector. An earlier version of this gate used a plain
+    // ConcurrentQueue<T>.Count == 1 check, which could lose a wakeup under concurrent same-shard
+    // enqueues (see docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md section 4,
+    // corrected) -- that approach was rejected during review.
     private readonly SemaphoreSlim _workSignal = new(0, int.MaxValue);
 
     private readonly CancellationTokenSource _cts = new();
@@ -69,6 +78,7 @@ internal sealed class ActivationScheduler : IActivationScheduler
         _shards = new ConcurrentQueue<GrainActivation>[concurrency];
         for (int i = 0; i < concurrency; i++)
             _shards[i] = new ConcurrentQueue<GrainActivation>();
+        _shardCounts = new int[concurrency];
 
         if (_queueCapacity > 0)
         {
@@ -126,12 +136,13 @@ internal sealed class ActivationScheduler : IActivationScheduler
     {
         ConcurrentQueue<GrainActivation> shard = _shards[shardIndex];
         shard.Enqueue(activation);
-        if (shard.Count == 1)
+        int depth = Interlocked.Increment(ref _shardCounts[shardIndex]);
+        if (depth == 1)
             _workSignal.Release();
 
         QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
         _diagnostics.OnSchedulerReadyQueueDepthChanged(
-            new SchedulerReadyQueueDepthChangedEvent(shard.Count, 1));
+            new SchedulerReadyQueueDepthChangedEvent(depth, 1));
     }
 
     public async ValueTask DisposeAsync()
@@ -190,8 +201,10 @@ internal sealed class ActivationScheduler : IActivationScheduler
 
             for (int i = 0; i < shardCount; i++)
             {
-                if (_shards[cursor].Count > 0 && _shards[cursor].TryDequeue(out GrainActivation? candidate))
+                if (Volatile.Read(ref _shardCounts[cursor]) > 0 &&
+                    _shards[cursor].TryDequeue(out GrainActivation? candidate))
                 {
+                    Interlocked.Decrement(ref _shardCounts[cursor]);
                     activation = candidate;
                     break;
                 }
@@ -221,7 +234,7 @@ internal sealed class ActivationScheduler : IActivationScheduler
             _capacityGates?[cursor].Release();
             QuarkInstruments.SchedulerReadyQueueDepth.Add(-1);
             _diagnostics.OnSchedulerReadyQueueDepthChanged(
-                new SchedulerReadyQueueDepthChangedEvent(_shards[cursor].Count, -1));
+                new SchedulerReadyQueueDepthChangedEvent(_shardCounts[cursor], -1));
 
             if (!activation.TryBeginDrain())
             {

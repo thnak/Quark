@@ -77,6 +77,7 @@ shape carries over from the shipped fix:
 
 ```csharp
 private readonly ConcurrentQueue<GrainActivation>[] _shards;
+private readonly int[] _shardCounts; // exact per-shard depth counter, see §4
 private readonly SemaphoreSlim _workSignal = new(0, int.MaxValue);
 
 private int ShardFor(GrainActivation activation)
@@ -88,7 +89,8 @@ public ValueTask ScheduleAsync(GrainActivation activation, CancellationToken ct 
     activation.SetSchedulerEnqueueTime();
     int shardIndex = ShardFor(activation);
     _shards[shardIndex].Enqueue(activation);
-    if (_shards[shardIndex].Count == 1) // best-effort 0->1 hint, see §4
+    int depth = Interlocked.Increment(ref _shardCounts[shardIndex]); // exact 0->1 transition, see §4
+    if (depth == 1)
         _workSignal.Release();
     // ... existing diagnostics/metrics ...
     return ValueTask.CompletedTask; // no capacity gating in the unbounded default -- see §4
@@ -103,8 +105,10 @@ private async Task RunWorkerAsync(int homeShard, CancellationToken ct)
         GrainActivation? activation = null;
         for (int i = 0; i < shardCount; i++)
         {
-            if (_shards[cursor].Count > 0 && _shards[cursor].TryDequeue(out GrainActivation? candidate))
+            if (Volatile.Read(ref _shardCounts[cursor]) > 0 &&
+                _shards[cursor].TryDequeue(out GrainActivation? candidate))
             {
+                Interlocked.Decrement(ref _shardCounts[cursor]);
                 activation = candidate;
                 break;
             }
@@ -125,22 +129,27 @@ private async Task RunWorkerAsync(int homeShard, CancellationToken ct)
 
 ## 4. Data structures, capacity, and correctness preservation
 
-- **Depth tracking**: `ConcurrentQueue<T>.Count` in modern .NET is a cheap, non-locking read that
-  sums a small number of segment counts (not the old O(n) walk, and not lock-acquiring) — used
-  directly for the sweep's "is this queue worth trying" pre-check and for gating the idle-wake
-  release, instead of hand-maintaining a parallel `Interlocked` counter array (as the shipped fix
-  does for its `Channel`-based shards). One less piece of hand-rolled state to keep in sync.
-  **Contingency**: if profiling shows `.Count` itself is a measurable hotspot, fall back to the
-  `Interlocked` counter pattern already proven in the shipped fix — a small, self-contained change,
-  not a redesign.
-- **0→1 gating is best-effort, not exact**: `Count == 1` right after `Enqueue` can race with a
-  concurrent dequeue on the same queue and either double-release or (rarely) under-release the
-  semaphore. This is safe by construction, not just acceptable: an extra `Release()` just wakes an
-  idle worker slightly early (it re-sweeps, possibly finds nothing, goes back to waiting — cheap); a
-  missed `Release()` cannot strand work, because any worker that later goes idle re-sweeps every
-  queue from scratch before waiting again, and will find the item. The same reasoning applied to the
-  shipped fix's `Interlocked.Increment(...) == 1` gate, which is exact rather than best-effort;
-  using `Count` trades that exactness for simplicity, on the same "never lose an item" foundation.
+- **Depth tracking**: a per-shard `int[] _shardCounts`, maintained with `Interlocked.Increment`/
+  `Decrement` alongside every `Enqueue`/successful `TryDequeue`, backs both the sweep's "is this
+  queue worth trying" pre-check and the idle-wake gate — the same `Interlocked` counter pattern
+  already proven in the shipped `Channel`-based fix. `ConcurrentQueue<T>.Count` was tried first (a
+  cheap, non-locking read) but was rejected: see the correctness note below.
+- **0→1 gating must be exact, not best-effort**: an earlier draft of this design gated the idle-wake
+  `Release()` on `ConcurrentQueue<T>.Count == 1` right after `Enqueue`, reasoning that a missed
+  release was safe because "any worker that later goes idle re-sweeps every queue from scratch
+  before waiting again." That reasoning is **wrong**: if all N workers are already parked on
+  `_workSignal.WaitAsync` when two producers concurrently enqueue onto the same shard, both can
+  observe a post-`Enqueue` `Count != 1` (e.g. both see `Count == 2`) and both skip `Release()` — there
+  is no other worker still running that will later go idle and re-sweep, because every worker is
+  already parked. That strands the enqueued activations indefinitely: a genuine lost-wakeup /
+  indefinite-hang bug, not just a latency blip. Code review caught this before it shipped. The fix
+  is the `Interlocked.Increment(ref _shardCounts[shardIndex]) == 1` gate shown above: the return
+  value of `Interlocked.Increment` is atomic and unique per call, so of any set of concurrent
+  same-shard enqueuers, exactly one observes the 0→1 transition and releases exactly once — no
+  interleaving can cause a double-miss the way `ConcurrentQueue<T>.Count` could. This is the same
+  exact-transition mechanism the predecessor sharded-`Channel<T>` fix
+  (`docs/superpowers/specs/2026-07-08-scheduler-ready-queue-contention-fix.md`) used; it is restored
+  here, not reintroduced as new complexity.
 - **Bounded queue / backpressure** (`SchedulerReadyQueueCapacity`, `SchedulerOverloadMode`):
   `ConcurrentQueue<T>` has no native capacity limit, unlike `Channel<T>`. Gate capacity with a
   per-shard `SemaphoreSlim(capacity)` acquired before enqueue and released after a successful
