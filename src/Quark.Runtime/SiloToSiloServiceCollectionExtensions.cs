@@ -18,7 +18,7 @@ namespace Quark.Runtime;
 ///     <c>UseLocalhostClustering</c> does <em>not</em> call this — the in-process shared
 ///     router is strictly cheaper and already correct for same-process silos.
 /// </summary>
-public static class SiloToSiloServiceCollectionExtensions// TODO did not implemented or used in any elsewhere
+public static class SiloToSiloServiceCollectionExtensions
 {
     public static IServiceCollection AddSiloToSiloTransport(this IServiceCollection services)
     {
