@@ -82,13 +82,18 @@ dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration
 - `--reentrant` — use a `[Reentrant]` grain variant instead of the default. `[Reentrant]` activations skip
   the mailbox channel and its forced-async completion signal entirely (`GrainActivation.PostAsync` calls
   the work item inline) — run the same `--pairs`/`--duration` with and without this flag to measure that
-  gap end-to-end (measured 2026-07-09: ~2.9x, 820K vs 2.4M msg/s at 32 pairs/15s — see
+  gap end-to-end (measured 2026-07-09: ~3.1x, 848K vs 2.7M msg/s at 32 pairs/15s — see
   `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §13)
 - `--bare` — experimental, not a supported dispatch path: bypasses `LocalGrainCallInvoker`/
   `GrainScopeBinder` entirely, posting directly to a bare `GrainActivation` backed by one shared behavior
   instance (no per-call DI scope/`ResolveService`). Measures the ceiling if per-call DI resolution were
-  removed (measured 2026-07-09: ~32x over the default, 820K vs 26.3M msg/s at 32 pairs/15s — see
-  `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §15)
+  removed (measured 2026-07-09, corrected — see §16: ~86x over the default, 848K vs 72.8M msg/s at 32
+  pairs/15s, higher than Akka's cited ~50M msg/s figure — see
+  `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §16)
+
+If comparing `--pairs 1` vs. a higher pair count to check scaling, know that call counting uses one
+padded counter per pair (`PaddedCounter`, `PingPongRunner.cs`) specifically because a single shared
+counter becomes the bottleneck at `--bare` rates (§16) — a lesson worth not re-learning.
 
 Sanity-check at a small scale first (`--pairs 4 --duration 3`) before trusting the default full-core run.
 

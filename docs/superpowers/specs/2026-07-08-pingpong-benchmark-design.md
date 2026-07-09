@@ -321,21 +321,64 @@ listener and the direct counter were counting the same thing all along).
 injected dependencies, `IDisposable` cleanup, and per-call state — `--bare`'s "one shared, stateless
 behavior instance" sidesteps all of that on purpose to isolate DI resolution as the one variable removed.
 
-**Result (32 pairs, 15s; load average ~9 at run time, vs. ~5 for the §13 baseline — noted, but the gaps
-below are multiples, not percentages, so it doesn't change the conclusion):**
+**CORRECTED 2026-07-09 (see §16): the first result below was measured with a self-inflicted bottleneck in
+the benchmark harness itself, not a Quark runtime property.** All three modes originally counted calls
+through one shared `Interlocked.Increment` target. At non-reentrant/reentrant rates that counter's own
+cost is negligible next to the mailbox/DI overhead being measured, but at `--bare`'s far higher per-call
+rate the shared, contended cache line became the actual bottleneck — worse with more concurrent pairs, not
+better. §16 fixes this with per-pair padded counters; the corrected table replaces the one below. Left
+here, struck through in spirit but not in fact, so the mistake and its discovery are traceable — see §16
+for how it was caught (a user noticed 1-pair vs. 2-pair throughput wasn't close to 2x) and fixed.
+
+~~**Result (32 pairs, 15s; load average ~9 at run time, vs. ~5 for the §13 baseline):**~~
+
+| Mode | msg/s (×2), UNCORRECTED | Raw calls/s |
+|---|---:|---:|
+| Non-reentrant (default) | 820,205 | 410,102 |
+| `--reentrant` | 2,400,690 | 1,200,345 |
+| `--bare` | ~~26,283,175~~ → see §16 for the corrected figure | 13,141,587 |
+
+## 16. Bug found and fixed (2026-07-09): the shared call counter was itself the bottleneck at `--bare` rates
+
+**How it was caught.** Running `--pairs 1` vs. `--pairs 2` (same `--duration`) should scale close to 2x —
+each pair runs on its own independent `Task.Run` loop, verified via `top -H` to land on genuinely separate
+OS threads. It didn't: `--bare` mode showed *no* improvement at all going from 1 to 2 pairs (21.6M → 20.9M
+msg/s — flat, if anything slightly down), while non-reentrant/reentrant scaled closer to expected.
+
+**Root cause.** All three modes counted completed calls via `Interlocked.Increment(ref counter[0])` against
+one shared array slot, written from every pair's thread on every single call. An isolated test confirmed
+the mechanism directly:
+
+| Threads | Shared contended counter | Independent per-thread counters |
+|---:|---:|---:|
+| 1 | 59,508,490 ops/s | 212,565,312 ops/s |
+| 2 | 40,969,527 ops/s | 215,198,910 ops/s |
+| 4 | 38,627,172 ops/s | 205,953,242 ops/s |
+
+A shared `Interlocked` target *degrades* as more threads contend for it (cache-line ping-pong under the
+MESI protocol) — independent counters don't. At non-reentrant/reentrant rates (hundreds of thousands to a
+few million calls/sec) this cost is noise next to the mailbox/DI overhead being measured. At `--bare`'s
+~10-20M calls/sec/thread, the shared counter's own contention became the dominant cost — which is exactly
+why it was invisible until `--bare` existed, and exactly why 1-vs-2-pair scaling was the tell.
+
+**Fix.** Replaced the one shared counter with one `[StructLayout(Explicit, Size=64)] PaddedCounter` per
+pair (`PingPongRunner.cs`) — each pair writes only its own cache-line-padded slot (`Volatile.Write`, no
+`Interlocked` RMW needed since no other thread ever touches that slot), and the reporting/summary code
+sums all slots (`Volatile.Read`) once per second. Verified: non-reentrant/reentrant numbers are unchanged
+by this fix (same order as before, within normal run-to-run variance); `--bare`'s 1-vs-2-pair scaling
+went from flat/regressing to positive (22.7M → 28.3M, ~1.24x, at `--pairs 1` vs. `--pairs 2`/`--duration 5`).
+
+**Corrected result (32 pairs, 15s):**
 
 | Mode | msg/s (×2) | Raw calls/s | vs. non-reentrant |
 |---|---:|---:|---:|
-| Non-reentrant (default) | 820,205 | 410,102 | 1x |
-| `--reentrant` | 2,400,690 | 1,200,345 | 2.9x |
-| `--bare` | 26,283,175 | 13,141,587 | **32x** |
+| Non-reentrant (default) | 847,582 | 423,791 | 1x |
+| `--reentrant` | 2,668,288 | 1,334,144 | 3.1x |
+| `--bare` | **72,784,029** | 36,392,015 | **85.9x** |
 
-Removing DI/scope resolution gets another **~11x beyond `--reentrant`** on top of that mode's own 2.9x —
-landing within ~2x of Akka's cited ~50M msg/s figure, using the identical `Task.Run`-per-pair driver and
-`GrainActivation`/`ValueTask` plumbing. This confirms §12's read directly: per-call DI scope resolution
-was not a secondary cost sitting next to the mailbox — under reentrant scheduling it was comparable in
-size to everything else combined, and removing it is by far the largest identified lever in this whole
-investigation (§9 dispatch-pipeline mailbox stage: ~20x; §13 reentrant end-to-end: ~2.9x; here: ~11x on
-top of that). Not a claim that a real fix would fully realize 32x — a real fix must keep per-call scoping
-semantics for stateful/disposable behaviors — but it bounds how much headroom removing DI-resolution cost
-specifically could plausibly recover.
+The corrected `--bare` figure (**72.8M msg/s**) is *higher* than Akka's cited ~50M msg/s ping-pong figure,
+not "within ~2x" as the uncorrected §15 result claimed — the contention bug was suppressing the true
+ceiling far more at 32-way concurrency (32 threads hammering one cache line) than at the 2-thread scale
+where it was first caught. Removing DI/scope resolution specifically is now measured at **~27x beyond
+`--reentrant`** (72,784,029 / 2,668,288), not the previously-reported ~11x. §15's conclusion direction is
+unchanged (DI resolution is the largest identified lever) — only the magnitude was understated.

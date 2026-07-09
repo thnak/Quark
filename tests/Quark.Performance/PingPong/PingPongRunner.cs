@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quark.Client;
@@ -38,7 +39,12 @@ public static class PingPongRunner
         }
         Console.WriteLine();
 
-        long[] counter = [0];
+        // One padded counter PER PAIR, not one shared counter -- a single Interlocked.Increment target
+        // hammered from every pair's thread becomes the bottleneck itself at high call rates (measured:
+        // a shared counter caps aggregate throughput and can even regress as more threads contend for it,
+        // while padded per-thread counters scale cleanly). Padded to a full cache line so adjacent pairs'
+        // counters can't false-share. See design spec §16.
+        var counters = new PaddedCounter[cli.Pairs];
         var pairs = new (IPingable ping, IPingable pong)[cli.Pairs];
 
         await using TestCluster? cluster = cli.Bare ? null : await TestCluster.CreateAsync(options =>
@@ -102,7 +108,8 @@ public static class PingPongRunner
         for (int i = 0; i < cli.Pairs; i++)
         {
             (IPingable ping, IPingable pong) = pairs[i];
-            pairTasks[i] = Task.Run(() => RunPairAsync(ping, pong, cts.Token, counter));
+            int pairIndex = i;
+            pairTasks[i] = Task.Run(() => RunPairAsync(ping, pong, cts.Token, counters, pairIndex));
         }
 
         Task reportTask = Task.Run(async () =>
@@ -113,7 +120,7 @@ public static class PingPongRunner
             while (!cts.IsCancellationRequested)
             {
                 await Task.Delay(1000);
-                long count = Interlocked.Read(ref counter[0]);
+                long count = SumCounters(counters);
                 double elapsed = totalSw.Elapsed.TotalSeconds;
                 if (elapsed <= 0)
                 {
@@ -144,7 +151,7 @@ public static class PingPongRunner
             await activation.DisposeAsync();
         }
 
-        long totalCalls = Interlocked.Read(ref counter[0]);
+        long totalCalls = SumCounters(counters);
         double totalSeconds = totalSw.Elapsed.TotalSeconds;
 
         Console.WriteLine();
@@ -156,16 +163,46 @@ public static class PingPongRunner
         Console.WriteLine($"  Akka-comparable rate (x2): {2 * totalCalls / totalSeconds:N0} msg/s");
     }
 
-    private static async Task RunPairAsync(IPingable ping, IPingable pong, CancellationToken ct, long[] counter)
+    private static async Task RunPairAsync(IPingable ping, IPingable pong, CancellationToken ct, PaddedCounter[] counters, int pairIndex)
     {
         IPingable[] targets = [pong, ping];
         long i = 0;
+        long local = 0;
         while (!ct.IsCancellationRequested)
         {
             await targets[i % 2].PingAsync();
-            Interlocked.Increment(ref counter[0]);
+            local++;
             i++;
+
+            // Every pair writes only its OWN padded slot -- never touched by another thread -- so a
+            // Volatile.Write (a plain fenced store, no LOCK-prefixed instruction) is enough for the
+            // reporting thread to see progress; no Interlocked op or cross-core contention here, unlike
+            // the single shared counter this replaced. See design spec §16.
+            Volatile.Write(ref counters[pairIndex].Value, local);
         }
+    }
+
+    private static long SumCounters(PaddedCounter[] counters)
+    {
+        long total = 0;
+        for (int i = 0; i < counters.Length; i++)
+        {
+            total += Volatile.Read(ref counters[i].Value);
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    ///     Padded to a full cache line (64 bytes on virtually all current hardware) so adjacent pairs'
+    ///     counters in the same array never share a cache line -- eliminates false sharing between pairs
+    ///     even though each slot is written by exactly one thread.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 64)]
+    private struct PaddedCounter
+    {
+        [FieldOffset(0)]
+        public long Value;
     }
 
     /// <summary>
