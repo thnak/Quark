@@ -150,10 +150,55 @@ Effects:
 5. Confirm `pidstat` shows the same or better total CPU utilization (the fix should convert wasted
    lock-wait time into useful work, not just move it around).
 
-## 6. Expected outcome
+## 6. Measured outcome (implemented and profiled 2026-07-09)
 
-Not a guessable exact multiplier — the point of step 5.3 above is to measure it — but since ~85% of
-sampled thread-time was going into contended-lock waiting rather than useful execution, and the
-majority of that traces to a structure this fix removes the single-point-of-contention nature of,
-a multiple-x improvement in PingPong's sustained throughput is the reasonable expectation, not a
-marginal percentage change.
+The multiple-x expectation in the original version of this section did **not** hold. Actual result,
+across three implementation iterations, each verified against the full `SchedulingSemantics` suite
+and re-profiled with `dotnet-trace`:
+
+| Iteration | Design | PingPong (32 pairs, x2) | `Monitor.Enter_Slowpath` samples |
+|---|---|---|---|
+| Baseline | Single shared ready-queue channel | 621,290 msg/s | ~75,300 |
+| v1 | Sharded writes, each worker sweeps all shards, re-registers `WaitToReadAsync` on all shards when idle | 270,970 msg/s (**regression**) | similar order |
+| v2 | Sharded writes/sweep, idle wait replaced with one shared `SemaphoreSlim`, released unconditionally on every write | 632,448 msg/s | ~68,200 |
+| v3 (final) | Same as v2, plus approximate per-shard `Interlocked` counters so the sweep skips empty shards without touching their `Channel<T>` lock, and the semaphore is released only on a shard's 0→1 transition | **665,962 msg/s** | ~67,900 |
+
+Final result: **+7% over baseline** (621K → 666K msg/s), not a multiple. `Monitor.Enter_Slowpath`
+sample counts barely moved across v2/v3 relative to baseline, despite the redesigns — confirming
+the finding below is structural, not an implementation gap this session ran out of time to close.
+
+### Why the multiple-x hypothesis was wrong
+
+Section 3's original design (each worker owns one shard exclusively, no cross-shard reads) was
+never implemented as originally written: `tests/Quark.Tests.Unit/SchedulingSemantics/ActivationSchedulerTests.cs`
+`Spec7_SchedulerConcurrencyParallelism_MaxTwo_AllowsConcurrentActivations` requires that with
+`SchedulerMaxConcurrentActivations = 2`, any 2 distinct busy activations can run truly concurrently
+— a guarantee static hash-sharding cannot provide (two activations can collide onto the same shard,
+serializing them behind one worker regardless of the configured concurrency). Preserving that
+guarantee requires every worker to be able to service every shard, which reintroduces exactly the
+kind of cross-shard synchronization this fix set out to remove — just spread across more objects
+(shard locks visited during the sweep, plus a new semaphore) rather than concentrated in one.
+
+Sharding only pays off when a shard holds enough queued depth that most operations hit an
+already-nonempty (cheap `TryRead`) shard instead of triggering the expensive empty→waiting→wake
+cycle. PingPong's workload — one message in flight per grain, strict turn-taking, immediate
+turnaround — keeps every shard oscillating between exactly 0 and 1 items almost constantly. That's
+close to the worst case for `Channel<T>`'s synchronization regardless of how many shards it's split
+across; it was also the worst case for AstroSim-style workloads too, just less visible there because
+AstroSim's call rate is far lower (real per-tick work between calls).
+
+A design that would plausibly deliver the originally-hoped-for multiple would need genuine
+work-stealing (idle workers steal from a specific other shard only when evidence suggests real
+backlog there, not scan all shards unconditionally) or a fundamentally different notification
+primitive than `Channel<T>`/`SemaphoreSlim`'s lock-based wake path. Both are substantially larger
+and riskier changes than this fix, in code that has previously had real, hard-to-find concurrency
+bugs ([[project_mailbox_workitem_pool_race]]). Not attempted in this pass.
+
+### Disposition
+
+Shipped as a real, fully-tested, zero-regression **+7%** improvement (verified: full
+`SchedulingSemantics` suite passing across 6+ repeated runs including the concurrency-cap liveness
+tests, full `Quark.Tests.Unit`/`Quark.Tests.Integration` suites showing only pre-existing documented
+flaky-test signatures, AstroSim re-run at 1M-body scale showing no regression). The bigger win
+identified during this investigation — a genuine work-stealing scheduler — is out of scope for this
+fix and would need its own design spec if pursued.
