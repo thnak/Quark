@@ -85,7 +85,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
             if (lockTaken) _writeLock.Release();
         }
 
-        using var reg = ct.Register(static state =>
+        await using CancellationTokenRegistration reg = ct.Register(static state =>
         {
             var (tcs, id, pending) = ((TaskCompletionSource<MessageEnvelope>, long,
                 ConcurrentDictionary<long, TaskCompletionSource<MessageEnvelope>>))state!;
@@ -115,7 +115,7 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
         CancellationTokenSource? cts = Interlocked.Exchange(ref _readCts, null);
         if (cts is not null)
         {
-            cts.Cancel();
+            await cts.CancelAsync();
             // Stop accepting new side-channel frames so the dispatch worker drains and exits.
             _sideChannel.Writer.TryComplete();
             if (_connection is not null)
@@ -123,17 +123,26 @@ public sealed class TcpGatewayConnection : IAsyncDisposable
             if (_readLoop is not null)
             {
                 try { await _readLoop.ConfigureAwait(false); }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
             }
             if (_dispatchLoop is not null)
             {
                 try { await _dispatchLoop.ConfigureAwait(false); }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
             }
             if (_executeLoop is not null)
             {
                 try { await _executeLoop.ConfigureAwait(false); }
-                catch { }
+                catch
+                {
+                    // ignored
+                }
             }
             cts.Dispose();
         }

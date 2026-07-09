@@ -9,14 +9,14 @@ public interface IAsyncStream<T>
     ValueTask OnErrorAsync(Exception ex); // TODO did not implemented or used in any elsewhere
     ValueTask OnCompletedAsync(); // TODO did not implemented or used in any elsewhere
 
-    Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer);
+    ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer);
 
-    Task<StreamSubscriptionHandle<T>> SubscribeAsync(
+    ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(
         Func<T, StreamSequenceToken?, ValueTask> onNext,
         Func<Exception, ValueTask>? onError = null,
         Func<ValueTask>? onCompleted = null);
 
-    Task<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(
+    ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(
         TContext context,
         Func<TContext, T, StreamSequenceToken?, ValueTask> onNext,
         Func<Exception, ValueTask>? onError = null,

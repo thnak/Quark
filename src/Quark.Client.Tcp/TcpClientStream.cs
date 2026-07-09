@@ -30,7 +30,7 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
         _codec = codec;
     }
 
-    public async Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
+    public async ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
     {
         ArgumentNullException.ThrowIfNull(observer);
         var subId = Guid.NewGuid();
@@ -58,13 +58,13 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
         return new TcpStreamSubscriptionHandle<T>(subId, _streamId, _dispatcher, _connection, sub);
     }
 
-    public Task<StreamSubscriptionHandle<T>> SubscribeAsync(
+    public ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(
         Func<T, StreamSequenceToken?, ValueTask> onNext,
         Func<Exception, ValueTask>? onError = null,
         Func<ValueTask>? onCompleted = null)
         => SubscribeAsync(new DelegateObserver<T>(onNext, onError, onCompleted));
 
-    public Task<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(TContext context,
+    public ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(TContext context,
         Func<TContext, T, StreamSequenceToken?, ValueTask> onNext, Func<Exception, ValueTask>? onError = null,
         Func<ValueTask>? onCompleted = null)
         => SubscribeAsync(new DelegateContextObserver<T, TContext>(context, onNext, onError, onCompleted));

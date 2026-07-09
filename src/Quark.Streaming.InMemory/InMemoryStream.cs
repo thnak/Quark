@@ -25,7 +25,7 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
     public ValueTask OnErrorAsync(Exception ex) => _registry.PublishErrorAsync(StreamId, ex);
     public ValueTask OnCompletedAsync() => _registry.PublishCompletedAsync(StreamId);
 
-    public Task<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
+    public ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(IAsyncObserver<T> observer)
     {
         var subscriptionId = _registry.Subscribe(StreamId, observer);
         var handle = new InMemorySubscriptionHandle<T>(
@@ -36,7 +36,7 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
             _handles.Add(handle);
         }
 
-        return Task.FromResult<StreamSubscriptionHandle<T>>(handle);
+        return ValueTask.FromResult<StreamSubscriptionHandle<T>>(handle);
     }
 
     private void OnUnsubscribe(Guid id)
@@ -47,13 +47,13 @@ internal sealed class InMemoryStream<T> : IAsyncStream<T>
         }
     }
 
-    public Task<StreamSubscriptionHandle<T>> SubscribeAsync(
+    public ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(
         Func<T, StreamSequenceToken?, ValueTask> onNext,
         Func<Exception, ValueTask>? onError = null,
         Func<ValueTask>? onCompleted = null)
         => SubscribeAsync(new DelegateObserver<T>(onNext, onError, onCompleted));
 
-    public Task<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(
+    public ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync<TContext>(
         TContext context,
         Func<TContext, T, StreamSequenceToken?, ValueTask> onNext, Func<Exception, ValueTask>? onError = null,
         Func<ValueTask>? onCompleted = null)
