@@ -19,6 +19,12 @@ namespace Quark.Tests.Unit.SchedulingSemantics;
 ///     A second, more targeted test below covers the single-shard/no-rescue-sweep case: with sustained
 ///     multi-shard traffic, a missed wake-up is almost always rescued by an unrelated wake elsewhere,
 ///     which the general stress test above does not reliably rule out.
+///     A third test below exercises the per-worker-semaphore/idle-registry wake path added in
+///     docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md. Unlike the second
+///     test, this one is not chasing an open race: the push-then-recheck ordering that path uses closes
+///     the classic lost-wakeup race by construction (see that spec's section 4). This test instead
+///     guards against an implementation mistake -- wrong ordering of the push/recheck steps, or wrong
+///     volatile/interlocked semantics on the double-check -- regressing that closed race back open.
 /// </summary>
 public sealed class ActivationSchedulerConcurrencyStressTests
 {
@@ -157,6 +163,72 @@ public sealed class ActivationSchedulerConcurrencyStressTests
 
             await a1.DisposeAsync();
             await a2.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SingleWorker_RepeatedIdleParkCycles_NeverStrandsWork()
+    {
+        // Exercises the per-worker-semaphore/idle-registry wake path
+        // (docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md) rather than the
+        // ready-queue collection itself. workerCount=1 makes the idle-stack trivially either empty or
+        // contain exactly that one worker, so every idle transition in this test exercises the full
+        // push -> re-sweep (double-check) -> park sequence. Unlike
+        // TwoConcurrentProducers_SingleShardNoFollowUpTraffic_NoWorkIsLost above, this is not chasing
+        // an open race -- the push-then-recheck ordering closes the classic lost-wakeup race by
+        // construction (spec section 4). This test instead guards against an implementation mistake
+        // (wrong step ordering, wrong volatile/interlocked semantics) regressing that closed race.
+        const int iterations = 300;
+
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+
+            var options = new SiloRuntimeOptions
+            {
+                ClusterId = "test",
+                ServiceId = "scheduler-wake-signal-stress",
+                SiloName = "silo0",
+                SchedulerMaxConcurrentActivations = 1,
+            };
+
+            await using var scheduler = new ActivationScheduler(options);
+            services.AddSingleton<IActivationScheduler>(scheduler);
+            await using ServiceProvider root = services.BuildServiceProvider();
+
+            var activation = new GrainActivation(
+                new GrainId(new GrainType("StressGrain"), $"idle-park-{iteration}"),
+                new GrainType("StressGrain"),
+                isReentrant: false,
+                root,
+                NullLogger<GrainActivation>.Instance);
+
+            int completed = 0;
+
+            // PostAsync awaits the posted work item's own completion (see the comment on
+            // GrainActivation.PostAsync's use in RunDeactivationAsync, ~line 372 of
+            // GrainActivation.cs: "PostAsync awaits the work item's completion"), so each
+            // sequential await below only returns once the single worker has fully drained that
+            // item and returned to the top of its loop -- meaning it has gone through at least
+            // one push -> re-sweep -> (park or immediately-find-more-work) cycle between each of
+            // these three posts, with no wall-clock delay needed to force that ordering. This
+            // matches the no-timing-based-synchronization standard the rest of this codebase's
+            // scheduling tests already follow (see e.g. ReentrantTests' gate-based rewrite).
+            for (int post = 0; post < 3; post++)
+            {
+                await activation.PostAsync(() =>
+                {
+                    Interlocked.Increment(ref completed);
+                    return ValueTask.CompletedTask;
+                }).AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+            }
+
+            Assert.True(completed == 3,
+                $"Iteration {iteration}: expected 3 completions, got {completed} -- work was stranded " +
+                "in a single-worker idle-park cycle.");
+
+            await activation.DisposeAsync();
         }
     }
 }
