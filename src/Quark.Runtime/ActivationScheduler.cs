@@ -1,5 +1,5 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Threading.Channels;
 using Quark.Diagnostics.Abstractions;
 
 namespace Quark.Runtime;
@@ -11,36 +11,50 @@ namespace Quark.Runtime;
 ///     Registered as a singleton by <see cref="RuntimeServiceCollectionExtensions.AddQuarkRuntime"/>.
 /// </summary>
 /// <remarks>
-///     The ready queue is sharded (one <see cref="Channel{T}"/> per worker, activation hashed by
-///     <see cref="GrainId"/>) purely to spread the write/read synchronization <see cref="Channel{T}"/>
-///     requires for its multi-writer/multi-reader case across N independent lock objects instead of
-///     one silo-wide channel -- see docs/superpowers/specs/2026-07-08-scheduler-ready-queue-contention-fix.md.
-///     Every worker still scans every shard (<see cref="RunWorkerAsync"/>), so a hash collision only
-///     costs the contention-reduction benefit for the colliding activations -- it never reduces the
+///     The ready queue is sharded (one <see cref="ConcurrentQueue{T}"/> per worker, activation hashed
+///     by <see cref="GrainId"/>) to spread contention across N independent structures instead of one
+///     silo-wide queue -- see docs/superpowers/specs/2026-07-08-scheduler-ready-queue-contention-fix.md
+///     and docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md.
+///     <see cref="ConcurrentQueue{T}"/> replaces an earlier <c>Channel&lt;GrainActivation&gt;</c>-per-shard
+///     design: it's a proven, already-in-the-BCL lock-free MPMC structure with none of Channel's
+///     async-waiter/continuation machinery, which profiling showed was being paid even for plain
+///     non-blocking dequeue attempts. Every worker still sweeps every shard (see
+///     <see cref="RunWorkerAsync"/>), so a hash collision only costs the contention-reduction benefit
+///     for the colliding activations -- it never reduces the
 ///     <see cref="SiloRuntimeOptions.SchedulerMaxConcurrentActivations"/> concurrency guarantee: any
 ///     N distinct busy activations can still be serviced by N distinct workers concurrently,
 ///     regardless of which shard they land on.
 /// </remarks>
 internal sealed class ActivationScheduler : IActivationScheduler
 {
-    private readonly Channel<GrainActivation>[] _shards;
-    // Approximate per-shard depth, maintained via Interlocked ops alongside (not instead of) each
-    // shard's own Channel<T>. Two jobs: (1) let RunWorkerAsync's sweep skip a shard's TryRead --
-    // and therefore its internal Channel<T> lock -- entirely when the counter reads 0, so an empty
-    // shard costs one Volatile read instead of one Monitor acquisition; (2) let ScheduleAsync only
-    // release the idle-wake semaphore on a genuine 0->1 transition instead of on every write (see
-    // _workSignal below). Approximate is fine: worst case a stale nonzero count costs one wasted
-    // TryRead, never a missed item -- TryRead itself is always the source of truth.
+    private readonly ConcurrentQueue<GrainActivation>[] _shards;
+
+    // Per-shard depth counter, used both as the sweep's "worth trying" pre-check and to gate the
+    // idle-wake signal on an exact empty->non-empty transition. ConcurrentQueue<T>.Count cannot be
+    // used for this: two concurrent same-shard enqueues can both observe a post-Enqueue Count != 1
+    // and both skip Release() -- and because no worker is guaranteed to later go idle and re-sweep
+    // (all of them may already be parked), that can strand ready work indefinitely. The
+    // Interlocked.Increment(...) == 1 return value is atomic and unique: exactly one concurrent
+    // enqueuer observes the transition and releases exactly once. Same pattern proven in the
+    // sharded-Channel<T> predecessor of this design
+    // (docs/superpowers/specs/2026-07-08-scheduler-ready-queue-contention-fix.md).
     private readonly int[] _shardCounts;
-    // Idle-wake signal: released only on a shard's empty->non-empty transition (see ScheduleAsync),
-    // waited on by an idle worker after a full empty sweep. Releasing unconditionally on every
-    // write was tried first and was itself a new single-lock bottleneck at ping-pong's message
-    // rate (SemaphoreSlim.Release also takes an internal lock); gating on the 0->1 transition cuts
-    // release frequency to roughly "a shard just went from empty to non-empty" instead of "a
-    // message was posted," which is what actually needs to wake an idle worker.
-    // SemaphoreSlim.Release()/WaitAsync() never lose a wakeup regardless of ordering: a Release()
-    // that happens before a worker's WaitAsync() call still leaves a banked permit.
+
+    // Per-shard capacity gate, only allocated when SchedulerReadyQueueCapacity > 0. ConcurrentQueue<T>
+    // has no native capacity limit (unlike the Channel<T> it replaces), so bounded-queue backpressure
+    // is layered on top via a counting semaphore: ScheduleAsync acquires a slot before enqueueing,
+    // RunWorkerAsync releases one after a successful dequeue. Null in the default unbounded case, so
+    // the common path (PingPong, AstroSim, most workloads) pays nothing for this.
+    private readonly SemaphoreSlim[]? _capacityGates;
+
+    // Idle-wake signal, released only on a shard's exact empty->non-empty transition. Gated by
+    // _shardCounts (see that field's comment) via Interlocked.Increment(...) == 1 -- an atomic,
+    // race-free transition detector. An earlier version of this gate used a plain
+    // ConcurrentQueue<T>.Count == 1 check, which could lose a wakeup under concurrent same-shard
+    // enqueues (see docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md section 4,
+    // corrected) -- that approach was rejected during review.
     private readonly SemaphoreSlim _workSignal = new(0, int.MaxValue);
+
     private readonly CancellationTokenSource _cts = new();
     private readonly Task[] _workers;
     private readonly int _drainBudget;
@@ -61,22 +75,16 @@ internal sealed class ActivationScheduler : IActivationScheduler
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
         _shutdownStalledThreshold = (diagnosticOptions ?? new DiagnosticOptions()).ShutdownStalledThreshold;
 
-        _shards = new Channel<GrainActivation>[concurrency];
-        _shardCounts = new int[concurrency];
+        _shards = new ConcurrentQueue<GrainActivation>[concurrency];
         for (int i = 0; i < concurrency; i++)
+            _shards[i] = new ConcurrentQueue<GrainActivation>();
+        _shardCounts = new int[concurrency];
+
+        if (_queueCapacity > 0)
         {
-            _shards[i] = _queueCapacity > 0
-                ? Channel.CreateBounded<GrainActivation>(
-                    new BoundedChannelOptions(_queueCapacity)
-                    {
-                        SingleWriter = false,
-                        // BoundedChannelFullMode.Wait so WriteAsync blocks when we're in Wait overload mode.
-                        // For RejectWhenFull we use TryWrite manually in ScheduleAsync before calling WriteAsync.
-                        FullMode = BoundedChannelFullMode.Wait,
-                        AllowSynchronousContinuations = false,
-                    })
-                : Channel.CreateUnbounded<GrainActivation>(
-                    new UnboundedChannelOptions { SingleWriter = false, AllowSynchronousContinuations = false });
+            _capacityGates = new SemaphoreSlim[concurrency];
+            for (int i = 0; i < concurrency; i++)
+                _capacityGates[i] = new SemaphoreSlim(_queueCapacity, _queueCapacity);
         }
 
         _workers = new Task[concurrency];
@@ -100,40 +108,45 @@ internal sealed class ActivationScheduler : IActivationScheduler
         _diagnostics.OnSchedulerActivationScheduled(new SchedulerActivationScheduledEvent(activation.GrainId));
 
         int shardIndex = ShardFor(activation);
-        Channel<GrainActivation> shard = _shards[shardIndex];
 
-        if (_queueCapacity > 0 && _overloadMode == SchedulerOverloadMode.RejectWhenFull)
+        if (_capacityGates is not null)
         {
-            if (!shard.Writer.TryWrite(activation))
+            SemaphoreSlim gate = _capacityGates[shardIndex];
+            if (_overloadMode == SchedulerOverloadMode.RejectWhenFull)
             {
-                activation.AbortSchedule();
-                QuarkInstruments.SchedulerOverloadRejections.Add(1);
-                _diagnostics.OnSchedulerOverloadRejected(new SchedulerOverloadRejectedEvent(_queueCapacity));
-                throw new SchedulerOverloadException(_queueCapacity);
+                if (!gate.Wait(0))
+                {
+                    activation.AbortSchedule();
+                    QuarkInstruments.SchedulerOverloadRejections.Add(1);
+                    _diagnostics.OnSchedulerOverloadRejected(new SchedulerOverloadRejectedEvent(_queueCapacity));
+                    throw new SchedulerOverloadException(_queueCapacity);
+                }
+            }
+            else
+            {
+                await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
         }
-        else
-        {
-            await shard.Writer.WriteAsync(activation, cancellationToken).ConfigureAwait(false);
-        }
 
-        SignalShardWrite(shardIndex);
-        QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
-        _diagnostics.OnSchedulerReadyQueueDepthChanged(
-            new SchedulerReadyQueueDepthChangedEvent(shard.Reader.Count, 1));
+        EnqueueToShard(shardIndex, activation);
     }
 
-    /// <summary>Bumps the approximate per-shard count and wakes an idle worker only on 0-&gt;1.</summary>
-    private void SignalShardWrite(int shardIndex)
+    /// <summary>Enqueues to the given shard, bumps metrics/diagnostics, and wakes an idle worker on the empty-&gt;non-empty transition.</summary>
+    private void EnqueueToShard(int shardIndex, GrainActivation activation)
     {
-        if (Interlocked.Increment(ref _shardCounts[shardIndex]) == 1)
+        ConcurrentQueue<GrainActivation> shard = _shards[shardIndex];
+        shard.Enqueue(activation);
+        int depth = Interlocked.Increment(ref _shardCounts[shardIndex]);
+        if (depth == 1)
             _workSignal.Release();
+
+        QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
+        _diagnostics.OnSchedulerReadyQueueDepthChanged(
+            new SchedulerReadyQueueDepthChangedEvent(depth, 1));
     }
 
     public async ValueTask DisposeAsync()
     {
-        foreach (Channel<GrainActivation> shard in _shards)
-            shard.Writer.TryComplete();
         await _cts.CancelAsync().ConfigureAwait(false);
 
         Task allWorkers = Task.WhenAll(_workers);
@@ -163,14 +176,19 @@ internal sealed class ActivationScheduler : IActivationScheduler
         }
         _cts.Dispose();
         _workSignal.Dispose();
+        if (_capacityGates is not null)
+        {
+            foreach (SemaphoreSlim gate in _capacityGates)
+                gate.Dispose();
+        }
     }
 
     /// <summary>
     ///     Every worker sweeps every shard (starting from its own <paramref name="homeShard"/>, staggered
     ///     so workers don't all scan in lockstep) rather than owning one shard exclusively. This is what
     ///     preserves the "N workers configured means N activations can truly run concurrently" guarantee
-    ///     regardless of hash collisions between activations -- sharding only changes which lock a given
-    ///     write/read contends on, never which worker may service a given activation.
+    ///     regardless of hash collisions between activations -- sharding only changes which structure a
+    ///     given enqueue/dequeue touches, never which worker may service a given activation.
     /// </summary>
     private async Task RunWorkerAsync(int homeShard, CancellationToken ct)
     {
@@ -183,12 +201,8 @@ internal sealed class ActivationScheduler : IActivationScheduler
 
             for (int i = 0; i < shardCount; i++)
             {
-                // Skip the shard's own Channel<T> lock entirely when the approximate counter says
-                // it's empty -- only attempt TryRead (and thus that shard's lock) on shards that
-                // look non-empty. A stale/racy nonzero reading just costs one wasted TryRead, never
-                // a missed item.
-                if (Volatile.Read(ref _shardCounts[cursor]) > 0
-                    && _shards[cursor].Reader.TryRead(out GrainActivation? candidate))
+                if (Volatile.Read(ref _shardCounts[cursor]) > 0 &&
+                    _shards[cursor].TryDequeue(out GrainActivation? candidate))
                 {
                     Interlocked.Decrement(ref _shardCounts[cursor]);
                     activation = candidate;
@@ -203,9 +217,8 @@ internal sealed class ActivationScheduler : IActivationScheduler
                     return;
 
                 // Every shard was empty on a full sweep. Wait on the shared idle signal rather than
-                // re-registering a wait on every shard -- don't trust which write woke us, another
-                // worker may already have claimed the corresponding item -- just resume the sweep
-                // from `cursor`.
+                // polling -- don't trust which write woke us, another worker may already have claimed
+                // the corresponding item -- just resume the sweep from `cursor`.
                 try
                 {
                     await _workSignal.WaitAsync(ct).ConfigureAwait(false);
@@ -218,9 +231,10 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 continue;
             }
 
+            _capacityGates?[cursor].Release();
             QuarkInstruments.SchedulerReadyQueueDepth.Add(-1);
             _diagnostics.OnSchedulerReadyQueueDepthChanged(
-                new SchedulerReadyQueueDepthChangedEvent(_shards[cursor].Reader.Count, -1));
+                new SchedulerReadyQueueDepthChangedEvent(_shardCounts[cursor], -1));
 
             if (!activation.TryBeginDrain())
             {
@@ -273,12 +287,16 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 {
                     activation.SetSchedulerEnqueueTime();
                     int rescheduleShardIndex = ShardFor(activation);
-                    Channel<GrainActivation> rescheduleShard = _shards[rescheduleShardIndex];
-                    rescheduleShard.Writer.TryWrite(activation);
-                    SignalShardWrite(rescheduleShardIndex);
-                    QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
-                    _diagnostics.OnSchedulerReadyQueueDepthChanged(
-                        new SchedulerReadyQueueDepthChangedEvent(rescheduleShard.Reader.Count, 1));
+
+                    // Matches the pre-existing (pre-work-stealing) design's behavior exactly: a
+                    // reschedule that can't fit under a configured SchedulerReadyQueueCapacity is
+                    // silently dropped rather than blocking the worker or throwing -- the prior
+                    // Channel<T>-based design did the same via a bare TryWrite with an ignored return
+                    // value. Not a new behavior introduced by this change; out of scope to fix here.
+                    if (_capacityGates is null || _capacityGates[rescheduleShardIndex].Wait(0))
+                    {
+                        EnqueueToShard(rescheduleShardIndex, activation);
+                    }
                 }
             }
 
