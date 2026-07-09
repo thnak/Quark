@@ -74,7 +74,7 @@ Two grains per pair volley `PingAsync()` calls back and forth for a fixed durati
 round trip) for a like-for-like comparison.
 
 ```bash
-dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant]
+dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant] [--bare]
 ```
 
 - `--pairs` (default `Environment.ProcessorCount`) — number of ping/pong grain pairs running concurrently
@@ -84,6 +84,11 @@ dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration
   the work item inline) — run the same `--pairs`/`--duration` with and without this flag to measure that
   gap end-to-end (measured 2026-07-09: ~2.9x, 820K vs 2.4M msg/s at 32 pairs/15s — see
   `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §13)
+- `--bare` — experimental, not a supported dispatch path: bypasses `LocalGrainCallInvoker`/
+  `GrainScopeBinder` entirely, posting directly to a bare `GrainActivation` backed by one shared behavior
+  instance (no per-call DI scope/`ResolveService`). Measures the ceiling if per-call DI resolution were
+  removed (measured 2026-07-09: ~32x over the default, 820K vs 26.3M msg/s at 32 pairs/15s — see
+  `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §15)
 
 Sanity-check at a small scale first (`--pairs 4 --duration 3`) before trusting the default full-core run.
 

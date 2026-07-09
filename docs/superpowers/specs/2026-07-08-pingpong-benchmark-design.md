@@ -114,14 +114,16 @@ gotcha as AstroSim), all pairs and the driver in one process through `LocalGrain
 New `PingPong` subcommand alongside `AstroSim`/`LocalStreaming` in `Program.cs`:
 
 ```
-dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant]
+dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant] [--bare]
 ```
 
 Defaults: `--pairs` = `Environment.ProcessorCount` (saturate available cores, matching Akka's
 dispatcher-tuned-for-parallelism setup), `--duration` = 10. `--reentrant` (added 2026-07-09, §13) switches
 the grain type from `IPingPongGrain`/`PingPongGrainBehavior` to a second, otherwise-identical
 `IReentrantPingPongGrain`/`ReentrantPingPongGrainBehavior` marked `[Reentrant]`, for a direct end-to-end
-throughput comparison against the default non-reentrant path.
+throughput comparison against the default non-reentrant path. `--bare` (added 2026-07-09, §15) goes
+further still — bypasses `LocalGrainCallInvoker`/`GrainScopeBinder` entirely, an experimental mode, not a
+supported dispatch path.
 
 ## 9. File structure
 
@@ -296,3 +298,44 @@ smaller than the ~20x gap `DispatchPipelineBenchmarks` measured for the mailbox 
 because at 32-way concurrency both modes still pay for `Task.Run` scheduling, GC, and JIT the same way;
 only the per-call dispatch step itself changes. Confirms §12's read of the code (inline execution,
 verified, not just inferred) and gives a real comparison number for future reentrancy-related runtime work.
+
+## 15. `--bare` variant (added 2026-07-09): what if per-call DI resolution were removed entirely?
+
+§12's trace found `GrainScopeBinder.BindAndResolveAsync` → DI `ResolveService` at 51.5%/50.5% of aggregate
+inclusive time in `--reentrant` mode — comparable in size to everything else combined. This is a "what if"
+experiment to put a real number on that, not a guess: a third mode that bypasses `LocalGrainCallInvoker`
+and `GrainScopeBinder` entirely.
+
+**Implementation.** `--bare` constructs `GrainActivation` objects directly (`isReentrant: true`, same
+constructor `DispatchPipelineBenchmarks` already uses) against a minimal root `IServiceProvider` (just
+`AddLogging()` — no grain behaviors, no scopes registered). **One shared** `ReentrantPingPongGrainBehavior`
+instance is reused across every activation (safe — it's stateless). Each pair's `IPingable` is a thin
+`BareActivationPingable` wrapper: `activation.PostAsync(() => behavior.PingAsync())` — no
+`ServiceProvider.GetService` call anywhere on the per-call path. Counting was switched from
+`IQuarkDiagnosticListener.Count` (which never fires here — bare mode never touches
+`LocalGrainCallInvoker`) to a plain `Interlocked.Increment` inside `RunPairAsync` itself, uniformly across
+all three modes (verified: non-reentrant/reentrant numbers are unchanged after this switch, confirming the
+listener and the direct counter were counting the same thing all along).
+
+**Explicitly experimental, not a proposal to ship as-is**: real grain behaviors need per-call scoping for
+injected dependencies, `IDisposable` cleanup, and per-call state — `--bare`'s "one shared, stateless
+behavior instance" sidesteps all of that on purpose to isolate DI resolution as the one variable removed.
+
+**Result (32 pairs, 15s; load average ~9 at run time, vs. ~5 for the §13 baseline — noted, but the gaps
+below are multiples, not percentages, so it doesn't change the conclusion):**
+
+| Mode | msg/s (×2) | Raw calls/s | vs. non-reentrant |
+|---|---:|---:|---:|
+| Non-reentrant (default) | 820,205 | 410,102 | 1x |
+| `--reentrant` | 2,400,690 | 1,200,345 | 2.9x |
+| `--bare` | 26,283,175 | 13,141,587 | **32x** |
+
+Removing DI/scope resolution gets another **~11x beyond `--reentrant`** on top of that mode's own 2.9x —
+landing within ~2x of Akka's cited ~50M msg/s figure, using the identical `Task.Run`-per-pair driver and
+`GrainActivation`/`ValueTask` plumbing. This confirms §12's read directly: per-call DI scope resolution
+was not a secondary cost sitting next to the mailbox — under reentrant scheduling it was comparable in
+size to everything else combined, and removing it is by far the largest identified lever in this whole
+investigation (§9 dispatch-pipeline mailbox stage: ~20x; §13 reentrant end-to-end: ~2.9x; here: ~11x on
+top of that). Not a claim that a real fix would fully realize 32x — a real fix must keep per-call scoping
+semantics for stateful/disposable behaviors — but it bounds how much headroom removing DI-resolution cost
+specifically could plausibly recover.
