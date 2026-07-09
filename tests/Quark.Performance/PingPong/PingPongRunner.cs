@@ -20,8 +20,6 @@ public static class PingPongRunner
 
         Console.WriteLine("=== Ping-Pong Throughput Benchmark ===");
         Console.WriteLine($"  Pairs: {cli.Pairs}, Duration: {cli.DurationSeconds}s, Mode: {mode}");
-        Console.WriteLine("  Note: reported msg/s is 2x the raw grain-call count, approximating Akka's");
-        Console.WriteLine("  one-way-tell convention (ping leg + pong leg per round trip).");
         if (cli.Bare)
         {
             Console.WriteLine("  Bare mode: bypasses LocalGrainCallInvoker/GrainScopeBinder entirely -- posts");
@@ -129,13 +127,13 @@ public static class PingPongRunner
 
                 long intervalDelta = count - lastCount;
                 double intervalSeconds = elapsed - lastElapsed;
-                double instantaneous = intervalSeconds > 0 ? 2 * intervalDelta / intervalSeconds : 0;
+                double instantaneous = intervalSeconds > 0 ? intervalDelta / intervalSeconds : 0;
 
                 // Cumulative avg is dragged down by JIT/thread-pool warm-up in the first ~1-2s and takes
                 // many seconds to visually converge even after the real (instantaneous) rate has already
                 // flattened out — report both so a slow-looking cumulative curve isn't mistaken for an
                 // ongoing ramp. See docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md §11.
-                Console.WriteLine($"  t={elapsed:F0}s  {2 * count / elapsed:N0} msg/s (x2, cumulative avg)  |  {instantaneous:N0} msg/s (x2, last {intervalSeconds:F1}s)");
+                Console.WriteLine($"  t={elapsed:F0}s  {count / elapsed:N0} calls/s (cumulative avg)  |  {instantaneous:N0} calls/s (last {intervalSeconds:F1}s)");
 
                 lastCount = count;
                 lastElapsed = elapsed;
@@ -159,8 +157,7 @@ public static class PingPongRunner
         Console.WriteLine($"  Pairs: {cli.Pairs}");
         Console.WriteLine($"  Duration: {totalSeconds:F1}s");
         Console.WriteLine($"  Raw grain calls: {totalCalls:N0}");
-        Console.WriteLine($"  Raw call rate: {totalCalls / totalSeconds:N0} calls/s");
-        Console.WriteLine($"  Akka-comparable rate (x2): {2 * totalCalls / totalSeconds:N0} msg/s");
+        Console.WriteLine($"  Call rate: {totalCalls / totalSeconds:N0} calls/s");
     }
 
     private static async Task RunPairAsync(IPingable ping, IPingable pong, CancellationToken ct, PaddedCounter[] counters, int pairIndex)

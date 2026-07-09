@@ -382,3 +382,18 @@ ceiling far more at 32-way concurrency (32 threads hammering one cache line) tha
 where it was first caught. Removing DI/scope resolution specifically is now measured at **~27x beyond
 `--reentrant`** (72,784,029 / 2,668,288), not the previously-reported ~11x. §15's conclusion direction is
 unchanged (DI resolution is the largest identified lever) — only the magnitude was understated.
+
+## 17. Reporting simplified (2026-07-09): dropped the ×2 "Akka-comparable" figure
+
+§5 decided to report `2 × (grain calls / elapsed seconds)` alongside the raw call rate, approximating
+Akka's one-way-`tell` convention. In practice, printing two numbers that always differ by exactly a
+factor of 2 side by side (`848,231 msg/s (x2, cumulative avg)  |  ... calls/s`) read as more confusing than
+informative — feedback after actually using the tool's output. `PingPongRunner` now prints only the raw
+grain-call rate (`calls/s`); the ×2 constant-factor relationship to Akka's counting convention (§5) still
+holds as a mental-math note for anyone who wants that comparison, but the tool no longer computes or
+prints it.
+
+**Every `msg/s (×2)` figure in §11-§16 above predates this change and is unaffected in substance** — they
+were all `raw calls/s × 2`; nothing about the underlying measurement or methodology changed, only what a
+future run of the tool prints. Read historical `X msg/s (×2)` entries above as `(X/2) calls/s` if
+cross-referencing against a post-2026-07-09 run's raw output.

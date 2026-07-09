@@ -69,9 +69,13 @@ dotnet run --project tests/Quark.Performance -- LocalStreaming
 
 ### `PingPong`
 
-Two grains per pair volley `PingAsync()` calls back and forth for a fixed duration. Reported `msg/s` is
-2x the raw grain-call count, approximating Akka's one-way-`tell` convention (ping leg + pong leg per
-round trip) for a like-for-like comparison.
+Two grains per pair volley `PingAsync()` calls back and forth for a fixed duration. Reports the raw
+grain-call rate directly (`calls/s`) — an earlier version reported a `2x` "Akka-comparable msg/s" figure
+alongside the raw rate, approximating Akka's one-way-`tell` convention (ping leg + pong leg per round
+trip); that dual reporting was removed 2026-07-09 (see design spec §17) because seeing two numbers that
+always differ by exactly 2x side by side was more confusing than informative. Historical figures elsewhere
+in the design spec that predate this change are still stated as `msg/s (×2)` — read them as `raw calls/s
+× 2`, no methodology changed, only what the tool prints.
 
 ```bash
 dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant] [--bare]
@@ -82,14 +86,13 @@ dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration
 - `--reentrant` — use a `[Reentrant]` grain variant instead of the default. `[Reentrant]` activations skip
   the mailbox channel and its forced-async completion signal entirely (`GrainActivation.PostAsync` calls
   the work item inline) — run the same `--pairs`/`--duration` with and without this flag to measure that
-  gap end-to-end (measured 2026-07-09: ~3.1x, 848K vs 2.7M msg/s at 32 pairs/15s — see
+  gap end-to-end (measured 2026-07-09: ~3.1x, 424K vs 1.33M calls/s at 32 pairs/15s — see
   `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §13)
 - `--bare` — experimental, not a supported dispatch path: bypasses `LocalGrainCallInvoker`/
   `GrainScopeBinder` entirely, posting directly to a bare `GrainActivation` backed by one shared behavior
   instance (no per-call DI scope/`ResolveService`). Measures the ceiling if per-call DI resolution were
-  removed (measured 2026-07-09, corrected — see §16: ~86x over the default, 848K vs 72.8M msg/s at 32
-  pairs/15s, higher than Akka's cited ~50M msg/s figure — see
-  `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §16)
+  removed (measured 2026-07-09, corrected — see §16: ~86x over the default, 424K vs 36.4M calls/s at 32
+  pairs/15s — see `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §16)
 
 If comparing `--pairs 1` vs. a higher pair count to check scaling, know that call counting uses one
 padded counter per pair (`PaddedCounter`, `PingPongRunner.cs`) specifically because a single shared
