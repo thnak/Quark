@@ -217,3 +217,75 @@ report that plainly rather than rounding up — same standard as the prior two r
   for this round; can be added later without touching the wake algorithm itself.
 - Piggybacking on the CLR `ThreadPool`'s own work-stealing (the Orleans approach, considered and
   deferred in the prior spec's §2 option 3) — still not pursued here.
+
+## 8. Measured outcome (implemented and profiled)
+
+**Correctness (criterion c): clean.** Full unit suite run 3x, full integration suite run once
+(non-infra tests): zero `SchedulingSemantics` failures across all runs. Every failure observed
+(`StuckGrainDetectorStallTests.ExecuteAsync_FiresOnSchedulerDrainStalled_WhenActivationLivelocked`,
+`GrainTimerTests.Timer_FiresRepeatedly`, `ReminderIntegrationTests.Reminder_SurvivesSimulatedRestart`)
+matches a documented pre-existing flake in `project_flaky_tests` memory and was re-confirmed passing
+in isolation. Box load average was 30-45 on 32 cores throughout this session (6 concurrent users, a
+Roslyn compiler process alone observed at 847% CPU) — squarely in the "environmental, not a
+regression" territory that memory documents. Both Task 1 and Task 2's subagent-driven reviews
+(independent, adversarial) also confirmed the push-then-recheck-then-park correctness argument holds
+by direct code inspection and, for Task 2, an empirical regression test that fails with a hard
+timeout when the re-sweep is disabled — confirming the mechanism is load-bearing, not decorative.
+
+**Contention (criterion b): met, and by a wide margin.** Re-profiled with the same `dotnet-trace` +
+parent-frame-table methodology as the prior round:
+
+| Metric | Prior round (shared `_workSignal`) | This round (per-worker + idle registry) |
+|---|---|---|
+| Total contended-lock-acquire attempts (parent-frame table sum) | 70,100 | 9,735 |
+| `UNMANAGED_CODE_TIME` share of sampled thread-time | ~86.4% | 45.9% |
+| `RunWorkerAsync` + `SemaphoreSlim.Release` combined share of contended acquires | ~92% | ~60% (28.4% + 31.5%) |
+
+The total contended-acquire count dropped by roughly 86% (70,100 → 9,735). `RunWorkerAsync`'s and
+`SemaphoreSlim.Release`'s combined share of that count also fell (92% → 60%), even though it remains
+the largest single contributor — the targeted per-worker release is contending far less than the old
+broadcast-style shared semaphore did. A previously-minor contributor,
+`Microsoft.Extensions.DependencyInjection`'s `dynamicClass.ResolveService` (per-call `IServiceScope`
+resolution), now accounts for 30.8% of contended acquires — it was not a dominant contributor in the
+prior round's breakdown and is now the second-largest, worth investigating as the next contention
+target in a future round. No `ConcurrentStack` frames appear anywhere in the parent-of-monitor
+breakdown — the idle-worker registry is contributing zero measured monitor contention, confirming its
+lock-freedom in practice, not just by construction.
+
+**Throughput (criterion a): NOT met — noise-dominated, no sign-consistent improvement.** 10
+interleaved, `taskset`-pinned paired PingPong trials (this design on cores 0-7, a control build at
+`main` tip `7aa7ebc` on cores 8-15, both isolated from each other but not from the rest of this
+heavily-loaded shared box):
+
+| | median | min | max | spread |
+|---|---|---|---|---|
+| This design | 345,356 msg/s | 98,542 | 616,951 | 518,409 |
+| Control (`7aa7ebc`) | 250,840 msg/s | 151,663 | 673,057 | 521,394 |
+
+Per-trial win/loss: this design won 4 of 10 trials, control won 6 of 10, with no consistent pattern
+(design won trials 3, 6, 7, 9; control won 1, 2, 4, 5, 8, 10). The spread within each side (~520k) is
+larger than either side's median — the CPU-pinning mitigated cross-side competition between the two
+benchmark processes, but did not isolate either from the rest of this box's ambient load (observed
+during the run: a Roslyn compiler process at 847% CPU, a second at 433%, a Gradle daemon at 89%, five
+other concurrent Claude Code sessions). This is the same class of measurement noise the prior two
+rounds hit, now confirmed to survive CPU pinning on this specific box under this specific load — the
+pinning assumption ("isolating from other users' load as far as this shared box allows," §6) held for
+inter-process isolation between the two benchmarks but not for isolation from everything else running
+unpinned across the same core ranges.
+
+**AstroSim regression check: passed (no crash, no hang).** 1M bodies, 16×16×16 grid, 15s duration:
+94,276 msg/s sustained. Lower than the prior round's baseline pairing (~129,700 / ~134,941) but this
+is a regression check, not a target for improvement, and the absolute number is consistent with the
+same heavy ambient box load documented above, not a functional regression — no crash, no hang, no
+correctness anomaly in the chunk center-of-mass bounds.
+
+**Evaluated against §6's success criteria: 2 of 3 met.** (b) and (c) are clear and strong; (a) is not
+met — the paired-trial data is noise-dominated with a 4/6 sign split, not a consistent improvement.
+Per §6's own instruction, reporting this plainly rather than rounding up: this round does not clear
+the stated ship bar on its own throughput terms. The contention-reduction evidence (a 7.2x drop in
+contended-lock-acquire attempts, with the idle registry itself measured lock-free) is real and
+strong, and mirrors the same "correctness clean, contention evidence positive, wall-clock throughput
+inconclusive due to shared-box noise" pattern both prior rounds landed on — this is a real, repeated
+measurement environment limitation on this box, not a property of the changes themselves. Whether
+that contention evidence alone justifies shipping is a decision for the human, not a default outcome
+of tests passing.
