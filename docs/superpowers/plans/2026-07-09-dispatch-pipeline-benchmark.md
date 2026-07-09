@@ -208,10 +208,25 @@ Run: `dotnet build tests/Quark.Performance/Quark.Performance.csproj`
 Expected: Build succeeds (0 errors). `GrainScopeBinder` must resolve — if it doesn't, Task 1 wasn't
 applied correctly.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Register the class with Program.cs's BenchmarkSwitcher**
+
+In `tests/Quark.Performance/Program.cs`, add `typeof(DispatchPipelineBenchmarks)` to the `switcher` array
+(otherwise `--filter` finds 0 benchmarks — this class is invoked by name, not by namespace scanning):
+
+```csharp
+        var switcher = new BenchmarkSwitcher(new[]
+        {
+            typeof(GrainCallBenchmarks),
+            typeof(StreamingBenchmarks),
+            typeof(SerializationBenchmarks),
+            typeof(DispatchPipelineBenchmarks),
+        });
+```
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git add tests/Quark.Performance/DispatchPipelineBenchmarks.cs
+git add tests/Quark.Performance/DispatchPipelineBenchmarks.cs tests/Quark.Performance/Program.cs
 git commit -m "dispatch-pipeline-benchmarks: add harness + table lookup, scope, and ExecutionContext stages"
 ```
 

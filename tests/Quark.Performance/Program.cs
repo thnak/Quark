@@ -35,6 +35,7 @@ public class Program
             typeof(GrainCallBenchmarks),
             typeof(StreamingBenchmarks),
             typeof(SerializationBenchmarks),
+            typeof(DispatchPipelineBenchmarks),
         });
 
         switcher.Run(args);
