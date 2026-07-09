@@ -31,6 +31,17 @@ this spec after the benchmarks are run) ranking the stages by cost, which is wha
 
 ## 3. Background: the call path being decomposed
 
+**This is not a serialization story.** It's tempting to assume Akka's ~50M msg/s is reachable because it's
+"basically a native call" while Quark/Orleans "serialize every call" and therefore must be slower. Verified
+against the code: `LocalGrainCallInvoker.InvokeAsync`/`InvokeVoidAsync` — the paths every in-process grain
+call, including `PingPong`, takes — never call `IGrainInvokable.Serialize`/`CodecWriter` at all (the one
+`Serialize` call site in `LocalGrainCallInvoker.cs` is inside `InvokeObserverAsync`'s TCP-writeback branch,
+unrelated to normal grain calls). This matches the AstroSim spec's documented finding that "in-process grain
+calls never serialize." Akka's cited 50M msg/s figure is also its *local* actor benchmark, not `Akka.Remote`
+(dramatically slower per Akka's own docs) — so both benchmarks are already apples-to-apples on "no wire, no
+bytes." The gap this spec investigates is architectural (mailbox/scheduler round-trip cost, per-call DI scope,
+RPC-await semantics — see the numbered list below), not serialization overhead.
+
 `LocalGrainCallInvoker.InvokeVoidAsync` (`src/Quark.Runtime/LocalGrainCallInvoker.cs`), steady state
 (activation already exists, no placement/remote routing), does in order:
 
