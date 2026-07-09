@@ -397,3 +397,38 @@ prints it.
 were all `raw calls/s × 2`; nothing about the underlying measurement or methodology changed, only what a
 future run of the tool prints. Read historical `X msg/s (×2)` entries above as `(X/2) calls/s` if
 cross-referencing against a post-2026-07-09 run's raw output.
+
+## 18. Retraction (2026-07-09): the "vs. Akka" framing in §15/§16 overclaimed — ask and tell are not the same measurement
+
+§2 and §5 got this right from the start: "Different runtime, different message-passing model (RPC/ask vs.
+one-way tell...)" and "This is an **approximation**... the number is never read as more directly
+comparable than it is." §15 and §16's result write-ups drifted from that discipline — phrases like "landing
+within ~2x of Akka's cited ~50M msg/s figure" and "higher than Akka's cited ~50M msg/s ping-pong figure"
+treat Quark's number and Akka's published number as the same kind of quantity, differing only by a
+counting-convention factor. They are not, and no counting-convention fix (the ×2, or removing it per §17)
+closes the gap. **Those specific comparative claims in §15/§16 are retracted; the raw throughput numbers
+themselves are correct (see §16's corrected figures), only the "vs. Akka" framing around them is wrong.**
+
+**Why ×2 was never enough.** `PingPongRunner`'s driver loop is `await targets[i % 2].PingAsync()` — request-
+response `ask`: the caller blocks until the callee replies, and only **one call is ever in flight per
+pair** at a time. Throughput is bounded by round-trip latency: `pairs / round-trip-latency`. Akka's classic
+ping-pong is one-way `tell`: actor A sends "ping" to B and returns immediately — the sender never waits for
+anything. There is no round-trip dependency anywhere in the hot loop; Akka's dispatcher just drains
+mailboxes as fast as it can, with no per-message latency to hide, and can batch many messages per
+scheduling quantum before switching actors. A tell-based system's ceiling is `1 / processing-cost-per-
+message`, with **no latency term at all**, because nothing ever waits. §5's ×2 factor addresses a
+*counting* difference (how many "messages" one round trip represents in each system's own accounting) —
+it does nothing about this deeper *structural* difference (whether the sender waits). Even a
+hypothetical zero-latency Quark `ask` call would still be measuring a fundamentally different ceiling than
+a `tell`-based pipeline, because `ask` forces strict one-at-a-time serialization in the caller's loop that
+`tell` never has.
+
+**What would actually be comparable:** a genuine one-way, fire-and-forget primitive in Quark — send and
+return immediately, no waiting for the callee, so a driver could have many calls in flight per pair
+(matching what `tell`'s pipelining allows). Quark has no such path today (confirmed in
+`2026-07-09-dispatch-pipeline-benchmark-design.md` §2 / the `ChannelNoSignalPattern` benchmark: "not a
+call into production fire-and-forget code — Quark has none"). Absent that, PingPong's numbers should be
+read purely as **internal, cross-mode comparisons** (default vs. `--reentrant` vs. `--bare` — all measuring
+the same `ask` model, so the ratios between them are valid) and not as a comparison against Akka's or any
+other `tell`-based system's published figure. `README.md` and issue #162 have been corrected to match —
+see their edit history for what changed.

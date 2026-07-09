@@ -70,12 +70,15 @@ dotnet run --project tests/Quark.Performance -- LocalStreaming
 ### `PingPong`
 
 Two grains per pair volley `PingAsync()` calls back and forth for a fixed duration. Reports the raw
-grain-call rate directly (`calls/s`) — an earlier version reported a `2x` "Akka-comparable msg/s" figure
-alongside the raw rate, approximating Akka's one-way-`tell` convention (ping leg + pong leg per round
-trip); that dual reporting was removed 2026-07-09 (see design spec §17) because seeing two numbers that
-always differ by exactly 2x side by side was more confusing than informative. Historical figures elsewhere
-in the design spec that predate this change are still stated as `msg/s (×2)` — read them as `raw calls/s
-× 2`, no methodology changed, only what the tool prints.
+grain-call rate directly (`calls/s`). An earlier version also reported a `2x` "Akka-comparable msg/s"
+figure alongside the raw rate; that was removed 2026-07-09 (design spec §17) both because two numbers
+differing by exactly 2x side by side was confusing, and — more importantly — because **the comparison
+itself doesn't hold up** (design spec §18): Quark's driver loop is `await`-based `ask` (the caller blocks
+for a reply, one call in flight per pair, throughput bounded by round-trip latency); Akka's classic
+ping-pong is one-way `tell` (fire-and-forget, sender never waits, no round-trip dependency, effectively
+unbounded pipelining). No counting-convention factor fixes that gap — read PingPong's numbers as an
+**internal comparison across `--reentrant`/`--bare` modes**, not as a comparison against Akka's or any
+other `tell`-based system's published figure.
 
 ```bash
 dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant] [--bare]
