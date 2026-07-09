@@ -37,8 +37,10 @@ public sealed class CodecProvider : ICodecProvider
     /// <inheritdoc />
     public IGeneralizedCodec? TryGetGeneralizedCodec(Type type)
     {
-        _generalizedCodecs ??= new List<IGeneralizedCodec>(_services.GetServices<IGeneralizedCodec>());
-        foreach (IGeneralizedCodec codec in _generalizedCodecs)
+        List<IGeneralizedCodec> generalizedCodecs = LazyInitializer.EnsureInitialized(
+            ref _generalizedCodecs,
+            () => new List<IGeneralizedCodec>(_services.GetServices<IGeneralizedCodec>()));
+        foreach (IGeneralizedCodec codec in generalizedCodecs)
         {
             if (codec.IsSupportedType(type))
             {
