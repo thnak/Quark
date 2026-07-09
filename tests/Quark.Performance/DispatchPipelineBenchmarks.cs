@@ -43,8 +43,18 @@ public class DispatchPipelineBenchmarks
     private Task _signalReaderTask = null!;
     private Task _noSignalReaderTask = null!;
 
+    // GlobalSetup/GlobalCleanup are synchronous wrappers that block on the async work internally
+    // rather than returning Task directly — BenchmarkDotNet's InProcessEmit toolchain does not
+    // reliably await a Task-returning [GlobalSetup]/[GlobalCleanup], which races the benchmark
+    // workload against unfinished setup (observed: ChannelSignalPattern's late-initialized channel
+    // fields were still null when the workload started).
     [GlobalSetup]
-    public async Task Setup()
+    public void Setup() => SetupAsync().GetAwaiter().GetResult();
+
+    [GlobalCleanup]
+    public void Cleanup() => CleanupAsync().GetAwaiter().GetResult();
+
+    private async Task SetupAsync()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -111,8 +121,7 @@ public class DispatchPipelineBenchmarks
         _noSignalReaderTask = Task.Run(() => DrainNoSignalChannelAsync(_readerCts.Token));
     }
 
-    [GlobalCleanup]
-    public async Task Cleanup()
+    private async Task CleanupAsync()
     {
         await _readerCts.CancelAsync();
         _signalChannel.Writer.TryComplete();
