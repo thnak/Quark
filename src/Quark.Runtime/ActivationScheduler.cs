@@ -24,6 +24,10 @@ namespace Quark.Runtime;
 ///     <see cref="SiloRuntimeOptions.SchedulerMaxConcurrentActivations"/> concurrency guarantee: any
 ///     N distinct busy activations can still be serviced by N distinct workers concurrently,
 ///     regardless of which shard they land on.
+///     The idle-wake signal is sharded too: a per-worker <see cref="SemaphoreSlim"/> plus a lock-free
+///     idle-worker registry (<see cref="_idleWorkers"/>) target a single idle worker directly on each
+///     shard's empty-&gt;non-empty transition, instead of every worker contending on one shared
+///     semaphore -- see docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md.
 /// </remarks>
 internal sealed class ActivationScheduler : IActivationScheduler
 {
@@ -32,10 +36,10 @@ internal sealed class ActivationScheduler : IActivationScheduler
     // Per-shard depth counter, used both as the sweep's "worth trying" pre-check and to gate the
     // idle-wake signal on an exact empty->non-empty transition. ConcurrentQueue<T>.Count cannot be
     // used for this: two concurrent same-shard enqueues can both observe a post-Enqueue Count != 1
-    // and both skip Release() -- and because no worker is guaranteed to later go idle and re-sweep
+    // and both skip the wake -- and because no worker is guaranteed to later go idle and re-sweep
     // (all of them may already be parked), that can strand ready work indefinitely. The
     // Interlocked.Increment(...) == 1 return value is atomic and unique: exactly one concurrent
-    // enqueuer observes the transition and releases exactly once. Same pattern proven in the
+    // enqueuer observes the transition and wakes exactly one worker. Same pattern proven in the
     // sharded-Channel<T> predecessor of this design
     // (docs/superpowers/specs/2026-07-08-scheduler-ready-queue-contention-fix.md).
     private readonly int[] _shardCounts;
@@ -47,13 +51,31 @@ internal sealed class ActivationScheduler : IActivationScheduler
     // the common path (PingPong, AstroSim, most workloads) pays nothing for this.
     private readonly SemaphoreSlim[]? _capacityGates;
 
-    // Idle-wake signal, released only on a shard's exact empty->non-empty transition. Gated by
-    // _shardCounts (see that field's comment) via Interlocked.Increment(...) == 1 -- an atomic,
-    // race-free transition detector. An earlier version of this gate used a plain
-    // ConcurrentQueue<T>.Count == 1 check, which could lose a wakeup under concurrent same-shard
-    // enqueues (see docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md section 4,
-    // corrected) -- that approach was rejected during review.
-    private readonly SemaphoreSlim _workSignal = new(0, int.MaxValue);
+    // One idle-wake semaphore per worker (indexed by workerIndex, same value as the worker's home
+    // shard index -- shard count == worker count, unchanged). Released only for a worker whose index
+    // is popped off _idleWorkers, so a given semaphore normally has at most one waiter -- unlike a
+    // single shared semaphore, which every worker's WaitAsync/every enqueuer's Release contends on.
+    // See docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md section 3.
+    private readonly SemaphoreSlim[] _workerSignals;
+
+    // Lock-free registry of worker indices that currently believe they're idle. An enqueuer's exact
+    // 0->1 transition (see _shardCounts) pops one entry (if any) and releases that worker's own
+    // semaphore -- a targeted wake instead of a broadcast. If the pop finds the stack empty, no
+    // release happens; a busy worker will still reach the transitioned shard on its own next full
+    // sweep after finishing its current drain, the same fallback the single-shared-semaphore design
+    // already relied on (a Release() against an already-positive semaphore doesn't queue a second
+    // waiter either).
+    //
+    // A worker never removes its own entry: ConcurrentStack<T> has no remove-specific-value
+    // operation, only Pop (removes whatever is on top), so a "cancel my registration" Pop could
+    // remove a DIFFERENT worker's entry instead and strand it -- worse than the contention problem
+    // this design exists to fix. Stale entries (a worker listed idle while actually busy, because its
+    // own pre-park double-check found work without unregistering) are deliberately accepted: every
+    // worker still sweeps every shard unconditionally regardless of signal state, so no work is ever
+    // lost from a stale entry -- it only means a future transition's targeted release may land on a
+    // busy worker as a wasted credit, which self-corrects by making that worker's next park attempt a
+    // non-blocking no-op instead of a real park. See design spec section 4 for the full reasoning.
+    private readonly ConcurrentStack<int> _idleWorkers = new();
 
     private readonly CancellationTokenSource _cts = new();
     private readonly Task[] _workers;
@@ -87,11 +109,15 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 _capacityGates[i] = new SemaphoreSlim(_queueCapacity, _queueCapacity);
         }
 
+        _workerSignals = new SemaphoreSlim[concurrency];
+        for (int i = 0; i < concurrency; i++)
+            _workerSignals[i] = new SemaphoreSlim(0, int.MaxValue);
+
         _workers = new Task[concurrency];
         for (int i = 0; i < concurrency; i++)
         {
-            int homeShard = i; // stagger each worker's round-robin start so they don't all sweep in lockstep
-            _workers[i] = Task.Run(() => RunWorkerAsync(homeShard, _cts.Token));
+            int workerIndex = i; // stagger each worker's round-robin start so they don't all sweep in lockstep
+            _workers[i] = Task.Run(() => RunWorkerAsync(workerIndex, _cts.Token));
         }
     }
 
@@ -131,14 +157,14 @@ internal sealed class ActivationScheduler : IActivationScheduler
         EnqueueToShard(shardIndex, activation);
     }
 
-    /// <summary>Enqueues to the given shard, bumps metrics/diagnostics, and wakes an idle worker on the empty-&gt;non-empty transition.</summary>
+    /// <summary>Enqueues to the given shard, bumps metrics/diagnostics, and wakes one idle worker (if any) on the empty-&gt;non-empty transition.</summary>
     private void EnqueueToShard(int shardIndex, GrainActivation activation)
     {
         ConcurrentQueue<GrainActivation> shard = _shards[shardIndex];
         shard.Enqueue(activation);
         int depth = Interlocked.Increment(ref _shardCounts[shardIndex]);
-        if (depth == 1)
-            _workSignal.Release();
+        if (depth == 1 && _idleWorkers.TryPop(out int idleWorker))
+            _workerSignals[idleWorker].Release();
 
         QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
         _diagnostics.OnSchedulerReadyQueueDepthChanged(
@@ -175,7 +201,8 @@ internal sealed class ActivationScheduler : IActivationScheduler
             // Worker cancellation is expected.
         }
         _cts.Dispose();
-        _workSignal.Dispose();
+        foreach (SemaphoreSlim workerSignal in _workerSignals)
+            workerSignal.Dispose();
         if (_capacityGates is not null)
         {
             foreach (SemaphoreSlim gate in _capacityGates)
@@ -184,51 +211,83 @@ internal sealed class ActivationScheduler : IActivationScheduler
     }
 
     /// <summary>
-    ///     Every worker sweeps every shard (starting from its own <paramref name="homeShard"/>, staggered
-    ///     so workers don't all scan in lockstep) rather than owning one shard exclusively. This is what
-    ///     preserves the "N workers configured means N activations can truly run concurrently" guarantee
-    ///     regardless of hash collisions between activations -- sharding only changes which structure a
-    ///     given enqueue/dequeue touches, never which worker may service a given activation.
+    ///     Sweeps every shard once, starting from and advancing <paramref name="cursor"/>, returning
+    ///     the first dequeued activation (if any). On success, <paramref name="cursor"/> is left
+    ///     pointing at the shard the activation came from (matching the pre-refactor loop's behavior,
+    ///     since later code in <see cref="RunWorkerAsync"/> uses it to release that shard's capacity
+    ///     gate and report its depth). Shared by the main dispatch loop and the pre-park double-check
+    ///     below so both use identical dequeue logic.
     /// </summary>
-    private async Task RunWorkerAsync(int homeShard, CancellationToken ct)
+    private GrainActivation? TryDequeueAny(ref int cursor)
     {
         int shardCount = _shards.Length;
-        int cursor = homeShard;
+        for (int i = 0; i < shardCount; i++)
+        {
+            if (Volatile.Read(ref _shardCounts[cursor]) > 0 &&
+                _shards[cursor].TryDequeue(out GrainActivation? candidate))
+            {
+                Interlocked.Decrement(ref _shardCounts[cursor]);
+                return candidate;
+            }
+            cursor = (cursor + 1) % shardCount;
+        }
+        return null;
+    }
+
+    /// <summary>
+    ///     Every worker sweeps every shard (starting from its own <paramref name="workerIndex"/>,
+    ///     staggered so workers don't all scan in lockstep) rather than owning one shard exclusively.
+    ///     This is what preserves the "N workers configured means N activations can truly run
+    ///     concurrently" guarantee regardless of hash collisions between activations -- sharding only
+    ///     changes which structure a given enqueue/dequeue touches, never which worker may service a
+    ///     given activation.
+    /// </summary>
+    private async Task RunWorkerAsync(int workerIndex, CancellationToken ct)
+    {
+        int shardCount = _shards.Length;
+        int cursor = workerIndex;
 
         while (true)
         {
-            GrainActivation? activation = null;
-
-            for (int i = 0; i < shardCount; i++)
-            {
-                if (Volatile.Read(ref _shardCounts[cursor]) > 0 &&
-                    _shards[cursor].TryDequeue(out GrainActivation? candidate))
-                {
-                    Interlocked.Decrement(ref _shardCounts[cursor]);
-                    activation = candidate;
-                    break;
-                }
-                cursor = (cursor + 1) % shardCount;
-            }
+            GrainActivation? activation = TryDequeueAny(ref cursor);
 
             if (activation is null)
             {
                 if (ct.IsCancellationRequested)
                     return;
 
-                // Every shard was empty on a full sweep. Wait on the shared idle signal rather than
-                // polling -- don't trust which write woke us, another worker may already have claimed
-                // the corresponding item -- just resume the sweep from `cursor`.
-                try
+                // Register as idle, then re-sweep once before parking (double-check). Any
+                // transition that landed before this Push is visible to this re-sweep -- the
+                // enqueuer's Interlocked.Increment happens-before any TryPop it performs, and this
+                // Push happens-before the re-sweep's reads. Any transition landing after this Push
+                // is visible to the enqueuer's TryPop, which will target this worker's own
+                // semaphore directly, and the subsequent WaitAsync below consumes that credit
+                // without blocking. There is no gap between "registered idle" and "unreachable by
+                // a wake."
+                _idleWorkers.Push(workerIndex);
+
+                activation = TryDequeueAny(ref cursor);
+
+                if (activation is null)
                 {
-                    await _workSignal.WaitAsync(ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
+                    // This worker's idle-stack entry is intentionally left in place here -- see
+                    // the class-level remarks on _idleWorkers for why a self-removal Pop would be
+                    // unsafe. It stays until an enqueuer's TryPop consumes it.
+                    try
+                    {
+                        await _workerSignals[workerIndex].WaitAsync(ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    continue;
                 }
 
-                continue;
+                // The double-check found work. The idle-stack entry pushed above is deliberately
+                // NOT removed -- see the class-level remarks on _idleWorkers. Fall through and
+                // process this activation normally.
             }
 
             _capacityGates?[cursor].Release();
