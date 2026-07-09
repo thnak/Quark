@@ -533,16 +533,41 @@ git commit -m "dispatch-pipeline-benchmarks: add channel-signal vs no-signal pat
 **Files:**
 - Modify: `docs/superpowers/specs/2026-07-09-dispatch-pipeline-benchmark-design.md` (append §7 Findings)
 
+**Two environment issues discovered running this locally — both required fixes to the plan above:**
+
+1. **`[GlobalSetup]`/`[GlobalCleanup]` must be synchronous wrappers, not `async Task` directly.**
+   BenchmarkDotNet's `InProcessEmit` toolchain does not reliably await a `Task`-returning setup method —
+   the benchmark workload can start before setup finishes. Task 2 Step 1 above already reflects the fix
+   (`public void Setup() => SetupAsync().GetAwaiter().GetResult();`, with the real body moved to a private
+   `SetupAsync()`/`CleanupAsync()`). If implementing from scratch, write it this way from the start.
+2. **A stale, locked worktree (`.claude/worktrees/worktree-workstealing-scheduler`) also contains
+   `tests/Quark.Performance/Quark.Performance.csproj`.** BenchmarkDotNet's default (out-of-process) toolchain
+   searches the whole repo tree for a uniquely-named project to generate its isolated benchmark host, and
+   throws `NotSupportedException: Found more than one matching project file` with two csproj files present.
+   Do not delete or unlock that worktree to fix this — it's outside this plan's scope. Instead, run with
+   BenchmarkDotNet's `--inProcess`/`-i` flag, which uses `InProcessEmitToolchain` and skips project
+   generation entirely.
+
 - [ ] **Step 1: Run the full benchmark suite**
 
-Run: `dotnet run -c Release --project tests/Quark.Performance -- --filter '*DispatchPipeline*'`
+Run (from `tests/Quark.Performance/`):
+`dotnet run -c Release -- --filter '*DispatchPipeline*' --inProcess --strategy ColdStart --iterationCount 15 --warmupCount 3 --launchCount 1`
+
+**Third environment issue discovered:** BenchmarkDotNet's default `Throughput` run strategy (the class's own
+`[SimpleJob]` attribute settings) hangs indefinitely on this suite when combined with `--inProcess` —
+reproduced twice, not specific to any one benchmark. Root cause not chased (out of scope for a diagnosis
+spec — see the Findings section's methodology note for detail). The `--strategy ColdStart` override above
+works around it (one invocation per iteration instead of a pilot-calibrated `UnrollFactor`) at the cost of
+precision (results are noisier — report median, not mean).
 
 Expected: BenchmarkDotNet runs all 11 `[Benchmark]` methods cleanly (no exceptions) and prints a summary
-table with Mean and Allocated columns.
+table with Mean/Median/StdDev and Allocated columns. Ignore the `Job-XXXXX`/`Toolchain=Default` row per
+benchmark (that's the class's own `[SimpleJob]` attribute, which still hits the worktree-ambiguity `NA` —
+the row with `Toolchain=InProcessEmitToolchain` is the real result).
 
 - [ ] **Step 2: Append the findings table to the spec**
 
-Add a `## 7. Findings` section to
+Add a `## 9. Findings` section (after the existing `## 8. Testing / validation`) to
 `docs/superpowers/specs/2026-07-09-dispatch-pipeline-benchmark-design.md` with:
 - The full BenchmarkDotNet results table (stage, mean ns/op, allocated bytes), sorted by mean descending.
 - One paragraph identifying which stage(s) dominate — compare against PingPong's ~756K msg/s (32 pairs) and

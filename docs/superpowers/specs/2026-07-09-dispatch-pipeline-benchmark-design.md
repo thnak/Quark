@@ -144,3 +144,68 @@ No new grain/proxy/invokable types — reuses `Quark.Performance.PingPong.IPingP
   plausible relative ordering (e.g. stage 8's full path should be slower than any single isolated stage,
   not faster) — then the §6 findings table and interpretation get written into this spec as a follow-up
   edit, which becomes the input to deciding what — if anything — gets its own optimization spec next.
+
+## 9. Findings (run of 2026-07-09)
+
+**Methodology note.** BenchmarkDotNet's default `Throughput` run strategy (pilot-calibrated `UnrollFactor`,
+many thousands of invocations per iteration) hung indefinitely on this suite — reproduced twice, isolated to
+not being specific to any one benchmark (`ExecutionContextCapture`, the simplest possible benchmark here,
+hung too). Root cause not chased further (out of scope for a diagnosis spec), but it's a real anomaly worth
+its own follow-up: possibly related to running two full silos' worth of DI containers/`ActivationScheduler`
+instances (`_sp`/`_spDiag`) concurrently under a calibration loop that hammers invocation rate far harder
+than any realistic caller would. Numbers below instead use `RunStrategy=ColdStart` (one invocation per
+iteration, 15 iterations, 3 warmup), run via `--inProcess` to route around the unrelated stale-worktree
+project-ambiguity issue (§ below). ColdStart trades precision for reliability — every stage shows high
+variance and multimodal distributions (BenchmarkDotNet's own warnings), so **median**, not mean, is the
+reliable column; both are reported. This resolution is coarse (microseconds, not nanoseconds) but the
+relative ordering across stages is the actual deliverable, and it is unambiguous.
+
+Also worth its own note: every stage showed occasional multi-millisecond outliers (up to ~13ms) against a
+typical-case median in the tens-to-hundreds of microseconds — a long tail on top of the baseline cost that
+this suite wasn't designed to characterize, but that's plausibly connected to the Throughput-strategy hang
+above (something occasionally stalls hard under load) and worth its own investigation.
+
+| Stage | Median | Mean | StdDev |
+|---|---:|---:|---:|
+| FullInvokeDiagnosticsOn (7b) | 388.4 us | 1,065.9 us | 2,631.1 us |
+| FullInvokeDiagnosticsOff (7a) | 379.6 us | 1,221.3 us | 3,258.4 us |
+| FullInvokeVoidAsync (8, full path) | 349.4 us | 1,092.5 us | 2,873.6 us |
+| MailboxRoundTrip (5) | 270.7 us | 668.2 us | 1,491.4 us |
+| ChannelSignalPattern (9a) | 223.6 us | 452.1 us | 815.9 us |
+| ScopeBindAndResolve (3) | 95.9 us | 850.0 us | 2,925.6 us |
+| ChannelNoSignalPattern (9b) | 33.8 us | 375.5 us | 1,324.0 us |
+| ServiceScopeCreateDispose (2) | 33.5 us | 100.3 us | 249.9 us |
+| ActivationTableLookup (1) | 26.0 us | 503.2 us | 1,825.2 us |
+| MailboxRoundTripReentrant (6) | 13.0 us | 538.1 us | 2,026.8 us |
+| ExecutionContextCapture (4) | 8.9 us | 57.7 us | 187.1 us |
+
+**The mailbox/channel/scheduler round trip is the dominant cost, and diagnostics is confirmed noise.**
+`MailboxRoundTripReentrant` (13.0 us — bypasses the channel entirely) vs. `MailboxRoundTrip` (270.7 us — the
+same call, through the real `Channel<T>` + scheduler wake + forced-async-continuation completion signal) is
+a ~20x gap: this is the single largest identified contributor to per-call cost, isolated cleanly from DI,
+serialization, or diagnostics. `ChannelSignalPattern`'s synthetic version of the same "await a forced-async
+completion signal" pattern (223.6 us) lands in the same order of magnitude as the real `MailboxRoundTrip`,
+confirming the cost is the *await-a-signal* pattern itself, not something specific to `GrainActivation`'s
+production machinery. `ChannelNoSignalPattern` (33.8 us, no wait) vs. `ChannelSignalPattern` (223.6 us) is
+roughly a 7x gap — a direct, if synthetic, measurement of what Quark's RPC/`ask` semantics cost relative to
+a hypothetical no-wait/`tell`-style send (see §2 — Quark has no such path today). `FullInvokeDiagnosticsOn`
+vs. `FullInvokeDiagnosticsOff` differ by only ~2% (388.4 vs. 379.6 us), within noise — diagnostics
+(`Activity` + `QuarkInstruments` meters + an active listener doing real work) is not a meaningful contributor.
+Against PingPong's throughput (~756K msg/s ×2, 32 concurrent pairs on a 32-core machine — i.e. aggregate,
+warm, cross-core amortized) and Akka's ~50M msg/s (~20ns/message), even this suite's *smallest* stage,
+`ExecutionContextCapture` at 8.9 us, is ~450x larger than Akka's entire per-message budget; the dominant
+mailbox stage (270.7 us) is ~13,500x larger. The gap is not evenly distributed across the pipeline — it
+concentrates in the channel-write-then-await-completion-signal step.
+
+**Reconciliation:** stage 1 + stage 3 + stage 5 = 26.0 + 95.9 + 270.7 = 392.6 us, closely tracking stage 8's
+measured full-path median of 349.4 us (~12% apart, well within ColdStart's noise band) — the isolated stages
+do account for essentially the entire real per-call cost, with no large unexplained residual.
+
+**Serialization conclusion unchanged.** None of these 11 benchmarks call `CodecWriter`/`.Serialize()` (the
+suite exercises only `LocalGrainCallInvoker`'s in-process path) — this run's numbers are consistent with,
+and do not revise, §3's finding that the Akka gap is architectural, not a serialization cost.
+
+**Implication for follow-up work:** if a fix-phase spec is scoped next, the mailbox/channel/scheduler round
+trip — specifically the forced-async completion signal (`RunContinuationsAsynchronously = true` forcing a
+thread-pool hop on every call) — is the evidence-backed place to start, not DI scope creation, not
+`ExecutionContext.Capture()`, and not diagnostics.
