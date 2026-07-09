@@ -174,6 +174,14 @@ internal sealed class ActivationScheduler : IActivationScheduler
     }
 
     /// <summary>Enqueues to the given shard, bumps metrics/diagnostics, and wakes an idle worker on the empty-&gt;non-empty transition.</summary>
+    ///
+    /// **CORRECTED DURING REVIEW — do not copy this snippet as-is.** The `shard.Count == 1` gate
+    /// below is NOT an atomic transition detector: concurrent same-shard enqueues can both observe
+    /// `Count != 1` and both skip `Release()`, stranding work when every worker is already parked.
+    /// The shipped fix replaces this with an exact `Interlocked.Increment(ref _shardCounts[shardIndex])
+    /// == 1` gate backed by a per-shard `int[]` counter. See
+    /// docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md section 4 for the corrected
+    /// design and reasoning, and `src/Quark.Runtime/ActivationScheduler.cs` for the actual shipped code.
     private void EnqueueToShard(int shardIndex, GrainActivation activation)
     {
         ConcurrentQueue<GrainActivation> shard = _shards[shardIndex];
