@@ -2,6 +2,6 @@ using Quark.Core.Abstractions.Grains;
 
 namespace Quark.Performance.PingPong;
 
-public interface IPingPongGrain : IGrainWithStringKey, IPingable
+public interface IReentrantPingPongGrain : IGrainWithStringKey, IPingable
 {
 }

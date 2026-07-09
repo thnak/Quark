@@ -74,11 +74,16 @@ Two grains per pair volley `PingAsync()` calls back and forth for a fixed durati
 round trip) for a like-for-like comparison.
 
 ```bash
-dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS]
+dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant]
 ```
 
 - `--pairs` (default `Environment.ProcessorCount`) — number of ping/pong grain pairs running concurrently
 - `--duration` (default `10`) — seconds to run
+- `--reentrant` — use a `[Reentrant]` grain variant instead of the default. `[Reentrant]` activations skip
+  the mailbox channel and its forced-async completion signal entirely (`GrainActivation.PostAsync` calls
+  the work item inline) — run the same `--pairs`/`--duration` with and without this flag to measure that
+  gap end-to-end (measured 2026-07-09: ~2.9x, 820K vs 2.4M msg/s at 32 pairs/15s — see
+  `docs/superpowers/specs/2026-07-08-pingpong-benchmark-design.md` §13)
 
 Sanity-check at a small scale first (`--pairs 4 --duration 3`) before trusting the default full-core run.
 
@@ -109,6 +114,9 @@ bound (don't all fly to infinity or collapse to a point) before scaling up to th
   Note none of the dispatch-path suites touch `CodecWriter` — in-process calls never serialize.
   See `docs/superpowers/specs/2026-07-09-dispatch-pipeline-benchmark-design.md` §"Serialization
   conclusion" for why the two are measured separately.
+- Changed the mailbox, scheduler, or reentrant fast path? Run `PingPong` twice — with and without
+  `--reentrant` at the same `--pairs`/`--duration` — for an end-to-end before/after number, not just the
+  isolated `MailboxRoundTrip`/`MailboxRoundTripReentrant` stages in `DispatchPipelineBenchmarks`.
 - Want a quick, whole-system sanity check of grain-call throughput under real concurrency (not a
   microbenchmark)? Run `PingPong` — it's the fastest of the three real-cluster tools to iterate on.
 - Need sustained throughput at scale with realistic per-call work and neighbor fan-out? Run `AstroSim`.

@@ -114,11 +114,14 @@ gotcha as AstroSim), all pairs and the driver in one process through `LocalGrain
 New `PingPong` subcommand alongside `AstroSim`/`LocalStreaming` in `Program.cs`:
 
 ```
-dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS]
+dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant]
 ```
 
 Defaults: `--pairs` = `Environment.ProcessorCount` (saturate available cores, matching Akka's
-dispatcher-tuned-for-parallelism setup), `--duration` = 10.
+dispatcher-tuned-for-parallelism setup), `--duration` = 10. `--reentrant` (added 2026-07-09, §13) switches
+the grain type from `IPingPongGrain`/`PingPongGrainBehavior` to a second, otherwise-identical
+`IReentrantPingPongGrain`/`ReentrantPingPongGrainBehavior` marked `[Reentrant]`, for a direct end-to-end
+throughput comparison against the default non-reentrant path.
 
 ## 9. File structure
 
@@ -147,3 +150,149 @@ No `.csproj` changes needed — `PingPong/` reuses the same `Quark.Diagnostics.A
   comparison in the commit/PR description.
 - Success criterion is a number, not a test: a reported sustained msg/s figure at `--pairs` =
   `Environment.ProcessorCount`, with the ×2 caveat stated alongside it.
+
+## 11. Findings (run of 2026-07-09): the cumulative-average metric misrepresents warm-up as an ongoing ramp
+
+A `--pairs 32 --duration 20` run (32-core machine, `Environment.ProcessorCount` default) produced a
+cumulative-average curve that climbed for the full 20 seconds without visibly flattening:
+
+```
+t=1s   657,719 msg/s (x2, cumulative avg)
+t=4s 1,025,924 msg/s (x2, cumulative avg)
+t=10s 1,195,175 msg/s (x2, cumulative avg)
+t=19s 1,240,907 msg/s (x2, cumulative avg)
+t=20s 1,237,665 msg/s (x2, cumulative avg)
+```
+
+Read at face value this looks like the system takes ~20s to reach steady state. Reconstructing the
+**instantaneous** per-second rate from consecutive samples (`count(t) = avg(t)×t/2`, then differencing)
+tells a different story:
+
+| t | raw calls this second | instantaneous (x2) |
+|---:|---:|---:|
+| 1 | 328,860 | 657,719 |
+| 2 | 496,491 | 992,982 |
+| 3 | 566,192 | 1,132,384 |
+| 4 | 660,305 | 1,320,610 |
+| 5–19 | ~630K–660K (flat) | ~1.26M–1.32M (flat) |
+| 20 | 588,033 (partial-second cutoff) | 1,176,066 |
+
+**The real system reaches steady state by t≈3-4s, not t≈20s.** The apparent 20-second ramp is an artifact
+of the reported metric being a *cumulative* average since program start: the two genuinely slow opening
+seconds (t=1, t=2) drag the average down, and it takes many seconds of a flat, already-steady-state rate
+for a cumulative mean to visually converge toward it. This is a property of the metric, not the runtime —
+the underlying per-second throughput is flat from t≈4 onward.
+
+**Root cause of the first ~2 slow seconds:** every grain call goes through `GrainActivation`'s mailbox,
+which forces an async continuation onto the thread pool — the queue is created with
+`AllowSynchronousContinuations = false` (`src/Quark.Runtime/GrainActivation.cs:95-101`) and completions run
+through a `TaskCompletionSource(RunContinuationsAsynchronously: true)` (`GrainActivation.cs:44`, also
+`:959`/`:1116`/`:1217`). This is the same cost `DispatchPipelineBenchmarks` isolated as dominant
+(`MailboxRoundTrip` 270.7us vs. `MailboxRoundTripReentrant` 13.0us — see
+`2026-07-09-dispatch-pipeline-benchmark-design.md` §9). With `--pairs` defaulting to
+`Environment.ProcessorCount` (32 here), all 32 pair-driver loops force this thread-pool hop concurrently
+from t=0 — more concurrently-suspended continuations than warm worker threads, so .NET's ThreadPool
+hill-climbing injects additional threads before every loop can run at full speed. That injection settles
+in ~2 seconds, matching exactly where the instantaneous rate stops climbing (JIT tiering from Tier0 to
+Tier1 over the same window is a plausible secondary contributor, not separately isolated here).
+
+**Not a bug** — one-time JIT/thread-pool warm-up, not a sustained bottleneck. Steady-state throughput at
+`--pairs 32` is ~1.26M-1.32M msg/s (×2 convention), consistent with where the t=20 cumulative average was
+still heading.
+
+**Fixed as a result:** `PingPongRunner`'s reporter now also prints a windowed instantaneous rate
+(`count` delta over the last ~1s, not since program start) alongside the cumulative average, so a slow
+warm-up window is no longer visually indistinguishable from an ongoing ramp in future runs.
+
+## 12. Findings (dotnet-trace, run of 2026-07-09): two lock-contention points invisible to single-threaded microbenchmarks
+
+**Method.** `dotnet-trace collect --profile dotnet-sampled-thread-time -o pingpong.nettrace -- <exe> PingPong
+--pairs 32 --duration 15`, launched from process start (not attach) so warm-up is captured. Converted to
+speedscope (`dotnet-trace convert --format speedscope`) and parsed the resulting evented (open/close) call
+stacks directly to compute self- and inclusive-time per frame across all 58 profiled threads (~869s of
+aggregate thread-time over the 15.5s wall-clock run).
+
+**Framework/continuation overhead dominates the shape, as expected — no surprise here.**
+`Task.RunContinuations`/`AwaitTaskContinuation.RunOrScheduleAction` account for 83.5% of aggregate
+thread-time, `ThreadPoolWorkQueue.Dispatch` 46.3%, `AsyncMethodBuilderCore.Start` 45.1%. This is the same
+cost `DispatchPipelineBenchmarks` isolated (§ dispatch-pipeline spec) — every grain call is an `await`, so
+this machinery is structural, not a defect.
+
+**Quark's own call chain, by inclusive time — clean nesting, no hidden hot spot:**
+
+```
+LocalGrainCallInvoker.InvokeVoidAsync    37.7%
+  GrainActivation.PostCoreAsync          32.1%
+    ActivationScheduler.RunWorkerAsync   23.2%
+      GrainActivation.DrainAsync         13.4%
+        MailboxWorkItem.ExecuteAsync     12.0%
+          GrainScopeBinder.BindAndResolveAsync   10.7%
+            DI ResolveService                    10.3%
+```
+
+**Two genuine Quark-side lock-contention points, only visible under real concurrency** (a single-threaded
+`ColdStart` loop, as used in `DispatchPipelineBenchmarks`, cannot reveal contention by construction).
+Tracing `Monitor.Enter_Slowpath`'s immediate callers directly:
+
+- **`ActivationScheduler`'s worker-wake path**: `RunWorkerAsync`/`EnqueueToShard` →
+  `SemaphoreSlim.Release` → `Monitor.Enter_Slowpath` — ~48s + 7s aggregate (2,276 + 326 slow-path entries).
+  Real contention on the semaphore(s) used to signal scheduler workers when new work is enqueued.
+- **The DI container's shared call-site cache lock**: `GrainScopeBinder.BindAndResolveAsync` →
+  `ResolveService` → `Monitor.Enter_Slowpath`, bottoming out in `CallSiteRuntimeResolver.VisitRootCache` —
+  ~48-50s aggregate (3,748 entries). Every one of Quark's per-call `IServiceScope`s resolves against the
+  *same shared root* `ServiceProvider`'s first-resolve cache; with 32 concurrent pairs hammering that
+  continuously, they collide on this one lock.
+
+Together these two account for roughly as much aggregate time as `InvokeVoidAsync` itself (37.7%) — under
+concurrency, lock-waiting is comparable in cost to the dispatch logic it sits next to. Plausibly connected
+to why `ScopeBindAndResolve`'s `ColdStart` numbers in the dispatch-pipeline spec showed such a wide
+median/mean gap (95.9us median vs. 850.0us mean) — consistent with occasional stalls, though that specific
+run was single-threaded so it is not identically this contention.
+
+**Caveat worth flagging for whoever reruns this**: `PingPongGrainBehavior` is not marked `[Reentrant]`
+(§3 — by design, this benchmark models the non-reentrant/serialized dispatch path, matching most real
+grains). `GrainActivation.PostAsync` (`src/Quark.Runtime/GrainActivation.cs:563-580`) special-cases
+`ReentrantSchedulingMode.Immediate`: a `[Reentrant]` activation's `PostAsync` calls `workItem()` directly
+and returns its `ValueTask` inline — no queue, no forced-async completion signal, no thread-pool hop. Only
+the *non-reentrant* path goes through `PostCoreAsync`'s channel-write-then-await-signal machinery (the
+270.7us-vs-13.0us gap `DispatchPipelineBenchmarks` measured). So `ValueTask` alone does not make in-process
+calls synchronous — reentrancy mode does; PingPong intentionally exercises the serialized path because
+that's what most grains use, but it is not a measurement of Quark's fastest possible path.
+
+## 13. `--reentrant` variant (added 2026-07-09): measuring the inline fast path §12 identified
+
+§12 established that `[Reentrant]` activations skip the mailbox channel and forced-async completion signal
+entirely (`GrainActivation.PostAsync`, `src/Quark.Runtime/GrainActivation.cs:563-580`). To measure that
+gap end-to-end (not just the isolated `MailboxRoundTrip` vs. `MailboxRoundTripReentrant` microbenchmarks in
+`DispatchPipelineBenchmarks`), added a second, otherwise-byte-for-byte-identical grain type:
+
+```
+tests/Quark.Performance/PingPong/
+  IPingable.cs                          — shared `ValueTask PingAsync()` surface, implemented by both grain
+                                           interfaces so PingPongRunner.RunPairAsync needs no duplication
+  IReentrantPingPongGrain.cs             — IGrainWithStringKey, IPingable
+  ReentrantPingPongGrainBehavior.cs       — same no-op body as PingPongGrainBehavior, plus [Reentrant]
+  ReentrantPingPongGrainInvokables.cs     — hand-written IGrainVoidInvokable, mirrors PingPongGrainInvokables.cs
+  ReentrantPingPongGrainProxy.cs          — hand-written proxy, mirrors PingPongGrainProxy.cs
+```
+
+A distinct interface (rather than a second behavior on `IPingPongGrain`) was necessary: `AddGrainBehavior`
+derives a grain's `GrainType` key from the interface name by default, so two behaviors on the same interface
+would collide on registration. `IPingPongGrain` and `IReentrantPingPongGrain` both now extend `IPingable`,
+letting `RunPairAsync` and the pair-array setup stay generic over either variant via a `cli.Reentrant` branch
+in `PingPongRunner.RunAsync` — both grain types are registered unconditionally (cheap), only the selected
+one is instantiated into pairs.
+
+**Result (32 pairs, 15s, same machine, load average ~5 at run time — see §11's contention caveat for why
+that number matters):**
+
+| Mode | Cumulative avg (x2) | Raw calls | Raw call rate |
+|---|---:|---:|---:|
+| Non-reentrant (default) | 820,205 msg/s | 6,158,079 | 410,102 calls/s |
+| `--reentrant` | 2,400,690 msg/s | 18,056,251 | 1,200,345 calls/s |
+
+**~2.9x throughput end-to-end** from skipping the mailbox channel and forced-async completion signal —
+smaller than the ~20x gap `DispatchPipelineBenchmarks` measured for the mailbox round trip in isolation,
+because at 32-way concurrency both modes still pay for `Task.Run` scheduling, GC, and JIT the same way;
+only the per-call dispatch step itself changes. Confirms §12's read of the code (inline execution,
+verified, not just inferred) and gives a real comparison number for future reentrancy-related runtime work.
