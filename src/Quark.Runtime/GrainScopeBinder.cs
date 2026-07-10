@@ -6,23 +6,26 @@ namespace Quark.Runtime;
 
 internal static class GrainScopeBinder
 {
-    public static async ValueTask<IGrainBehavior> BindAndResolveAsync(
-        IServiceProvider sp,
-        GrainActivation activation,
-        CancellationToken cancellationToken)
+    /// <param name="bindingServices">
+    ///     Provider used to bind the shell accessor and call context — always Quark's own scope
+    ///     (the flat scope by default, or the small Quark-only scope for opted-in grain types).
+    /// </param>
+    /// <param name="constructionServices">
+    ///     Provider used to construct the behavior instance — the same as <paramref name="bindingServices"/>
+    ///     by default, or a composite of the Quark-only scope + a cached user provider for opted-in
+    ///     grain types.
+    /// </param>
+    public static IGrainBehavior BindAndResolve(
+        IServiceProvider bindingServices,
+        IServiceProvider constructionServices,
+        GrainActivation activation)
     {
-        ((ActivationShellAccessor)sp.GetRequiredService<IActivationShellAccessor>()).Shell = activation;
+        ((ActivationShellAccessor)bindingServices.GetRequiredService<IActivationShellAccessor>()).Shell = activation;
 
-        ICallContextSetter callContextSetter = sp.GetRequiredService<ICallContextSetter>();
+        ICallContextSetter callContextSetter = bindingServices.GetRequiredService<ICallContextSetter>();
         callContextSetter.Set(activation.GrainId);
         callContextSetter.SetIdempotencyKey(QuarkRequestContext.IdempotencyKey);
 
-        if (sp.GetService<IGrainScopeInitializerRegistry>() is { } registry &&
-            registry.TryGet(activation.GrainType, out GrainScopeInitializer initializer))
-        {
-            await initializer(sp.GetRequiredService<ICallContext>(), sp, cancellationToken).ConfigureAwait(false);
-        }
-
-        return sp.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType);
+        return bindingServices.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType, constructionServices);
     }
 }
