@@ -179,6 +179,7 @@ The generator emits a `BehaviorModel` for any class that:
 | `QRK0051` | Behavior class implements multiple `IGrain`-derived interfaces — ambiguous; add `[GrainBehavior("typeName")]` |
 | `QRK0052` | Two behaviors use `IPersistentState<T>` on the same `T` with conflicting (stateName, providerName) combinations |
 | `QRK0053` | Behavior carries `[ImplicitStreamSubscription]` but the assembly does not reference `Quark.Streaming.InMemory` — auto-registration is skipped (warning) |
+| `QRK0056` | Behavior implements `IGrainUserServiceProviderFactory` and also uses `IPersistentActivationMemory<T>`/`[PersistentState]` — unsupported combination (v1 limitation) |
 
 ### State type detection
 
@@ -217,6 +218,43 @@ attributes on one behavior each emit a line. Emission is **guarded**: if the ass
 reference `Quark.Streaming.InMemory` (so `AddImplicitStreamSubscription` is unresolvable), the
 generator skips emission and reports **QRK0053** instead of emitting code that would not compile.
 Add a `Quark.Streaming.InMemory` reference to silence the warning and enable auto-wiring.
+
+### User-service-provider factory registration
+
+When a behavior class implements `IGrainUserServiceProviderFactory`, the generator emits an additional
+registration call into `AddMyAssemblyBehaviors()`:
+
+```csharp
+// behavior: class MyBehavior : IGrainBehavior, IMyGrain, IGrainUserServiceProviderFactory { ... }
+services.AddGrainUserServiceProviderFactory<IMyGrain, MyBehavior>();
+```
+
+This registers a **satellite dependency resolver** per grain **type** (not per-activation, not
+per-call), allowing the behavior to inject a dedicated `IServiceProvider` — built once at silo
+startup and shared by every activation of that grain type — that reuses heavy, stateless user
+services across all calls without re-resolving them. See
+[`docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md`](../../docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md)
+for design details.
+
+#### Activation memory accessor registration changes
+
+When a behavior implements `IGrainUserServiceProviderFactory`, the generator changes how it registers
+activation memory accessors (`IActivationMemory<T>`, `IManagedActivationMemory<T>`, `IEagerActivationMemory<T>`):
+instead of plain `AddScoped<T>()`, each is registered via `AddQuarkOwnedScoped<T>()`. This ensures the
+accessor is resolved from the Quark-owned satellite provider (not the user's), preserving scope semantics
+for opted-in behaviors. For behaviors that do not implement the interface, accessors continue to use
+plain `AddScoped<T>()` — both approaches are functionally identical.
+
+**v1 limitation**: `IPersistentActivationMemory<T>` and `[PersistentState]` are not yet supported on
+behaviors that implement `IGrainUserServiceProviderFactory`; these features will be enabled in a future
+release. The generator reports this combination as a build error (`QRK0056`) rather than letting it fail
+at runtime.
+
+**v1 limitation**: `CompositeServiceProvider` (the fallback provider used for opted-in behaviors) does not
+merge `IEnumerable<T>` registrations across the Quark-only and user-supplied providers — MS.DI always
+returns a non-null collection for `IEnumerable<T>`, so the Quark-only side's (possibly empty) result always
+wins and the user provider's registrations for that type are never consulted. If a behavior needs multiple
+registered implementations of an interface, aggregate them inside `CreateUserServiceProvider` itself.
 
 ## SerializerGenerator
 

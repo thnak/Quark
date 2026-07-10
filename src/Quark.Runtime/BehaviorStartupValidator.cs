@@ -21,6 +21,19 @@ internal sealed class BehaviorStartupValidator(
     {
         foreach ((GrainType grainType, Type behaviorType) in typeRegistry.GetAll())
         {
+            if (typeof(IGrainUserServiceProviderFactory).IsAssignableFrom(behaviorType))
+            {
+                // Opted-in behaviors are constructed against a composite of a Quark-only scope + a
+                // cached user provider built later in SiloHostedService.StartAsync (which runs AFTER
+                // this hosted service, per AddQuarkRuntime()'s hosted-service registration order).
+                // Validating against the flat root here would produce false-positive startup failures
+                // for behaviors whose CreateUserServiceProvider doesn't rely on silo.Services at all.
+                logger.LogDebug(
+                    "Behavior {Type} skipped DI validation (opts into IGrainUserServiceProviderFactory)",
+                    behaviorType.Name);
+                continue;
+            }
+
             try
             {
                 using IServiceScope scope = root.CreateScope();

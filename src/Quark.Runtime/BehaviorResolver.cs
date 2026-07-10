@@ -4,16 +4,15 @@ using Quark.Core.Abstractions.Hosting;
 namespace Quark.Runtime;
 
 internal sealed class BehaviorResolver(
-    IServiceProvider scope,
     IGrainTypeRegistry typeRegistry,
     GrainBehaviorFactoryRegistry factoryRegistry) : IBehaviorResolver
 {
-    public IGrainBehavior Resolve(GrainType grainType)
+    public IGrainBehavior Resolve(GrainType grainType, IServiceProvider services)
     {
         if (factoryRegistry.TryGetFactory(grainType, out Func<IServiceProvider, IGrainBehavior>? factory) &&
             factory is not null)
         {
-            return factory(scope);
+            return factory(services);
         }
 
         if (!typeRegistry.TryGetGrainClass(grainType, out Type? type) || type is null)
@@ -23,7 +22,7 @@ internal sealed class BehaviorResolver(
         }
 
 #pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) behavior registrations.
-        return ReflectionBehaviorActivator.Create(scope, type);
+        return ReflectionBehaviorActivator.Create(services, type);
 #pragma warning restore IL2026
     }
 }

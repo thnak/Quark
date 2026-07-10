@@ -22,9 +22,9 @@ public sealed class BehaviorResolverTests
         factoryRegistry.Register(grainType, static _ => new WidgetBehavior(new Widget(42)));
 
         using ServiceProvider provider = services.BuildServiceProvider();
-        var resolver = new BehaviorResolver(provider, typeRegistry, factoryRegistry);
+        var resolver = new BehaviorResolver(typeRegistry, factoryRegistry);
 
-        var behavior = Assert.IsType<WidgetBehavior>(resolver.Resolve(grainType));
+        var behavior = Assert.IsType<WidgetBehavior>(resolver.Resolve(grainType, provider));
         Assert.Equal(42, behavior.Widget.Value);
     }
 
@@ -38,9 +38,9 @@ public sealed class BehaviorResolverTests
         typeRegistry.Register(grainType, typeof(PlainCounterBehavior));
 
         using ServiceProvider provider = services.BuildServiceProvider();
-        var resolver = new BehaviorResolver(provider, typeRegistry, factoryRegistry);
+        var resolver = new BehaviorResolver(typeRegistry, factoryRegistry);
 
-        Assert.IsType<PlainCounterBehavior>(resolver.Resolve(grainType));
+        Assert.IsType<PlainCounterBehavior>(resolver.Resolve(grainType, provider));
     }
 
     [Fact]
@@ -48,9 +48,9 @@ public sealed class BehaviorResolverTests
     {
         var services = new ServiceCollection();
         using ServiceProvider provider = services.BuildServiceProvider();
-        var resolver = new BehaviorResolver(provider, new GrainTypeRegistry(), new GrainBehaviorFactoryRegistry());
+        var resolver = new BehaviorResolver(new GrainTypeRegistry(), new GrainBehaviorFactoryRegistry());
 
-        Assert.Throws<InvalidOperationException>(() => resolver.Resolve(new GrainType("Missing")));
+        Assert.Throws<InvalidOperationException>(() => resolver.Resolve(new GrainType("Missing"), provider));
     }
 
     private sealed class Widget(int value)

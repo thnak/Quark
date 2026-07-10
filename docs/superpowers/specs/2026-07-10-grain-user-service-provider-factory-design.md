@@ -304,6 +304,25 @@ passed for both binding and construction, identical to today's single-`sp` flow.
 
 ---
 
+## Known limitations (v1)
+
+- **Persistence patterns are unsupported on opted-in behaviors.** `IPersistentActivationMemory<T>`,
+  `[PersistentState]` (`IPersistentState<T>`), `ITransactionalState<T>`, streams, and reminders cannot be
+  combined with `IGrainUserServiceProviderFactory` in this first cut (§2 non-goal, §7 open question 3) —
+  they need `IStorage<T>`/`IGrainStorage` and other cross-package services this spec does not touch.
+  `BehaviorRegistrationGenerator` now reports this combination as a compile-time error (`QRK0056`) instead
+  of letting it fail at runtime with a confusing exception.
+- **`CompositeServiceProvider` does not merge `IEnumerable<T>` registrations across primary/secondary.**
+  MS.DI always returns a non-null (possibly empty) collection for `IEnumerable<T>`, so the Quark-only
+  primary side's (possibly empty) result always wins and the cached user provider's registrations for that
+  type are never consulted — the `??` fallback never triggers. A correct generic merge would require
+  reflection-based array construction (`Array.CreateInstance`/`MakeGenericMethod`), which conflicts with
+  this codebase's AOT-safety mandate. If a behavior needs multiple registered implementations of an
+  interface, aggregate them inside `CreateUserServiceProvider` itself rather than relying on cross-boundary
+  `IEnumerable<T>` resolution.
+
+---
+
 ## 8. Implementation sequence
 
 1. `Quark.Core.Abstractions/Hosting/IGrainUserServiceProviderFactory.cs` — new interface (§4.1).

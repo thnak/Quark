@@ -166,50 +166,55 @@ Use `ICallContext` to obtain your own `GrainId` when constructing a self-referen
 var self = _factory.GetGrain<IMyGrain>(_ctx.GrainId);
 ```
 
-## Multi-tenant scope initialization
+## Opt-in user-service-provider factory
 
-`AddGrainScopeInitializer<TInterface, TBehavior>` configures the per-call `IServiceScope` *before*
-the behavior is constructed — the hook for deriving tenant identity from the grain key and
-populating scoped services the behavior depends on.
+By default, a behavior's constructor dependencies are re-resolved from a fresh `IServiceScope` on
+**every** grain call. That's the right default, but it's wasteful when a behavior's own (non-Quark)
+dependencies form an expensive graph (a repository backed by a connection pool, a rules engine, ...)
+that's effectively stateless/reusable across calls. Implement `IGrainUserServiceProviderFactory`
+directly on the behavior class to supply a cached `IServiceProvider`, built once per grain **type** at
+silo startup, that the behavior's own constructor parameters are resolved from on every subsequent
+call:
 
 ```csharp
-public sealed class TenantContext
+public sealed class OrderRepository
 {
-    public string TenantId { get; set; } = "";
+    public OrderRepository(/* expensive connection pool, rules engine, etc. */) { }
 }
 
-public sealed class OrderBehavior : IGrainBehavior, IOrderGrain
+public sealed class OrderBehavior : IGrainBehavior, IOrderGrain, IGrainUserServiceProviderFactory
 {
-    private readonly TenantContext _tenant;
+    private readonly OrderRepository _repo;
     private readonly IActivationMemory<OrderState> _memory;
 
-    public OrderBehavior(TenantContext tenant, IActivationMemory<OrderState> memory)
+    public OrderBehavior(OrderRepository repo, IActivationMemory<OrderState> memory)
     {
-        _tenant = tenant;
+        _repo = repo;
         _memory = memory;
     }
 
-    public Task<string> GetTenantAsync() => Task.FromResult(_tenant.TenantId);
+    // Called once per grain type at silo startup; the returned provider is cached and shared by
+    // every activation of IOrderGrain for the process lifetime.
+    public static IServiceProvider CreateUserServiceProvider(IServiceProvider rootServices) => rootServices;
+
+    public Task<string> GetTotalAsync() => Task.FromResult(_repo.GetTotal(_memory.Value));
 }
 ```
 
 ```csharp
 // In silo startup:
-silo.Services.AddScoped<TenantContext>();
-silo.Services.AddGrainScopeInitializer<IOrderGrain, OrderBehavior>((ctx, sp, ct) =>
-{
-    // Convention: GrainId key is "{tenantId}/{orderId}"
-    sp.GetRequiredService<TenantContext>().TenantId = ctx.GrainId.Key.Split('/')[0];
-    return ValueTask.CompletedTask;
-});
+silo.Services.AddSingleton<OrderRepository>();
+silo.Services.AddMyAssemblyBehaviors(); // generator detects the opt-in and wires up the factory
 ```
 
-The initializer runs on **every** scope Quark creates for `IOrderGrain` — at activation and again on
-each subsequent call — so `TenantContext` is always populated before `OrderBehavior` (or anything
-else in that scope) is constructed. Throwing from the initializer faults the activation and prevents
-the behavior from ever being constructed — use it to reject calls for an unknown tenant. See
-[Architecture](Architecture#per-call-scope-initializers-multi-tenant-di-scoping) for the full binder
-pipeline.
+`CreateUserServiceProvider` runs once per grain type — at silo startup, not per activation, not per
+call — and a throwing implementation fails silo startup before any activation is attempted. Quark's own
+per-call services (`ICallContext`, `IActivationMemory<T>`, etc.) are always resolved from Quark's own
+scope, never from the cached user provider, even if the developer's provider happens to also contain a
+registration for one of those types. `IPersistentActivationMemory<T>`/`[PersistentState]` are not yet
+supported on opted-in behaviors (v1 limitation — see [Source Generators](Source-Generators)). See
+[Architecture](Architecture#opt-in-user-service-provider-factory-per-grain-type-cached-di) for the full
+binder pipeline.
 
 ## Data access from behaviors
 
@@ -218,7 +223,7 @@ behavior exactly like in an ASP.NET Core request — fresh per call, disposed wi
 manual scope juggling. Be clear about what that buys and what it doesn't:
 
 **What the per-call scope solves:** lifetime correctness. No stale change trackers, no `DbContext`
-shared across concurrent calls, natural per-tenant wiring via scope initializers.
+shared across concurrent calls, natural per-tenant wiring via a fresh per-call DI scope.
 
 **What it does not solve:** database performance. A scope per call is not a connection per call —
 but it isn't free batching either. The guidance:

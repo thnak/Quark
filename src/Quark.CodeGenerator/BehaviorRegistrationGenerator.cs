@@ -27,6 +27,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
     private const string IGrainBehaviorFqn = "Quark.Core.Abstractions.Grains.IGrainBehavior";
     private const string IGrainFqn = "Quark.Core.Abstractions.Grains.IGrain";
     private const string GrainBehaviorAttributeFqn = "Quark.Core.Abstractions.Grains.GrainBehaviorAttribute";
+    private const string IGrainUserServiceProviderFactoryFqn = "Quark.Core.Abstractions.Hosting.IGrainUserServiceProviderFactory";
     private const string IActivationMemoryNs = "Quark.Core.Abstractions.Hosting";
     private const string IActivationMemoryName = "IActivationMemory";
     private const string IPersistentActivationMemoryNs = "Quark.Persistence.Abstractions";
@@ -88,6 +89,14 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
+    internal static readonly DiagnosticDescriptor UnsupportedPersistenceWithUserServiceProviderFactory = new(
+        id: "QRK0056",
+        title: "Unsupported combination: IGrainUserServiceProviderFactory with persistent state",
+        messageFormat: "'{0}' implements IGrainUserServiceProviderFactory and also uses IPersistentActivationMemory<T> or [PersistentState] (IPersistentState<T>) — this combination is not yet supported (v1 limitation) and will throw at runtime instead of constructing correctly. Remove the IGrainUserServiceProviderFactory opt-in, or remove the persistent-state dependency, until cross-package storage-provider support is added.",
+        category: "Quark.CodeGenerator",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -147,6 +156,9 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             diagList.Add(
                 Diagnostic.Create(AmbiguousGrainInterface, location, type.Name, grainIface.Name));
         }
+
+        bool implementsUserServiceProviderFactory = type.AllInterfaces.Any(
+            static i => i.ToDisplayString() == IGrainUserServiceProviderFactoryFqn);
 
         string behaviorNs = type.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
@@ -304,6 +316,12 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             implicitNamespaces.Clear();
         }
 
+        if (implementsUserServiceProviderFactory && (persistent.Count > 0 || persistentSlots.Count > 0))
+        {
+            Location loc = type.Locations.FirstOrDefault() ?? Location.None;
+            diagList.Add(Diagnostic.Create(UnsupportedPersistenceWithUserServiceProviderFactory, loc, type.Name));
+        }
+
         return new BehaviorModel(
             behaviorFqn: behaviorFqn,
             grainInterfaceFqn: grainIfaceFqn,
@@ -317,6 +335,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             eagerStateTypes: eager.Distinct().ToImmutableArray(),
             implicitStreamNamespaces: implicitNamespaces.Distinct().ToImmutableArray(),
             persistentStateSlots: persistentSlots.Distinct().ToImmutableArray(),
+            implementsUserServiceProviderFactory: implementsUserServiceProviderFactory,
             diagnostics: diagList.ToImmutableArray());
     }
 
@@ -435,12 +454,18 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddGrainTransportDispatcher(services,");
             sb.AppendLine($"            new global::Quark.Core.Abstractions.Identity.GrainType(\"{m.GrainTypeName}\"),");
             sb.AppendLine($"            {m.ProxyFqn}_TransportDispatcher.Instance);");
+
+            if (m.ImplementsUserServiceProviderFactory)
+            {
+                sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddGrainUserServiceProviderFactory<{m.GrainInterfaceFqn}, {m.BehaviorFqn}>(");
+                sb.AppendLine($"            services, behaviorId: \"{m.GrainTypeName}\");");
+            }
         }
 
         if (inMemoryStates.Count > 0) sb.AppendLine();
         foreach (string tArg in inMemoryStates)
         {
-            sb.AppendLine($"        services.AddScoped<global::Quark.Core.Abstractions.Hosting.IActivationMemory<{tArg}>>(static sp =>");
+            sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddQuarkOwnedScoped<global::Quark.Core.Abstractions.Hosting.IActivationMemory<{tArg}>>(services, static sp =>");
             sb.AppendLine($"            new global::Quark.Persistence.Abstractions.ActivationMemoryAccessor<{tArg}>(");
             sb.AppendLine($"                sp.GetRequiredService<global::Quark.Runtime.IActivationShellAccessor>()");
             sb.AppendLine($"                  .Shell.GetOrCreateHolder<{tArg}>()));");
@@ -461,7 +486,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         if (managedStates.Count > 0) sb.AppendLine();
         foreach (string tArg in managedStates)
         {
-            sb.AppendLine($"        services.AddScoped<global::Quark.Core.Abstractions.Hosting.IManagedActivationMemory<{tArg}>>(static sp =>");
+            sb.AppendLine($"        global::Quark.Runtime.RuntimeServiceCollectionExtensions.AddQuarkOwnedScoped<global::Quark.Core.Abstractions.Hosting.IManagedActivationMemory<{tArg}>>(services, static sp =>");
             sb.AppendLine($"            new global::Quark.Persistence.Abstractions.ManagedActivationMemoryAccessor<{tArg}>(");
             sb.AppendLine($"                sp.GetRequiredService<global::Quark.Runtime.IActivationShellAccessor>()");
             sb.AppendLine($"                  .Shell.GetOrCreateManagedHolder<{tArg}>()));");
@@ -575,6 +600,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             EagerStateTypes = ImmutableArray<string>.Empty;
             ImplicitStreamNamespaces = ImmutableArray<string>.Empty;
             PersistentStateSlots = ImmutableArray<PersistentStateSlot>.Empty;
+            ImplementsUserServiceProviderFactory = false;
         }
 
         public BehaviorModel(
@@ -590,6 +616,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             ImmutableArray<string> eagerStateTypes,
             ImmutableArray<string> implicitStreamNamespaces,
             ImmutableArray<PersistentStateSlot> persistentStateSlots,
+            bool implementsUserServiceProviderFactory,
             ImmutableArray<Diagnostic> diagnostics)
         {
             BehaviorFqn = behaviorFqn;
@@ -604,6 +631,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             EagerStateTypes = eagerStateTypes;
             ImplicitStreamNamespaces = implicitStreamNamespaces;
             PersistentStateSlots = persistentStateSlots;
+            ImplementsUserServiceProviderFactory = implementsUserServiceProviderFactory;
             Diagnostics = diagnostics;
         }
 
@@ -620,6 +648,7 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         public ImmutableArray<string> EagerStateTypes { get; }
         public ImmutableArray<string> ImplicitStreamNamespaces { get; }
         public ImmutableArray<PersistentStateSlot> PersistentStateSlots { get; }
+        public bool ImplementsUserServiceProviderFactory { get; }
         public ImmutableArray<Diagnostic> Diagnostics { get; }
     }
 }

@@ -45,6 +45,8 @@ public sealed class FailureSemanticsFixture : IAsyncDisposable
         services.AddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<IBehaviorResolver, BehaviorResolver>();
+        services.AddSingleton<IUserServiceProviderRegistry, UserServiceProviderRegistry>();
+        services.AddSingleton<QuarkOnlyServiceProviderHolder>();
 
         // The fake clock is registered so GrainTimerCreationOptions with no explicit TimeProvider
         // resolves it automatically (see GrainActivation.RegisterTimer) — tests advance it instead

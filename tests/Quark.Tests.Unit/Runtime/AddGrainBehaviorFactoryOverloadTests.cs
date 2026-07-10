@@ -53,38 +53,56 @@ public sealed class AddGrainBehaviorFactoryOverloadTests
     }
 
     [Fact]
-    public void AddGrainScopeInitializer_WithMatchingBehaviorId_RegistersUnderSameKeyAsAddGrainBehavior()
+    public void AddGrainUserServiceProviderFactory_WithMatchingBehaviorId_RegistersUnderSameKeyAsAddGrainBehavior()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.Configure<SiloRuntimeOptions>(o =>
         {
             o.ClusterId = "test";
-            o.ServiceId = "scope-initializer-key-alignment";
+            o.ServiceId = "user-service-provider-factory-key-alignment";
             o.SiloName = "silo0";
         });
         services.AddQuarkRuntime();
 
-        // Without an explicit behaviorId on AddGrainScopeInitializer, this initializer would
-        // register under the reflected key ("Widget", from IWidgetGrain), not "custom-widget-id" —
-        // silently never firing. Passing the same behaviorId to both calls keeps them aligned.
-        services.AddGrainBehavior<IWidgetGrain, WidgetBehavior>(
+        services.AddGrainBehavior<IWidgetGrain, OptedInWidgetBehavior>(
             behaviorId: "custom-widget-id",
-            factory: static _ => new WidgetBehavior(new Widget(7)));
-        services.AddGrainScopeInitializer<IWidgetGrain, WidgetBehavior>(
-            (_, _, _) => ValueTask.CompletedTask,
+            factory: static sp => new OptedInWidgetBehavior(new Widget(7)));
+        services.AddGrainUserServiceProviderFactory<IWidgetGrain, OptedInWidgetBehavior>(
             behaviorId: "custom-widget-id");
 
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        var initializerRegistry = provider.GetRequiredService<IGrainScopeInitializerRegistry>();
-        foreach (RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration reg in
-                 provider.GetServices<RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration>())
+        var registry = new UserServiceProviderRegistry();
+        foreach (RuntimeServiceCollectionExtensions.IUserServiceProviderFactoryRegistration reg in
+                 provider.GetServices<RuntimeServiceCollectionExtensions.IUserServiceProviderFactoryRegistration>())
         {
-            reg.Apply(initializerRegistry);
+            reg.Apply(registry, provider);
         }
 
-        Assert.True(initializerRegistry.TryGet(new GrainType("custom-widget-id"), out _));
+        Assert.True(registry.TryGet(new GrainType("custom-widget-id"), out IServiceProvider? found));
+        Assert.Same(provider, found);
+    }
+
+    [Fact]
+    public void AddQuarkOwnedScoped_RegistersServiceAndCapturesMarker()
+    {
+        var services = new ServiceCollection();
+        services.AddQuarkOwnedScoped<Widget>(static _ => new Widget(9));
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Equal(9, provider.GetRequiredService<Widget>().Value);
+
+        var satellite = new ServiceCollection();
+        foreach (RuntimeServiceCollectionExtensions.IQuarkOwnedServiceRegistration marker in
+                 provider.GetServices<RuntimeServiceCollectionExtensions.IQuarkOwnedServiceRegistration>())
+        {
+            marker.Apply(satellite);
+        }
+
+        using ServiceProvider satelliteProvider = satellite.BuildServiceProvider();
+        Assert.Equal(9, satelliteProvider.GetRequiredService<Widget>().Value);
     }
 
     private interface IWidgetGrain : IGrain
@@ -99,5 +117,12 @@ public sealed class AddGrainBehaviorFactoryOverloadTests
     private sealed class WidgetBehavior(Widget widget) : IGrainBehavior, IWidgetGrain
     {
         public Widget Widget { get; } = widget;
+    }
+
+    private sealed class OptedInWidgetBehavior(Widget widget) : IGrainBehavior, IWidgetGrain, IGrainUserServiceProviderFactory
+    {
+        public Widget Widget { get; } = widget;
+
+        public static IServiceProvider CreateUserServiceProvider(IServiceProvider rootServices) => rootServices;
     }
 }

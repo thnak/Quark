@@ -42,11 +42,17 @@ Design consequence: because the behavior instance is discarded after every call 
 
 ## When activation itself fails
 
-If the behavior constructor, a `GrainScopeInitializer`, or `OnActivateAsync` throws:
+If the behavior constructor or `OnActivateAsync` throws:
 
 1. The exception propagates to the caller that triggered activation.
 2. The faulted activation is **removed from the activation table** (`LocalGrainCallInvoker` → `GrainActivationTable.RemoveIfFaulted`).
 3. The **next call creates a fresh activation** — a partially-initialized activation is never reused.
+
+(A behavior that implements `IGrainUserServiceProviderFactory` fails a different way for its opt-in
+hook: a throwing `CreateUserServiceProvider` fails **silo startup** instead — before any activation is
+attempted at all, not during this per-activation flow. The behavior constructor itself, if reached,
+still fails the call exactly as above. See
+[Architecture](Architecture#opt-in-user-service-provider-factory-per-grain-type-cached-di).)
 
 This is the virtual-actor equivalent of a supervisor `Restart`, driven by the next incoming message rather than a parent. Constructor-level failures are additionally caught at **silo startup**: `BehaviorStartupValidator` constructs every registered behavior once and aborts startup on DI misconfiguration, so "missing registration" is a boot error, not a runtime surprise. (`OnActivateAsync` logic is not startup-validated — only the dependency graph is.)
 

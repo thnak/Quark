@@ -154,12 +154,12 @@ public class DispatchPipelineBenchmarks
         using IServiceScope scope = _sp.CreateScope();
     }
 
-    // Stage 3: GrainScopeBinder.BindAndResolveAsync — the 4 DI resolutions + behavior resolve.
+    // Stage 3: GrainScopeBinder.BindAndResolve — the 4 DI resolutions + behavior resolve.
     [Benchmark]
-    public async ValueTask<IGrainBehavior> ScopeBindAndResolve()
+    public IGrainBehavior ScopeBindAndResolve()
     {
         using IServiceScope scope = _sp.CreateScope();
-        return await GrainScopeBinder.BindAndResolveAsync(scope.ServiceProvider, _bareActivation, default);
+        return GrainScopeBinder.BindAndResolve(scope.ServiceProvider, scope.ServiceProvider, _bareActivation);
     }
 
     // Stage 4: ExecutionContext.Capture() alone (called on every PostAsync).

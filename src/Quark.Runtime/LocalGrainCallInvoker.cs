@@ -135,15 +135,17 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 new InvokeCallState<TInvokable, TResult>(_services, activation, cancellationToken, invokable, _copierProvider),
                 static async s =>
                 {
-                    using IServiceScope scope = s.Services.CreateScope();
-                    IServiceProvider sp = scope.ServiceProvider;
-                    IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, s.Activation, s.CancellationToken).ConfigureAwait(false);
-                    TResult r = await s.Invokable.Invoke(behavior).ConfigureAwait(false);
-                    if (s.CopierProvider?.TryGetCopier<TResult>() is { } copier)
+                    (IServiceScope scope, IServiceProvider sp) = GrainScopeBinder.CreateCallScope(s.Services, s.Activation);
+                    using (scope)
                     {
-                        r = copier.DeepCopy(r, new CopyContext());
+                        IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, sp, s.Activation);
+                        TResult r = await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                        if (s.CopierProvider?.TryGetCopier<TResult>() is { } copier)
+                        {
+                            r = copier.DeepCopy(r, new CopyContext());
+                        }
+                        return r;
                     }
-                    return r;
                 }).ConfigureAwait(false);
 
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
@@ -221,10 +223,12 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 new InvokeVoidState<TInvokable>(_services, activation, cancellationToken, invokable),
                 static async s =>
                 {
-                    using IServiceScope scope = s.Services.CreateScope();
-                    IServiceProvider sp = scope.ServiceProvider;
-                    IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, s.Activation, s.CancellationToken).ConfigureAwait(false);
-                    await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                    (IServiceScope scope, IServiceProvider sp) = GrainScopeBinder.CreateCallScope(s.Services, s.Activation);
+                    using (scope)
+                    {
+                        IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, sp, s.Activation);
+                        await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                    }
                 }).ConfigureAwait(false);
 
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);

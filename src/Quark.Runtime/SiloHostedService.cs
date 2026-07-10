@@ -48,8 +48,8 @@ public sealed class SiloHostedService : IHostedService
         ApplyBehaviorFactoryRegistrations();
         // Apply deferred placement-strategy registrations (AddGrainPlacementStrategy<> calls).
         ApplyPlacementStrategyRegistrations();
-        // Apply deferred per-call scope initializers (AddGrainScopeInitializer<TInterface, TBehavior> calls).
-        ApplyScopeInitializerRegistrations();
+        // Apply deferred user-service-provider-factory registrations (AddGrainUserServiceProviderFactory calls).
+        ApplyUserServiceProviderFactoryRegistrations();
         // Apply deferred transport-dispatcher registrations (AddGrainTransportDispatcher() calls).
         ApplyTransportDispatcherRegistrations();
 
@@ -93,6 +93,11 @@ public sealed class SiloHostedService : IHostedService
         if (_services.GetService<GrainActivationTable>() is { } table)
         {
             await table.DisposeAsync().ConfigureAwait(false);
+        }
+
+        if (_services.GetService<QuarkOnlyServiceProviderHolder>()?.Provider is IAsyncDisposable quarkOnlyProvider)
+        {
+            await quarkOnlyProvider.DisposeAsync().ConfigureAwait(false);
         }
 
         _logger.LogInformation("Quark silo '{SiloName}' stopped.", _options.SiloName);
@@ -154,16 +159,47 @@ public sealed class SiloHostedService : IHostedService
         }
     }
 
-    private void ApplyScopeInitializerRegistrations()
+    private void ApplyUserServiceProviderFactoryRegistrations()
     {
-        if (_services.GetService<IGrainScopeInitializerRegistry>() is not { } registry)
+        if (_services.GetService<IUserServiceProviderRegistry>() is not { } registry)
         {
             return;
         }
 
-        foreach (RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration reg in _services.GetServices<RuntimeServiceCollectionExtensions.IGrainScopeInitializerRegistration>())
+        var factoryRegistrations = _services
+            .GetServices<RuntimeServiceCollectionExtensions.IUserServiceProviderFactoryRegistration>()
+            .ToList();
+
+        foreach (RuntimeServiceCollectionExtensions.IUserServiceProviderFactoryRegistration reg in factoryRegistrations)
         {
-            reg.Apply(registry);
+            reg.Apply(registry, _services);
         }
+
+        if (factoryRegistrations.Count == 0)
+        {
+            return;
+        }
+
+        GrainTypeRegistry mainTypeRegistry = _services.GetRequiredService<GrainTypeRegistry>();
+        GrainBehaviorFactoryRegistry mainFactoryRegistry = _services.GetRequiredService<GrainBehaviorFactoryRegistry>();
+
+        var quarkOnly = new ServiceCollection();
+        quarkOnly.AddSingleton(mainTypeRegistry);
+        quarkOnly.AddSingleton<IGrainTypeRegistry>(mainTypeRegistry);
+        quarkOnly.AddSingleton(mainFactoryRegistry);
+        quarkOnly.AddScoped<ActivationShellAccessor>();
+        quarkOnly.AddScoped<IActivationShellAccessor>(sp => sp.GetRequiredService<ActivationShellAccessor>());
+        quarkOnly.AddScoped<CallContext>();
+        quarkOnly.AddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
+        quarkOnly.AddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
+        quarkOnly.AddScoped<IBehaviorResolver, BehaviorResolver>();
+
+        foreach (RuntimeServiceCollectionExtensions.IQuarkOwnedServiceRegistration marker in
+                 _services.GetServices<RuntimeServiceCollectionExtensions.IQuarkOwnedServiceRegistration>())
+        {
+            marker.Apply(quarkOnly);
+        }
+
+        _services.GetRequiredService<QuarkOnlyServiceProviderHolder>().Provider = quarkOnly.BuildServiceProvider();
     }
 }

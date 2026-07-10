@@ -154,7 +154,7 @@ sequenceDiagram
     Note over Shell: mailbox serialises concurrent calls
     Shell->>Scope: create per-call scope
     Scope->>Binder: BindAndResolveAsync
-    Note over Binder: bind ICallContext, run GrainScopeInitializer (if registered)
+    Note over Binder: bind ICallContext, resolve via composite provider for opted-in IGrainUserServiceProviderFactory grain types
     Binder->>Beh: construct + resolve ctor deps
     Beh->>Beh: run method
     Beh-->>Shell: result
@@ -207,53 +207,54 @@ silo.Services.AddScoped<IActivationMemory<MyState>>(sp =>
 
 The `BehaviorRegistrationGenerator` eliminates this boilerplate — see [Source Generators](Source-Generators).
 
-## Per-call scope initializers (multi-tenant DI scoping)
+## Opt-in user-service-provider factory (per-grain-type cached DI)
 
-`GrainScopeInitializer` is a delegate hook that runs inside every freshly-created per-call
-`IServiceScope`, right after the shell accessor and `ICallContext` are bound but **before** the
-behavior instance (and its scoped constructor dependencies) are resolved:
-
-```csharp
-public delegate ValueTask GrainScopeInitializer(
-    ICallContext ctx,
-    IServiceProvider scopedProvider,
-    CancellationToken cancellationToken);
-```
-
-`GrainScopeBinder.BindAndResolveAsync` looks the initializer up by `GrainType` in
-`IGrainScopeInitializerRegistry` and, if one is registered, awaits it before calling
-`IBehaviorResolver.Resolve`. If nothing is registered for the grain type, the lookup and delegate
-invocation are skipped entirely — the hook is opt-in per grain type, not a global pipeline step.
-
-This is the extension point behind **multi-tenancy**: derive a tenant from `GrainId.Key` and
-populate a scoped tenant-context service that other scoped dependencies (a tenant-scoped
-`DbContext`, connection string, cache namespace, ...) read from during construction. Register one
-per grain type with `AddGrainScopeInitializer<TInterface, TBehavior>`:
+By default, every grain call pays for a fresh `IServiceScope` created from the root `IServiceProvider` —
+cheap for typical Quark-owned dependencies, but wasteful when a behavior's *own* constructor dependencies
+form a non-trivial graph (a repository backed by a connection pool, a rules engine, anything with real
+construction cost) that is effectively stateless/reusable across calls. `IGrainUserServiceProviderFactory`
+is an opt-in mechanism, declared directly on the behavior class, that lets a developer supply their own
+long-lived `IServiceProvider` for those services, built once per **grain type** at silo startup instead of
+once per call:
 
 ```csharp
-silo.Services.AddScoped<TenantContext>();
-silo.Services.AddGrainScopeInitializer<IOrderGrain, OrderBehavior>((ctx, sp, ct) =>
+public interface IGrainUserServiceProviderFactory
 {
-    // GrainId.Key convention: "{tenantId}/{orderId}"
-    sp.GetRequiredService<TenantContext>().TenantId = ctx.GrainId.Key.Split('/')[0];
-    return ValueTask.CompletedTask;
-});
+    static abstract IServiceProvider CreateUserServiceProvider(IServiceProvider rootServices);
+}
 ```
 
-**Where it runs** — once per activation (`GrainActivation.RunActivationAsync`, before
-`OnActivateAsync`) and again on every subsequent call (`LocalGrainCallInvoker`, before the behavior
-is constructed for that call) — because each of those creates its own fresh `IServiceScope` and the
-binder runs on every scope.
+At silo startup, `SiloHostedService` invokes `CreateUserServiceProvider` once for every grain type whose
+behavior opts in and caches the result in `IUserServiceProviderRegistry`. If at least one behavior opted
+in, it also builds a small "Quark-only" satellite `IServiceProvider` (`QuarkOnlyServiceProviderHolder`)
+containing just Quark's own framework registrations (shell accessor, `ICallContext`, `IBehaviorResolver`,
+activation-memory accessors registered via `AddQuarkOwnedScoped<T>`) — never the developer's services.
 
-**Failure semantics** — an initializer that throws propagates to the caller and faults the
-activation; `GrainActivationTable` removes it so the next call attempts a fresh activation rather
-than reusing a partially-initialized one. Use this to reject calls for an unknown or unauthorized
-tenant before any scoped state, or the behavior itself, is constructed.
+Per call, `GrainScopeBinder.CreateCallScope` decides which scope to use:
+- **Not opted in** (the default, unaffected path): create the flat `IServiceScope` from the root provider,
+  exactly as before — same provider used for binding (`ICallContext`, shell accessor) and for constructing
+  the behavior.
+- **Opted in**: create a scope from the small Quark-only satellite root, and construct the behavior through
+  a `CompositeServiceProvider` that tries the Quark-only scope **first**, falling back to the cached user
+  provider only for types Quark itself doesn't register. Quark-first ordering is load-bearing: if the
+  developer's `CreateUserServiceProvider` returns `rootServices` unchanged (a common, valid choice), that
+  root also contains Quark's own type registrations — querying it first would let a stale, cross-call
+  shared instance of `ICallContext` or similar leak in instead of the real per-call one.
 
-Like other `Add*` registrations, this is deferred: `SiloHostedService.StartAsync` applies all
-`AddGrainScopeInitializer` calls into the singleton `IGrainScopeInitializerRegistry` before the silo
-starts serving calls. See [Writing Grains](Writing-Grains#multi-tenant-scope-initialization) for a
-full worked example.
+`GrainScopeBinder.BindAndResolve` still binds the shell accessor and `ICallContext` (always via the
+binding-side provider — Quark's own scope) before resolving the behavior via `IBehaviorResolver.Resolve`,
+which takes the construction provider as an explicit parameter so the composite is used for the behavior's
+constructor dependencies regardless of which provider `IBehaviorResolver` itself was resolved from.
+
+**Failure semantics** — a `CreateUserServiceProvider` that throws fails silo startup, before any activation
+is attempted, not the first grain call. `IPersistentActivationMemory<T>`/`[PersistentState]` are not yet
+supported on opted-in behaviors (v1 limitation, `BehaviorRegistrationGenerator` reports `QRK0056` at
+compile time — see [Source Generators](Source-Generators)).
+
+See [Writing Grains § Opt-in user-service-provider factory](Writing-Grains#opt-in-user-service-provider-factory)
+for a worked example and
+[`docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md`](../../docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md)
+for full design details.
 
 ## Layered architecture
 

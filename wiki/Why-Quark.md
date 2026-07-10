@@ -118,7 +118,7 @@ There are several state APIs because there are several genuinely different lifet
 
 ## "Per-call DI does not magically solve database performance"
 
-Agreed — per-call scoping is a **correctness and isolation** feature (fresh `DbContext`, per-tenant scoped services via `AddGrainScopeInitializer`), not a database-performance feature. Connection pooling, batching, and idempotency remain your job, and the guidance lives in [Writing Grains § Data access from behaviors](Writing-Grains#data-access-from-behaviors): keep connections pooled and short-lived, batch inside a single grain call (the mailbox already serializes writers per key — a natural batching point), and treat the grain as the unit of write ownership rather than opening N contexts per logical operation.
+Agreed — per-call scoping is a **correctness and isolation** feature (fresh `DbContext`, per-tenant scoped services via a fresh per-call DI scope), not a database-performance feature. Connection pooling, batching, and idempotency remain your job, and the guidance lives in [Writing Grains § Data access from behaviors](Writing-Grains#data-access-from-behaviors): keep connections pooled and short-lived, batch inside a single grain call (the mailbox already serializes writers per key — a natural batching point), and treat the grain as the unit of write ownership rather than opening N contexts per logical operation.
 
 ## "Engine-owned lifecycle may reduce escape hatches"
 
