@@ -34,8 +34,8 @@ internal sealed class SimpleActivationScheduler : IActivationScheduler
             return;
         }
 
-        ActivationDrainResult result = await activation.DrainAsync(int.MaxValue, ct).ConfigureAwait(false);
-        bool needsReschedule = activation.CompleteDrain(result);
+        (ActivationDrainResult result, bool needsReschedule) =
+            await activation.DrainAndCompleteAsync(int.MaxValue, ct).ConfigureAwait(false);
         if (result.HasMoreWork || needsReschedule)
             await ScheduleAsync(activation, ct).ConfigureAwait(false);
     }

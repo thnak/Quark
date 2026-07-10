@@ -538,6 +538,24 @@ public sealed class GrainActivation : IAsyncDisposable
     }
 
     /// <summary>
+    ///     Runs <see cref="DrainAsync"/> and immediately follows it with <see cref="CompleteDrain"/>,
+    ///     returning the drain result plus whether the scheduler should reschedule this activation
+    ///     afterward. Callers must have already confirmed <see cref="TryBeginDrain"/> succeeded.
+    ///     Both <see cref="SimpleActivationScheduler"/> and <see cref="ActivationScheduler"/> route
+    ///     their drain-then-complete step through this single method, since the DrainAsync/CompleteDrain
+    ///     pairing — and the "reschedule if more work arrived" decision <see cref="CompleteDrain"/>'s
+    ///     return value feeds — is the part of the drain protocol most at risk of silently drifting
+    ///     between the two independent scheduler implementations.
+    /// </summary>
+    internal async ValueTask<(ActivationDrainResult Result, bool NeedsReschedule)> DrainAndCompleteAsync(
+        int maxItems, CancellationToken ct)
+    {
+        ActivationDrainResult result = await DrainAsync(maxItems, ct).ConfigureAwait(false);
+        bool needsReschedule = CompleteDrain(result);
+        return (result, needsReschedule);
+    }
+
+    /// <summary>
     ///     Resets the scheduled flag to 0. Called by the scheduler when it cannot enqueue the
     ///     activation into the ready queue (e.g. <see cref="SchedulerOverloadMode.RejectWhenFull"/>).
     ///     Allows a future <see cref="TryMarkScheduled"/> to succeed.

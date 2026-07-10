@@ -315,9 +315,11 @@ internal sealed class ActivationScheduler : IActivationScheduler
 
             long drainStart = Stopwatch.GetTimestamp();
             ActivationDrainResult result;
+            bool needsReschedule;
             try
             {
-                result = await activation.DrainAsync(_drainBudget, ct).ConfigureAwait(false);
+                (result, needsReschedule) =
+                    await activation.DrainAndCompleteAsync(_drainBudget, ct).ConfigureAwait(false);
             }
             finally
             {
@@ -337,8 +339,6 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 _diagnostics.OnSchedulerDrainYielded(
                     new SchedulerDrainYieldedEvent(activation.GrainId, result.ItemsProcessed));
             }
-
-            bool needsReschedule = activation.CompleteDrain(result);
 
             if (!result.IsCompleted && (result.HasMoreWork || needsReschedule))
             {
