@@ -38,6 +38,8 @@ public sealed class EagerMemoryFixture : IAsyncDisposable
         services.AddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<IBehaviorResolver, BehaviorResolver>();
+        services.AddSingleton<IUserServiceProviderRegistry, UserServiceProviderRegistry>();
+        services.AddSingleton<QuarkOnlyServiceProviderHolder>();
 
         // The scoped service injected via the factory's IServiceProvider.
         services.AddScoped<EagerScopedService>();

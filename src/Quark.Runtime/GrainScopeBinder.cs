@@ -28,4 +28,28 @@ internal static class GrainScopeBinder
 
         return bindingServices.GetRequiredService<IBehaviorResolver>().Resolve(activation.GrainType, constructionServices);
     }
+
+    /// <summary>
+    ///     Decides and creates the IServiceScope + construction provider for a grain call: the small
+    ///     Quark-only scope composed with a cached user provider for grain types that opted into
+    ///     IGrainUserServiceProviderFactory, or the flat root scope otherwise. The caller disposes the
+    ///     returned scope after the call/activation completes — <see cref="ConstructionServices"/> and
+    ///     anything resolved from it become invalid once the scope is disposed.
+    /// </summary>
+    public static (IServiceScope Scope, IServiceProvider ConstructionServices) CreateCallScope(
+        IServiceProvider root, GrainActivation activation)
+    {
+        IUserServiceProviderRegistry registry = root.GetRequiredService<IUserServiceProviderRegistry>();
+        QuarkOnlyServiceProviderHolder holder = root.GetRequiredService<QuarkOnlyServiceProviderHolder>();
+
+        if (holder.Provider is not null &&
+            registry.TryGet(activation.GrainType, out IServiceProvider? userProvider) && userProvider is not null)
+        {
+            IServiceScope quarkOnlyScope = holder.Provider.CreateScope();
+            return (quarkOnlyScope, new CompositeServiceProvider(quarkOnlyScope.ServiceProvider, userProvider));
+        }
+
+        IServiceScope scope = root.CreateScope();
+        return (scope, scope.ServiceProvider);
+    }
 }

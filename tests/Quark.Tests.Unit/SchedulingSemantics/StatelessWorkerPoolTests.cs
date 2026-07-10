@@ -190,6 +190,8 @@ internal sealed class StatelessWorkerFixture : IAsyncDisposable
         services.AddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<IBehaviorResolver, BehaviorResolver>();
+        services.AddSingleton<IUserServiceProviderRegistry, UserServiceProviderRegistry>();
+        services.AddSingleton<QuarkOnlyServiceProviderHolder>();
 
         services.AddScoped<IActivationMemory<WorkerTestState>>(sp =>
             new ActivationMemoryAccessor<WorkerTestState>(

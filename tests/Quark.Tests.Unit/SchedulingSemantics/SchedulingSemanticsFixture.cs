@@ -51,6 +51,8 @@ public sealed class SchedulingSemanticsFixture : IAsyncDisposable
         services.AddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<IBehaviorResolver, BehaviorResolver>();
+        services.AddSingleton<IUserServiceProviderRegistry, UserServiceProviderRegistry>();
+        services.AddSingleton<QuarkOnlyServiceProviderHolder>();
 
         Clock = new FakeTimeProvider();
         services.AddSingleton<TimeProvider>(Clock);

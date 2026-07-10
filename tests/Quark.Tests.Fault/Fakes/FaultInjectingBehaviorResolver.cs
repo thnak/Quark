@@ -27,7 +27,7 @@ public sealed class FaultInjectingBehaviorResolver : IBehaviorResolver
         _plan = plan;
     }
 
-    public IGrainBehavior Resolve(GrainType grainType)
+    public IGrainBehavior Resolve(GrainType grainType, IServiceProvider services)
     {
         if (!_registry.TryGetGrainClass(grainType, out Type? behaviorType) || behaviorType is null)
             throw new InvalidOperationException(
@@ -38,6 +38,6 @@ public sealed class FaultInjectingBehaviorResolver : IBehaviorResolver
         if (shellAccessor.Shell.ActivationStatus == GrainActivationStatus.Activating)
             _plan.Check(behaviorType);
 
-        return (IGrainBehavior)ActivatorUtilities.CreateInstance(_sp, behaviorType);
+        return (IGrainBehavior)ActivatorUtilities.CreateInstance(services, behaviorType);
     }
 }

@@ -861,32 +861,34 @@ public sealed class GrainActivation : IAsyncDisposable
         Func<IActivationLifecycle, Task> hook,
         CancellationToken cancellationToken = default)
     {
-        using IServiceScope scope = _root.CreateScope();
-        IServiceProvider sp = scope.ServiceProvider;
-        IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(
-            sp,
-            this,
-            cancellationToken).ConfigureAwait(false);
-        if (behavior is IActivationLifecycle lifecycle)
+        (IServiceScope scope, IServiceProvider constructionServices) = GrainScopeBinder.CreateCallScope(_root, this);
+        using (scope)
         {
-            await hook(lifecycle).ConfigureAwait(false);
+            IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, constructionServices, this);
+            if (behavior is IActivationLifecycle lifecycle)
+            {
+                await hook(lifecycle).ConfigureAwait(false);
+            }
         }
     }
 
-    // Runs the full activation sequence in a single scope:
-    // 1. Bind shell accessor + call context.
+    // Runs the full activation sequence:
+    // 1. Bind shell accessor + call context, using the Quark-only scope for opted-in grain types
+    //    (see GrainScopeBinder.CreateCallScope) or the flat scope otherwise.
     // 2. Resolve behavior (ctor fires; any IEagerActivationMemory<T>.Load() calls register factories).
-    // 3. Initialize all eager holders with the scoped SP BEFORE OnActivateAsync.
+    // 3. Initialize all eager holders with the construction provider BEFORE OnActivateAsync.
     // 4. Call OnActivateAsync if the behavior implements IActivationLifecycle.
     internal async Task RunActivationAsync(CancellationToken ct)
     {
-        using IServiceScope scope = _root.CreateScope();
-        IServiceProvider sp = scope.ServiceProvider;
-        IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, this, ct).ConfigureAwait(false);
-        await RunEagerInitAsync(sp, ct).ConfigureAwait(false);
-        if (behavior is IActivationLifecycle lifecycle)
+        (IServiceScope scope, IServiceProvider constructionServices) = GrainScopeBinder.CreateCallScope(_root, this);
+        using (scope)
         {
-            await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+            IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, constructionServices, this);
+            await RunEagerInitAsync(constructionServices, ct).ConfigureAwait(false);
+            if (behavior is IActivationLifecycle lifecycle)
+            {
+                await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+            }
         }
     }
 

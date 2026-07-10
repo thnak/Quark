@@ -38,6 +38,8 @@ public sealed class ManagedMemoryFixture : IAsyncDisposable
         services.AddScoped<ICallContext>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<ICallContextSetter>(sp => sp.GetRequiredService<CallContext>());
         services.AddScoped<IBehaviorResolver, BehaviorResolver>();
+        services.AddSingleton<IUserServiceProviderRegistry, UserServiceProviderRegistry>();
+        services.AddSingleton<QuarkOnlyServiceProviderHolder>();
 
         services.AddManagedActivationMemory<ManagedBuffer>();
         services.AddTransient<ManagedBufferBehavior>();
