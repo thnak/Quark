@@ -14,7 +14,7 @@ public interface IRequestDedupStore
     ///     <para>
     ///         Concurrent duplicates (same key arriving while the first is still in-flight) await the
     ///         in-flight Task inside this method and return <see cref="DedupOutcome.Replay" /> once
-    ///         the original caller calls <see cref="Complete" />.
+    ///         the original caller calls <see cref="CompleteAsync" />.
     ///     </para>
     /// </summary>
     ValueTask<DedupLease> TryBeginAsync(
@@ -27,8 +27,14 @@ public interface IRequestDedupStore
     ///     Records the terminal outcome (success or failure bytes) for a lease that returned
     ///     <see cref="DedupOutcome.Execute" />. Must always be called, even on failure, so that
     ///     concurrent waiters are unblocked and future retries receive a replay.
+    ///     Async so a durable implementation can write-before-ack (the caller awaits this before
+    ///     returning the response to the client).
     /// </summary>
-    void Complete(GrainId grainId, string idempotencyKey, ReadOnlyMemory<byte> responsePayload);
+    Task CompleteAsync(
+        GrainId grainId,
+        string idempotencyKey,
+        ReadOnlyMemory<byte> responsePayload,
+        CancellationToken ct = default);
 
     /// <summary>
     ///     Drops all dedup entries for the specified grain.

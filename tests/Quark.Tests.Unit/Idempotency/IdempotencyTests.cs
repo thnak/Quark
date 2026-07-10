@@ -4,8 +4,11 @@ using Quark.Core;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
+using Quark.Persistence.Abstractions;
+using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;
+using Quark.Serialization.Abstractions.Abstractions;
 using Quark.Serialization.Abstractions.Buffers;
 using Quark.Transport.Abstractions;
 using Xunit;
@@ -74,7 +77,7 @@ public sealed class IdempotencyTests
         DedupLease first = await store.TryBeginAsync(grainId, key, argHash: 42);
         Assert.Equal(DedupOutcome.Execute, first.Outcome);
 
-        store.Complete(grainId, key, responseBytes);
+        await store.CompleteAsync(grainId, key, responseBytes);
 
         DedupLease second = await store.TryBeginAsync(grainId, key, argHash: 42);
         Assert.Equal(DedupOutcome.Replay, second.Outcome);
@@ -89,7 +92,7 @@ public sealed class IdempotencyTests
         const string key = "key3";
 
         await store.TryBeginAsync(grainId, key, argHash: 100);
-        store.Complete(grainId, key, ReadOnlyMemory<byte>.Empty);
+        await store.CompleteAsync(grainId, key, ReadOnlyMemory<byte>.Empty);
 
         DedupLease conflict = await store.TryBeginAsync(grainId, key, argHash: 999);
         Assert.Equal(DedupOutcome.Conflict, conflict.Outcome);
@@ -104,7 +107,7 @@ public sealed class IdempotencyTests
         byte[] responseBytes = [9, 8, 7];
 
         await store.TryBeginAsync(grainId, key, argHash: 1);
-        store.Complete(grainId, key, responseBytes);
+        await store.CompleteAsync(grainId, key, responseBytes);
 
         store.EvictGrain(grainId);
 
@@ -120,7 +123,7 @@ public sealed class IdempotencyTests
         const string key = "key5";
 
         await store.TryBeginAsync(grainId, key, argHash: 7);
-        store.Complete(grainId, key, ReadOnlyMemory<byte>.Empty);
+        await store.CompleteAsync(grainId, key, ReadOnlyMemory<byte>.Empty);
 
         await Task.Delay(50); // let the 1ms window expire
 
@@ -135,10 +138,10 @@ public sealed class IdempotencyTests
         var grainId = MakeGrainId();
 
         await store.TryBeginAsync(grainId, "k1", argHash: 1);
-        store.Complete(grainId, "k1", ReadOnlyMemory<byte>.Empty);
+        await store.CompleteAsync(grainId, "k1", ReadOnlyMemory<byte>.Empty);
 
         await store.TryBeginAsync(grainId, "k2", argHash: 2);
-        store.Complete(grainId, "k2", ReadOnlyMemory<byte>.Empty);
+        await store.CompleteAsync(grainId, "k2", ReadOnlyMemory<byte>.Empty);
 
         // Third entry must succeed even though cap is 2 (oldest evicted).
         DedupLease third = await store.TryBeginAsync(grainId, "k3", argHash: 3);
@@ -160,7 +163,153 @@ public sealed class IdempotencyTests
         Task<DedupLease> secondTask = store.TryBeginAsync(grainId, key, argHash: 55).AsTask();
         Assert.False(secondTask.IsCompleted, "Second call should be awaiting the in-flight entry.");
 
-        store.Complete(grainId, key, result);
+        await store.CompleteAsync(grainId, key, result);
+
+        DedupLease second = await secondTask;
+        Assert.Equal(DedupOutcome.Replay, second.Outcome);
+        Assert.Equal(result, second.RecordedResponse.ToArray());
+    }
+
+    // ── DurableRequestDedupStore (issue #163) ─────────────────────────────
+
+    private static ServiceProvider BuildStorageProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddQuarkSerialization();
+        services.AddSingleton<IFieldCodec<DurableDedupRecord>, DurableDedupRecordCodec>();
+        services.AddSingleton<IDeepCopier<DurableDedupRecord>, DurableDedupRecordCopier>();
+        services.AddSingleton<IGrainStorage, InMemoryGrainStorage>();
+        return services.BuildServiceProvider();
+    }
+
+    private static DurableRequestDedupStore MakeDurableStore(IGrainStorage storage, TimeSpan? window = null) =>
+        new(storage, Options.Create(new IdempotencyOptions { Window = window ?? TimeSpan.FromMinutes(5) }));
+
+    [Fact]
+    public async Task Durable_TryBeginAsync_FirstCall_ReturnsExecute()
+    {
+        using ServiceProvider sp = BuildStorageProvider();
+        DurableRequestDedupStore store = MakeDurableStore(sp.GetRequiredService<IGrainStorage>());
+
+        DedupLease lease = await store.TryBeginAsync(MakeGrainId(), "dkey1", argHash: 0);
+        Assert.Equal(DedupOutcome.Execute, lease.Outcome);
+    }
+
+    [Fact]
+    public async Task Durable_TryBeginAsync_AfterComplete_ReturnsReplay()
+    {
+        using ServiceProvider sp = BuildStorageProvider();
+        DurableRequestDedupStore store = MakeDurableStore(sp.GetRequiredService<IGrainStorage>());
+        var grainId = MakeGrainId();
+        const string key = "dkey2";
+        byte[] responseBytes = [1, 2, 3];
+
+        DedupLease first = await store.TryBeginAsync(grainId, key, argHash: 42);
+        Assert.Equal(DedupOutcome.Execute, first.Outcome);
+
+        await store.CompleteAsync(grainId, key, responseBytes);
+
+        DedupLease second = await store.TryBeginAsync(grainId, key, argHash: 42);
+        Assert.Equal(DedupOutcome.Replay, second.Outcome);
+        Assert.Equal(responseBytes, second.RecordedResponse.ToArray());
+    }
+
+    [Fact]
+    public async Task Durable_TryBeginAsync_SameKeyDifferentArgHash_ReturnsConflict()
+    {
+        using ServiceProvider sp = BuildStorageProvider();
+        DurableRequestDedupStore store = MakeDurableStore(sp.GetRequiredService<IGrainStorage>());
+        var grainId = MakeGrainId();
+        const string key = "dkey3";
+
+        await store.TryBeginAsync(grainId, key, argHash: 100);
+        await store.CompleteAsync(grainId, key, ReadOnlyMemory<byte>.Empty);
+
+        DedupLease conflict = await store.TryBeginAsync(grainId, key, argHash: 999);
+        Assert.Equal(DedupOutcome.Conflict, conflict.Outcome);
+    }
+
+    [Fact]
+    public async Task Durable_CompletedEntry_ReplaysAcrossNewStoreInstance_OverSameStorage()
+    {
+        // Proves the point of the durable tier: unlike InMemoryRequestDedupStore, a completed entry
+        // survives a fresh store instance (i.e. a grain deactivation + reactivation) as long as the
+        // backing IGrainStorage persists.
+        using ServiceProvider sp = BuildStorageProvider();
+        IGrainStorage storage = sp.GetRequiredService<IGrainStorage>();
+        var grainId = MakeGrainId();
+        const string key = "dkey-reactivate";
+        byte[] responseBytes = [7, 7, 7];
+
+        DurableRequestDedupStore firstActivation = MakeDurableStore(storage);
+        await firstActivation.TryBeginAsync(grainId, key, argHash: 55);
+        await firstActivation.CompleteAsync(grainId, key, responseBytes);
+
+        // New store instance, same underlying storage — simulates the grain reactivating.
+        DurableRequestDedupStore secondActivation = MakeDurableStore(storage);
+        DedupLease replay = await secondActivation.TryBeginAsync(grainId, key, argHash: 55);
+
+        Assert.Equal(DedupOutcome.Replay, replay.Outcome);
+        Assert.Equal(responseBytes, replay.RecordedResponse.ToArray());
+    }
+
+    [Fact]
+    public async Task Durable_EvictGrain_DropsLocalCache_ButDurableRecordStillReplays()
+    {
+        // EvictGrain must not delete the durable record — only InMemoryRequestDedupStore's eviction
+        // is destructive. The durable tier's whole point is surviving the deactivation that triggers it.
+        using ServiceProvider sp = BuildStorageProvider();
+        DurableRequestDedupStore store = MakeDurableStore(sp.GetRequiredService<IGrainStorage>());
+        var grainId = MakeGrainId();
+        const string key = "dkey-evict";
+        byte[] responseBytes = [3, 1, 4];
+
+        await store.TryBeginAsync(grainId, key, argHash: 9);
+        await store.CompleteAsync(grainId, key, responseBytes);
+
+        store.EvictGrain(grainId);
+
+        DedupLease afterEvict = await store.TryBeginAsync(grainId, key, argHash: 9);
+        Assert.Equal(DedupOutcome.Replay, afterEvict.Outcome);
+        Assert.Equal(responseBytes, afterEvict.RecordedResponse.ToArray());
+    }
+
+    [Fact]
+    public async Task Durable_ExpiredEntry_AllowsReExecute()
+    {
+        using ServiceProvider sp = BuildStorageProvider();
+        IGrainStorage storage = sp.GetRequiredService<IGrainStorage>();
+        var grainId = MakeGrainId();
+        const string key = "dkey-expire";
+
+        DurableRequestDedupStore store = MakeDurableStore(storage, window: TimeSpan.FromMilliseconds(1));
+        await store.TryBeginAsync(grainId, key, argHash: 7);
+        await store.CompleteAsync(grainId, key, ReadOnlyMemory<byte>.Empty);
+
+        await Task.Delay(50); // let the 1ms window expire
+
+        // Fresh instance so the (already-expired) local cache entry can't short-circuit the storage check.
+        DurableRequestDedupStore reactivated = MakeDurableStore(storage, window: TimeSpan.FromMilliseconds(1));
+        DedupLease after = await reactivated.TryBeginAsync(grainId, key, argHash: 7);
+        Assert.Equal(DedupOutcome.Execute, after.Outcome);
+    }
+
+    [Fact]
+    public async Task Durable_ConcurrentDuplicates_SecondAwaitsSameResult()
+    {
+        using ServiceProvider sp = BuildStorageProvider();
+        DurableRequestDedupStore store = MakeDurableStore(sp.GetRequiredService<IGrainStorage>());
+        var grainId = MakeGrainId();
+        const string key = "dkey-concurrent";
+        byte[] result = [0xAB, 0xCD];
+
+        DedupLease first = await store.TryBeginAsync(grainId, key, argHash: 55);
+        Assert.Equal(DedupOutcome.Execute, first.Outcome);
+
+        Task<DedupLease> secondTask = store.TryBeginAsync(grainId, key, argHash: 55).AsTask();
+        Assert.False(secondTask.IsCompleted, "Second call should be awaiting the in-flight entry.");
+
+        await store.CompleteAsync(grainId, key, result);
 
         DedupLease second = await secondTask;
         Assert.Equal(DedupOutcome.Replay, second.Outcome);
@@ -353,6 +502,47 @@ public sealed class IdempotencyTests
         Assert.NotNull(r1);
         Assert.NotNull(r2);
         Assert.Equal(r1!.Payload.ToArray(), r2!.Payload.ToArray());
+    }
+
+    [Fact]
+    public void AddIdempotentCalls_Durable_RegistersDurableRequestDedupStore_OverNamedProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddQuarkSilo(silo =>
+        {
+            silo.Services.AddLogging();
+            silo.Services.AddQuarkRuntime();
+            silo.Services.AddInMemoryGrainStorage("dedupStore");
+            silo.AddIdempotentCalls(o =>
+            {
+                o.Durability = DedupDurability.Durable;
+                o.DurableProviderName = "dedupStore";
+            });
+        });
+        using ServiceProvider sp = services.BuildServiceProvider();
+
+        IRequestDedupStore store = sp.GetRequiredService<IRequestDedupStore>();
+        Assert.IsType<DurableRequestDedupStore>(store);
+    }
+
+    [Fact]
+    public void AddIdempotentCalls_Durable_MissingNamedProvider_ThrowsOnResolve()
+    {
+        var services = new ServiceCollection();
+        services.AddQuarkSilo(silo =>
+        {
+            silo.Services.AddLogging();
+            silo.Services.AddQuarkRuntime();
+            // Durable configured, but "dedupStore" was never registered via AddInMemoryGrainStorage(name).
+            silo.AddIdempotentCalls(o =>
+            {
+                o.Durability = DedupDurability.Durable;
+                o.DurableProviderName = "dedupStore";
+            });
+        });
+        using ServiceProvider sp = services.BuildServiceProvider();
+
+        Assert.Throws<InvalidOperationException>(() => sp.GetRequiredService<IRequestDedupStore>());
     }
 
     private static ServiceProvider BuildSiloWithIdempotency(Action<IdempotencyOptions>? configure = null)

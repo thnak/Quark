@@ -32,10 +32,12 @@ public sealed class InMemoryRequestDedupStore : IRequestDedupStore
         return table.TryBeginAsync(idempotencyKey, argHash, ct);
     }
 
-    public void Complete(GrainId grainId, string idempotencyKey, ReadOnlyMemory<byte> responsePayload)
+    public Task CompleteAsync(
+        GrainId grainId, string idempotencyKey, ReadOnlyMemory<byte> responsePayload, CancellationToken ct = default)
     {
         if (_tables.TryGetValue(grainId, out PerGrainDedupTable? table))
             table.Complete(idempotencyKey, responsePayload);
+        return Task.CompletedTask;
     }
 
     public void EvictGrain(GrainId grainId) => _tables.TryRemove(grainId, out _);

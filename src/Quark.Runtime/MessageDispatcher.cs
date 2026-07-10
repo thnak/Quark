@@ -146,7 +146,8 @@ public sealed class MessageDispatcher : IMessageDispatcher
                 ReadOnlyMemory<byte> dedupPayload = expectResponse
                     ? _serializer.SerializeResponse(new GrainInvocationResponse(true, resultPayload, null))
                     : ReadOnlyMemory<byte>.Empty;
-                _dedupStore!.Complete(request.GrainId, idempotencyKey!, dedupPayload);
+                await _dedupStore!.CompleteAsync(request.GrainId, idempotencyKey!, dedupPayload, cancellationToken)
+                    .ConfigureAwait(false);
                 if (!expectResponse) return null;
                 return new MessageEnvelope
                 {
@@ -175,7 +176,8 @@ public sealed class MessageDispatcher : IMessageDispatcher
             byte[] errorBytes = _serializer.SerializeResponse(errorResponse);
 
             if (isDedupCall)
-                _dedupStore!.Complete(request.GrainId, idempotencyKey!, errorBytes);
+                await _dedupStore!.CompleteAsync(request.GrainId, idempotencyKey!, errorBytes, cancellationToken)
+                    .ConfigureAwait(false);
 
             // Re-throw for one-way keyed calls after recording the outcome.
             if (!expectResponse) throw;
