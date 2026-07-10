@@ -98,46 +98,80 @@ Remove the scope-initializer family entirely — it is superseded, not extended.
 - **Not** touching non-generator-based (hand-wired) behavior registration paths used in test projects
   (`tests/Quark.Tests.Unit/Integration/`) — those keep constructing behaviors manually; this spec's
   mechanism is generator-driven only.
+- **Not** supporting `IPersistentActivationMemory<T>` / `[PersistentState]` (`IPersistentState<T>`) /
+  `ITransactionalState<T>` / streams / reminders on opted-in behaviors in this first cut. Those all need
+  `IStorage<T>`/`IGrainStorage` (or other cross-package services) registered by separate packages
+  (`Quark.Persistence.InMemory`, `Quark.Persistence.Redis`, etc.) via their own extension methods, which
+  this spec does not touch. `IActivationMemory<T>`, `IManagedActivationMemory<T>`, and
+  `IEagerActivationMemory<T>` **are** supported — they only need the activation shell, nothing
+  external (§4.2). A behavior that opts into `IGrainUserServiceProviderFactory` and *also* takes one of
+  the unsupported types fails fast at activation with a clear `InvalidOperationException` ("Unable to
+  resolve service...") — not silently wrong. Extending storage/stream/reminder provider registration to
+  flow into the satellite provider is a natural follow-up, out of scope here (confirmed decision, not an
+  oversight).
 
 ---
 
 ## 3. Architecture overview
 
+The satellite "Quark-only" provider is **not** built by teaching the generator to emit a second,
+duplicated registration method. Instead, the four generator-emitted accessor calls
+(`IActivationMemory<T>`, `IManagedActivationMemory<T>`, plus the `AddEagerActivationMemory<T>` helper)
+switch from plain `services.AddScoped<T>(factory)` to a new `services.AddQuarkOwnedScoped<T>(factory)`
+extension that *also* drops a deferred marker recording `factory`. At startup, replaying every captured
+marker onto a fresh `IServiceCollection` reconstructs an equivalent Quark-only registration set with zero
+duplicated emission logic — the same deferred-marker idiom already used for
+`IGrainBehaviorRegistration`/`IGrainPlacementStrategyRegistration` elsewhere in this file.
+
 ```
 compile time (per assembly):
   BehaviorRegistrationGenerator scans IGrainBehavior implementers (as today) AND additionally
-  checks whether each implements IGrainUserServiceProviderFactory.
+  checks whether each implements IGrainUserServiceProviderFactory. If so, it emits a deferred
+  IUserServiceProviderFactoryRegistration (GrainType → the static CreateUserServiceProvider call),
+  the same idiom as the removed IGrainScopeInitializerRegistration.
+  Separately (independent of opt-in), its IActivationMemory<T>/IManagedActivationMemory<T>/
+  IEagerActivationMemory<T> accessor emissions now call AddQuarkOwnedScoped<T> instead of AddScoped<T> —
+  same factory lambda, one wrapper method, so every assembly's accessors are marker-capturable.
 
-  For assemblies with at least one opted-in behavior, the generator ALSO emits a small satellite
-  IServiceCollection containing only Quark's own registrations for those behaviors — the same
-  per-behavior accessor registrations (IActivationMemory<T>, IPersistentActivationMemory<T>,
-  IManagedActivationMemory<T>, IPersistentState<T>) it already emits into services, plus the fixed
-  core (ICallContext, IActivationShellAccessor, ICallContextSetter, IBehaviorResolver) — into a
-  SEPARATE collection, built into its own root provider ("the Quark root") at startup.
-
-silo startup:
-  SiloHostedService builds:
-    - the ordinary root IServiceProvider from silo.Services (unchanged — "the user/app root")
-    - (only if any behavior opted in) the Quark-only satellite root from the generated collection
-  For each grain type registered via IGrainUserServiceProviderFactory:
-    userProvider = TBehavior.CreateUserServiceProvider(appRoot)      // called ONCE, cached
-    cache[grainType] = userProvider
+silo startup (SiloHostedService.StartAsync, after grain/factory/placement registrations apply):
+  - IUserServiceProviderRegistry is populated: for each deferred factory registration,
+    call TBehavior.CreateUserServiceProvider(appRoot) ONCE and cache the result by GrainType.
+  - IF any such registration exists, build the Quark-only satellite root:
+      var quarkOnly = new ServiceCollection();
+      quarkOnly.AddSingleton(mainTypeRegistry); quarkOnly.AddSingleton<IGrainTypeRegistry>(mainTypeRegistry);
+      quarkOnly.AddSingleton(mainFactoryRegistry);                      // SAME instances as the main root
+      quarkOnly.AddScoped<ActivationShellAccessor>(); ... AddScoped<IBehaviorResolver, BehaviorResolver>();
+      foreach (var marker in _services.GetServices<IQuarkOwnedServiceRegistration>()) marker.Apply(quarkOnly);
+      QuarkOnlyServiceProviderHolder.Provider = quarkOnly.BuildServiceProvider();
+    (skipped entirely — zero cost — for silos with no opted-in behaviors)
 
 per call, GrainActivation.RunActivationAsync:
-  cache.TryGet(activation.GrainType, out userProvider)?
-    NO  → today's path, unchanged: using scope = _root.CreateScope(); resolve via GrainScopeBinder as today.
-    YES → using quarkScope = _quarkRoot.CreateScope();               // small, cheap — Quark's own types only
-          sp = new CompositeServiceProvider(quarkScope.ServiceProvider, userProvider);
-          bind ICallContext / shell accessor into quarkScope.ServiceProvider (as today, just narrower scope)
-          behavior = factoryRegistry-generated factory(sp)           // unchanged factory, unchanged codegen
-          RunEagerInitAsync(sp, ct); OnActivateAsync as today.
+  registry.TryGet(GrainType, out userProvider) && holder.Provider is { } quarkRoot ?
+    NO  → today's path, unchanged: using scope = _root.CreateScope();
+          GrainScopeBinder.BindAndResolveAsync(sp, sp, this, ct)  // same provider for binding + construction
+    YES → using quarkScope = quarkRoot.CreateScope();               // small — Quark's own types only
+          var composite = new CompositeServiceProvider(quarkScope.ServiceProvider, userProvider);  // quark-first
+          GrainScopeBinder.BindAndResolveAsync(quarkScope.ServiceProvider, composite, this, ct)
+          RunEagerInitAsync(composite, ct); OnActivateAsync as today.
 ```
 
-The generated `Func<IServiceProvider, IGrainBehavior>` factory (`BehaviorResolver.cs:11-28`,
-`GrainBehaviorFactoryRegistry`) is **unchanged** in both branches — it always resolves constructor
-parameters via `sp.GetRequiredService<T>()`. What changes is only which `IServiceProvider` is handed to
-it: the full flat scope (default path) or the composite of a small Quark-only scope + the cached user
-provider (opted-in path).
+`CompositeServiceProvider` tries the Quark-only side **first**, falling back to the cached user provider.
+This ordering is load-bearing, not arbitrary: if a developer's `CreateUserServiceProvider` returns
+`rootServices` unchanged (a natural, common choice — "my services are already cheap to resolve from the
+app root"), that root also contains Quark's own type registrations (same flat `silo.Services` collection).
+Querying it first would silently resolve `ICallContext`/etc. as a captive, cross-call-shared instance
+instead of Quark's real per-call one — a correctness bug, not just a missed optimization. Quark-first
+resolution makes the "only user services, never Quark services" guarantee structural regardless of what
+the developer's provider happens to also contain.
+
+**`IBehaviorResolver` changes shape to make this safe.** Today `BehaviorResolver` captures `IServiceProvider
+scope` in its own constructor (`BehaviorResolver.cs:6-9`) and uses that captured instance to construct the
+behavior — but when `BehaviorResolver` itself is resolved from the Quark-only scope, MS.DI would inject
+*that scope's own* provider as `scope`, not the outer composite, silently starving the behavior's
+user-owned constructor parameters. The fix: `IBehaviorResolver.Resolve` takes the construction provider as
+an explicit parameter instead of relying on ambient constructor capture —
+`IGrainBehavior Resolve(GrainType grainType, IServiceProvider services)` — so the caller always controls
+which provider builds the behavior, decoupled from which provider resolved `IBehaviorResolver` itself.
 
 ---
 
@@ -184,32 +218,44 @@ compile-time call site) — no reflection is involved in dispatching to it.
 compile time (`BehaviorRegistrationGenerator.cs`). It is extended to:
 
 1. Detect whether the concrete behavior type also implements `IGrainUserServiceProviderFactory`.
-2. If so, emit a call to `TBehavior.CreateUserServiceProvider` into the generated
-   `QuarkRegistrations.g.cs`, registered against that grain's `GrainType`, into a new deferred-marker
-   registration list (replacing the removed `IGrainScopeInitializerRegistration` mechanism).
-3. Emit the Quark-only satellite `IServiceCollection` entries (the fixed core + the same per-behavior
-   accessor registrations it already emits — `IActivationMemory<T>` etc., `BehaviorRegistrationGenerator.cs:443-490`)
-   for opted-in behaviors, into a **separate** collection rather than the shared one — only when at
-   least one behavior in the assembly opts in.
+2. If so, emit a deferred `IUserServiceProviderFactoryRegistration` (same idiom as the removed
+   `IGrainScopeInitializerRegistration`) calling `TBehavior.CreateUserServiceProvider` directly — a plain
+   static call, not generic dispatch, since the concrete type is known at compile time.
+3. Change its **existing** `IActivationMemory<T>`/`IManagedActivationMemory<T>` inline emissions
+   (`BehaviorRegistrationGenerator.cs:443-447, 464-468`) and the `AddEagerActivationMemory<T>` helper body
+   (`RuntimeServiceCollectionExtensions.cs:278-287`) from `services.AddScoped<T>(factory)` to
+   `services.AddQuarkOwnedScoped<T>(factory)` — same factory lambda, new wrapper — so every assembly's
+   accessor registrations become replayable onto the satellite collection (§3). This applies to *every*
+   behavior's accessors, not just opted-in ones — harmless, since nothing consumes the marker unless at
+   least one behavior in the process opts in. `IPersistentActivationMemory<T>`/`[PersistentState]` inline
+   emissions are intentionally **not** changed (§2 non-goal).
 
 ### 4.3 Startup application (`Quark.Runtime`)
 
-`SiloHostedService.ApplyScopeInitializerRegistrations()` is replaced by an equivalent step that, for each
-deferred `IGrainUserServiceProviderFactory` registration, calls the generated static factory once against
-the app root `IServiceProvider` and stores the result in a new `IUserServiceProviderRegistry`
-(`ConcurrentDictionary<GrainType, IServiceProvider>` — same shape as the removed
-`GrainScopeInitializerRegistry`, purpose-renamed). If the assembly emitted a Quark-only satellite
-collection, it is built into its own root `IServiceProvider` at the same point.
+`SiloHostedService.ApplyScopeInitializerRegistrations()` is replaced by `ApplyUserServiceProviderFactoryRegistrations()`,
+which:
+1. Populates the new `IUserServiceProviderRegistry` (`ConcurrentDictionary<GrainType, IServiceProvider>` —
+   same shape as the removed `GrainScopeInitializerRegistry`) by invoking each deferred factory once
+   against the app root `IServiceProvider`.
+2. If at least one such registration exists, builds the Quark-only satellite root exactly as described in
+   §3 (fresh `ServiceCollection`, the 6 fixed core lines, the main root's *existing*
+   `GrainTypeRegistry`/`GrainBehaviorFactoryRegistry` **instances** registered by reference — not
+   rebuilt — plus every captured `IQuarkOwnedServiceRegistration` marker replayed onto it), assigning the
+   result to a mutable `QuarkOnlyServiceProviderHolder` singleton (registered `null` by default in
+   `AddQuarkRuntime()`) so `GrainActivation` can read it without any constructor signature change. The
+   satellite provider is disposed in `SiloHostedService.StopAsync` alongside existing teardown.
 
 ### 4.4 Runtime call flow (`Quark.Runtime`)
 
-`GrainActivation.RunActivationAsync` and `GrainScopeBinder.BindAndResolveAsync` gain a branch: if
-`IUserServiceProviderRegistry.TryGet(activation.GrainType, ...)` finds a cached provider, create the
-**Quark-only** scope (`_quarkRoot.CreateScope()`) instead of the flat `_root.CreateScope()`, bind
-`ICallContext`/shell accessor into it exactly as today, and wrap it with the cached user provider in a
-small internal `CompositeServiceProvider : IServiceProvider` (tries the Quark scope first, falls back to
-the cached user provider) before calling `IBehaviorResolver.Resolve`. Behaviors that don't implement the
-interface take the existing, entirely unchanged path.
+`GrainActivation.RunActivationAsync` branches on `_root.GetRequiredService<IUserServiceProviderRegistry>()
+.TryGet(GrainType, ...)` combined with `_root.GetRequiredService<QuarkOnlyServiceProviderHolder>().Provider`
+being non-null. When both hold: create the **Quark-only** scope (`quarkRoot.CreateScope()`) instead of the
+flat `_root.CreateScope()`, bind `ICallContext`/shell accessor into it exactly as today (via
+`GrainScopeBinder.BindAndResolveAsync`, now taking separate `bindingServices`/`constructionServices`
+parameters — see §3), and pass the small `CompositeServiceProvider` (Quark-only first, cached user provider
+second) as the construction provider to `IBehaviorResolver.Resolve(grainType, constructionServices)`.
+Behaviors that don't implement the interface take the existing, entirely unchanged path — same provider
+passed for both binding and construction, identical to today's single-`sp` flow.
 
 ---
 
@@ -250,11 +296,11 @@ interface take the existing, entirely unchanged path.
    regardless of whether it's ever activated. Alternative: lazy on first activation. Eager was chosen for
    fail-fast startup validation; revisit if silos register many grain types that are rarely activated and
    startup cost becomes material.
-3. **Satellite-collection duplication.** The Quark-only satellite collection duplicates registration code
-   already emitted into the shared collection (same accessor registrations, different destination
-   collection) for opted-in behaviors. Acceptable duplication given it's generator-emitted, not
-   hand-maintained, but flag if a future refactor wants a single-source-of-truth registration list that
-   fans out to both collections.
+3. **Persistence-pattern support deferred (§2 non-goal, confirmed during design).** `IPersistentActivationMemory<T>`,
+   `[PersistentState]`, `ITransactionalState<T>`, streams, and reminders are not resolvable by opted-in
+   behaviors in v1 — they need `IStorage<T>`/`IGrainStorage` and other services from packages this spec
+   doesn't touch. Extending `Quark.Persistence.InMemory`/`Redis` (and similar) to register through
+   `AddQuarkOwnedScoped` is the natural follow-up once this ships.
 
 ---
 
