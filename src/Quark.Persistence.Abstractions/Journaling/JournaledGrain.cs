@@ -128,9 +128,44 @@ public abstract class JournaledGrain<TState, TEvent> : IGrainBehavior, IActivati
     private async Task ReloadFromLogAsync(CancellationToken ct)
     {
         JournaledGrainState<TState, TEvent> st = _memory.Value;
+        st.State = new TState();
+        st.ConfirmedVersion = 0;
+        st.LastSnapshotVersion = 0;
+
+        if (_snapshotStore is not null)
+        {
+            SnapshotEnvelope<TState>? snap =
+                await _snapshotStore.ReadSnapshotAsync<TState>(GrainId, ct).ConfigureAwait(false);
+
+            if (snap is not null && snap.Version > 0)
+            {
+                // Boundary probe: read from snap.Version - 1 so we can confirm the log actually
+                // contains >= snap.Version contiguous entries WITHOUT a length API on ILogStorage
+                // (AppendEntriesAsync guarantees version == index, so entry[V-1] existing => 0..V-1 exist).
+                IReadOnlyList<LogEntry> tail = await _logStorage!
+                    .ReadEntriesAsync(GrainId, snap.Version - 1, int.MaxValue, ct).ConfigureAwait(false);
+
+                if (tail.Count == 0 || tail[0].Version != snap.Version - 1)
+                    throw new CorruptSnapshotException(GrainId, snap.Version,
+                        $"Snapshot version {snap.Version} is ahead of the event log for grain {GrainId}.");
+
+                st.State = snap.State;                 // store returned an isolated copy
+                st.ConfirmedVersion = snap.Version;
+                st.LastSnapshotVersion = snap.Version;
+
+                for (int i = 1; i < tail.Count; i++)   // skip the boundary entry (already in the snapshot)
+                {
+                    TransitionState(st.State, (TEvent)tail[i].Event);
+                    st.ConfirmedVersion = tail[i].Version + 1;
+                }
+
+                return;
+            }
+        }
+
+        // No usable snapshot: full replay from 0 (original behavior).
         IReadOnlyList<LogEntry> all =
             await _logStorage!.ReadEntriesAsync(GrainId, 0, int.MaxValue, ct).ConfigureAwait(false);
-        st.State = new TState();
         foreach (LogEntry entry in all)
         {
             TransitionState(st.State, (TEvent)entry.Event);
