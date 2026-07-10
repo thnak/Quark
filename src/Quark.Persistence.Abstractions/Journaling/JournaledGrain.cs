@@ -128,7 +128,6 @@ public abstract class JournaledGrain<TState, TEvent> : IGrainBehavior, IActivati
     private async Task ReloadFromLogAsync(CancellationToken ct)
     {
         JournaledGrainState<TState, TEvent> st = _memory.Value;
-        st.State = new TState();
         st.ConfirmedVersion = 0;
         st.LastSnapshotVersion = 0;
 
@@ -164,6 +163,7 @@ public abstract class JournaledGrain<TState, TEvent> : IGrainBehavior, IActivati
         }
 
         // No usable snapshot: full replay from 0 (original behavior).
+        st.State = new TState();
         IReadOnlyList<LogEntry> all =
             await _logStorage!.ReadEntriesAsync(GrainId, 0, int.MaxValue, ct).ConfigureAwait(false);
         foreach (LogEntry entry in all)

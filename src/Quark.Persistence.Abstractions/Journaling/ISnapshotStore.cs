@@ -14,11 +14,18 @@ public interface ISnapshotStore
     ///     Reads the latest snapshot for <paramref name="grainId" />, or <c>null</c> if none exists.
     ///     Durable providers throw <see cref="CorruptSnapshotException" /> when a stored snapshot
     ///     cannot be deserialized into <typeparamref name="TState" />.
+    ///     Implementations MUST return a deep/isolated copy of the state: the caller assigns the
+    ///     returned <see cref="SnapshotEnvelope{TState}.State" /> directly into activation state and
+    ///     mutates it in place while replaying post-snapshot events.
     /// </summary>
     Task<SnapshotEnvelope<TState>?> ReadSnapshotAsync<TState>(
         GrainId grainId, CancellationToken ct = default) where TState : class;
 
-    /// <summary>Writes (replaces) the snapshot for <paramref name="grainId" />.</summary>
+    /// <summary>
+    ///     Writes (replaces) the snapshot for <paramref name="grainId" />. Implementations MUST store
+    ///     an isolated copy of <see cref="SnapshotEnvelope{TState}.State" />: the caller may continue
+    ///     mutating its own state object after this call returns.
+    /// </summary>
     Task WriteSnapshotAsync<TState>(
         GrainId grainId, SnapshotEnvelope<TState> snapshot, CancellationToken ct = default)
         where TState : class;

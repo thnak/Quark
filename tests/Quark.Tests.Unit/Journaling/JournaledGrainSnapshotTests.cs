@@ -1,9 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 using Quark.Persistence.Abstractions.Journaling;
 using Quark.Persistence.InMemory;
+using Quark.Serialization;
+using Quark.Serialization.Abstractions.Abstractions;
 using Xunit;
 
 namespace Quark.Tests.Unit.Journaling;
@@ -170,6 +173,51 @@ public sealed class JournaledGrainSnapshotTests
         Assert.Equal(3, recovered.State.Count);
     }
 
+    [Fact]
+    public async Task ConfirmEvents_WritesSnapshot_AtEachIntervalBoundary()
+    {
+        var snap = new FakeSnapshotStore();
+        CounterGrain g = await ActivateAsync(new InMemoryLogStorage(), snap, interval: 2, NewId());
+
+        for (int i = 0; i < 6; i++)   // confirm one event at a time → versions 1..6
+        {
+            g.Bump();
+            await g.SaveAsync();
+        }
+
+        // Auto-snapshot fires at every interval boundary, not just the first.
+        Assert.Equal(new[] { 2, 4, 6 }, snap.Writes.Select(w => w.Version).ToArray());
+    }
+
+    [Fact]
+    public async Task Activation_TwiceFromSameSnapshot_IsIsolated()
+    {
+        // Use the REAL InMemorySnapshotStore (deep-copies on read) to exercise read-isolation.
+        // Generators don't run in test projects, so hand-write the copier for CounterState.
+        var services = new ServiceCollection();
+        services.AddQuarkSerialization();
+        services.AddSingleton<IDeepCopier<CounterState>>(new CounterStateCopier());
+        var sp = services.BuildServiceProvider();
+        var store = new InMemorySnapshotStore(sp.GetRequiredService<ICopierProvider>());
+
+        var log = new InMemoryLogStorage();
+        GrainId id = NewId();
+
+        CounterGrain seed = await ActivateAsync(log, store, interval: 0, id);
+        for (int i = 0; i < 5; i++) seed.Bump();
+        await seed.SaveAsync();                                             // log has 5 entries
+
+        await store.WriteSnapshotAsync(id, new SnapshotEnvelope<CounterState>(3, new CounterState { Count = 3 }));
+
+        CounterGrain first = await ActivateAsync(log, store, interval: 0, id);
+        Assert.Equal(5, first.State.Count);
+
+        // If read were not isolated, the first reactivation's in-place tail replay would have
+        // mutated the stored snapshot (3 -> 5), so the second would over-count.
+        CounterGrain second = await ActivateAsync(log, store, interval: 0, id);
+        Assert.Equal(5, second.State.Count);
+    }
+
     // ---- Shared helpers ----
 
     private static GrainId NewId() => new(new GrainType("CounterGrain"), Guid.NewGuid().ToString("N"));
@@ -185,6 +233,11 @@ public sealed class JournaledGrainSnapshotTests
     }
 
     public sealed class CounterState { public int Count { get; set; } }
+
+    private sealed class CounterStateCopier : IDeepCopier<CounterState>
+    {
+        public CounterState DeepCopy(CounterState original, CopyContext context) => new() { Count = original.Count };
+    }
 
     public abstract record CounterEvent;
     public sealed record Bumped : CounterEvent;
@@ -244,6 +297,9 @@ public sealed class JournaledGrainSnapshotTests
         public void Seed<TState>(GrainId id, SnapshotEnvelope<TState> snap) where TState : class
             => _snaps[id] = snap;
 
+        // Non-isolating double: returns the same stored envelope/state instance on every read.
+        // Only safe for tests that read a snapshot once; use InMemorySnapshotStore where
+        // read-isolation across repeated activations matters.
         public Task<SnapshotEnvelope<TState>?> ReadSnapshotAsync<TState>(
             GrainId grainId, CancellationToken ct = default) where TState : class
         {
