@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Quark.Core;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
@@ -285,6 +286,85 @@ public sealed class IdempotencyTests
 
         // Transactional calls must never be deduped — both executions must occur.
         Assert.Equal(2, execCount);
+    }
+
+    // ── AddIdempotentCalls() DI wrapper (issue #155) ──────────────────────
+    // The checkpoint logic above is exercised via hand-built stores/dispatchers;
+    // these verify the actual public entry point wires the same pieces together.
+
+    [Fact]
+    public void AddIdempotentCalls_RegistersInMemoryRequestDedupStore()
+    {
+        using ServiceProvider sp = BuildSiloWithIdempotency();
+
+        IRequestDedupStore store = sp.GetRequiredService<IRequestDedupStore>();
+        Assert.IsType<InMemoryRequestDedupStore>(store);
+    }
+
+    [Fact]
+    public void AddIdempotentCalls_NonPositiveWindow_FailsValidationOnResolve()
+    {
+        using ServiceProvider sp = BuildSiloWithIdempotency(o => o.Window = TimeSpan.Zero);
+
+        Assert.Throws<OptionsValidationException>(
+            () => sp.GetRequiredService<IOptions<IdempotencyOptions>>().Value);
+    }
+
+    [Fact]
+    public void AddIdempotentCalls_DurableWithoutProviderName_FailsValidationOnResolve()
+    {
+        using ServiceProvider sp = BuildSiloWithIdempotency(o => o.Durability = DedupDurability.Durable);
+
+        Assert.Throws<OptionsValidationException>(
+            () => sp.GetRequiredService<IOptions<IdempotencyOptions>>().Value);
+    }
+
+    [Fact]
+    public async Task AddIdempotentCalls_WiresRealMessageDispatcher_SecondCallReplays()
+    {
+        int execCount = 0;
+        var services = new ServiceCollection();
+        services.AddSingleton<IGrainCallInvoker>(new CountingInvoker(() => execCount++));
+        services.AddQuarkSilo(silo =>
+        {
+            silo.Services.AddLogging();
+            silo.Services.AddQuarkRuntime();
+            silo.AddIdempotentCalls();
+        });
+        using ServiceProvider sp = services.BuildServiceProvider();
+
+        sp.GetRequiredService<TransportGrainDispatcherRegistry>()
+            .Register(new GrainType("TestGrain"), new PassThroughDispatcher());
+
+        IMessageDispatcher dispatcher = sp.GetRequiredService<IMessageDispatcher>();
+        GrainMessageSerializer serializer = sp.GetRequiredService<GrainMessageSerializer>();
+
+        var grainId = new GrainId(new GrainType("TestGrain"), "e2e");
+        byte[] payload = serializer.SerializeRequest(
+            new GrainInvocationRequest(grainId, 1u, ReadOnlyMemory<byte>.Empty));
+
+        var headers = new MessageHeaders();
+        headers.Set(QuarkHeaders.IdempotencyKey, "idem-e2e");
+
+        MessageEnvelope? r1 = await dispatcher.DispatchAsync(Envelope(payload, headers, 1));
+        MessageEnvelope? r2 = await dispatcher.DispatchAsync(Envelope(payload, headers, 2));
+
+        Assert.Equal(1, execCount);
+        Assert.NotNull(r1);
+        Assert.NotNull(r2);
+        Assert.Equal(r1!.Payload.ToArray(), r2!.Payload.ToArray());
+    }
+
+    private static ServiceProvider BuildSiloWithIdempotency(Action<IdempotencyOptions>? configure = null)
+    {
+        var services = new ServiceCollection();
+        services.AddQuarkSilo(silo =>
+        {
+            silo.Services.AddLogging();
+            silo.Services.AddQuarkRuntime();
+            silo.AddIdempotentCalls(configure);
+        });
+        return services.BuildServiceProvider();
     }
 
     // --- helpers ---
