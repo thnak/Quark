@@ -1,5 +1,3 @@
-using Quark.Core.Abstractions.Identity;
-
 namespace Quark.Runtime;
 
 internal interface IUserServiceProviderRegistry
