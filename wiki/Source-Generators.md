@@ -218,6 +218,35 @@ reference `Quark.Streaming.InMemory` (so `AddImplicitStreamSubscription` is unre
 generator skips emission and reports **QRK0053** instead of emitting code that would not compile.
 Add a `Quark.Streaming.InMemory` reference to silence the warning and enable auto-wiring.
 
+### User-service-provider factory registration
+
+When a behavior class implements `IGrainUserServiceProviderFactory`, the generator emits an additional
+registration call into `AddMyAssemblyBehaviors()`:
+
+```csharp
+// behavior: class MyBehavior : IGrainBehavior, IMyGrain, IGrainUserServiceProviderFactory { ... }
+services.AddGrainUserServiceProviderFactory<IMyGrain, MyBehavior>();
+```
+
+This registers a **satellite dependency resolver** per-grain (not per-call), allowing the behavior
+to inject a dedicated `IServiceProvider` on activation that reuses heavy, stateless user services
+across all calls to that grain without re-resolving them. See
+[`docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md`](../../docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md)
+for design details.
+
+#### Activation memory accessor registration changes
+
+When a behavior implements `IGrainUserServiceProviderFactory`, the generator changes how it registers
+activation memory accessors (`IActivationMemory<T>`, `IManagedActivationMemory<T>`, `IEagerActivationMemory<T>`):
+instead of plain `AddScoped<T>()`, each is registered via `AddQuarkOwnedScoped<T>()`. This ensures the
+accessor is resolved from the Quark-owned satellite provider (not the user's), preserving scope semantics
+for opted-in behaviors. For behaviors that do not implement the interface, accessors continue to use
+plain `AddScoped<T>()` — both approaches are functionally identical.
+
+**v1 limitation**: `IPersistentActivationMemory<T>` and `[PersistentState]` are not yet supported on
+behaviors that implement `IGrainUserServiceProviderFactory`; these features will be enabled in a future
+release.
+
 ## SerializerGenerator
 
 For every type annotated `[GenerateSerializer]`, emits an `IFieldCodec<T>` and `IDeepCopier<T>` implementation.
