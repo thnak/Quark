@@ -65,7 +65,7 @@ flowchart LR
 | Durable grain reminders (in-memory + Redis) | ✅ |
 | `[Reentrant]` concurrent dispatch | ✅ |
 | `[PersistentState]` injection | ✅ |
-| Per-call grain scope initializers (`AddGrainScopeInitializer`, multi-tenant DI scoping) | ✅ |
+| Opt-in user-service-provider factory (`IGrainUserServiceProviderFactory`, per-grain-type cached DI) | ✅ |
 | `IPersistentActivationMemory<T>` | ✅ |
 | `JournaledGrain<TState,TEvent>` event sourcing | ✅ |
 | In-memory streams (`IAsyncStream<T>`) | ✅ |
