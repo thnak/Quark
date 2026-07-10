@@ -81,6 +81,22 @@ public class StreamFanOutTests
         Assert.Equal("payload", sharedReceived[0].Item); // shared observer receives the wrapped item
     }
 
+    [Fact]
+    public async Task PublishAsync_MultipleSubscribersThrow_AggregatesAllFailures()
+    {
+        var registry = new StreamSubscriptionRegistry();
+        StreamId streamId = StreamId.Create("ns", "key");
+
+        registry.Subscribe(streamId, new GateObserver<string>(_ => throw new InvalidOperationException("boom-1")));
+        registry.Subscribe(streamId, new GateObserver<string>(_ => throw new InvalidOperationException("boom-2")));
+
+        AggregateException ex = await Assert.ThrowsAsync<AggregateException>(
+            async () => await registry.PublishAsync(streamId, "x", null));
+
+        Assert.Equal(2, ex.InnerExceptions.Count);
+        Assert.All(ex.InnerExceptions, e => Assert.IsType<InvalidOperationException>(e));
+    }
+
     private sealed class GateObserver<T>(Func<T, Task> onNext) : IAsyncObserver<T>
     {
         public async ValueTask OnNextAsync(T item, StreamSequenceToken? token = null) => await onNext(item);
