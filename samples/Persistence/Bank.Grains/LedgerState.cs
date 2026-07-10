@@ -1,14 +1,17 @@
+using Quark.Serialization.Abstractions.Attributes;
+
 namespace Bank.Grains;
 
 /// <summary>
-///     In-memory projection for <see cref="LedgerBehavior" />. This is never persisted directly —
-///     it is rebuilt by replaying <see cref="LedgerEvent" />s from the log. No serializer is needed
-///     because the projection lives only in the activation shell.
+///     Projection for <see cref="LedgerBehavior" />, rebuilt by replaying <see cref="LedgerEvent" />s.
+///     <c>[GenerateSerializer]</c> lets the in-memory <c>ISnapshotStore</c> deep-copy it so activation
+///     can replay only post-snapshot events instead of the whole log.
 /// </summary>
+[GenerateSerializer]
 public sealed class LedgerState
 {
-    public decimal Balance { get; set; }
-    public List<string> History { get; } = [];
+    [Id(0)] public decimal Balance { get; set; }
+    [Id(1)] public List<string> History { get; set; } = [];
 }
 
 /// <summary>Base type for ledger events. Events are the source of truth, persisted to the log.</summary>
