@@ -143,38 +143,32 @@ public static class RuntimeServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Registers a grain behavior implementation and maps it to its grain type key.
-    ///     The behavior type is registered as <c>Transient</c> so
+    ///     Registers a grain behavior implementation and maps it to an explicit, compile-time-known
+    ///     grain type key — never reflects. The behavior type is registered as <c>Transient</c> so
     ///     <c>ActivatorUtilities.CreateInstance</c> can construct it per call, unless
-    ///     <paramref name="factory"/> is supplied, in which case behavior construction never reflects.
+    ///     <paramref name="factory"/> is supplied, in which case behavior construction never reflects
+    ///     either. The generated <c>QuarkRegistrations.g.cs</c> path always calls this overload.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="behaviorId">
-    ///     Explicit grain type key, known at compile time. When <c>null</c> (the default — used by
-    ///     hand-wired registrations), falls back to reflecting <see cref="GrainBehaviorAttribute"/> or the
-    ///     interface name at runtime, exactly as before. The generated <c>QuarkRegistrations.g.cs</c> path
-    ///     always supplies this explicitly.
-    /// </param>
+    /// <param name="behaviorId">Explicit grain type key, known at compile time.</param>
     /// <param name="factory">
-    ///     Explicit compile-time construction factory. When <c>null</c> (the default — used by hand-wired
-    ///     registrations), behavior construction falls back to <see cref="ReflectionBehaviorActivator"/>.
-    ///     The generated <c>QuarkRegistrations.g.cs</c> path always supplies this when the behavior class
-    ///     has exactly one public constructor with only required parameters.
+    ///     Explicit compile-time construction factory. When <c>null</c> (the default), behavior
+    ///     construction falls back to <c>ActivatorUtilities</c> via the <c>Transient</c> registration
+    ///     above — trim-safe, since the <typeparamref name="TBehavior"/> generic parameter is annotated
+    ///     with <see cref="DynamicallyAccessedMemberTypes.PublicConstructors"/>.
     /// </param>
     public static IServiceCollection AddGrainBehavior<TInterface, [DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
         this IServiceCollection services,
-        string? behaviorId = null,
+        string behaviorId,
         Func<IServiceProvider, TBehavior>? factory = null)
         where TInterface : IGrain
         where TBehavior : class, IGrainBehavior, TInterface
     {
+        ArgumentNullException.ThrowIfNull(behaviorId);
         services.AddTransient<TBehavior>();
 
-#pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) registrations.
-        string key = behaviorId ?? GetGrainTypeKey<TInterface, TBehavior>();
-#pragma warning restore IL2026
-        var grainType = new GrainType(key);
+        var grainType = new GrainType(behaviorId);
 
         services.AddSingleton<IGrainBehaviorRegistration>(
             new GrainBehaviorRegistration(grainType, typeof(TBehavior)));
@@ -187,6 +181,26 @@ public static class RuntimeServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    ///     Hand-wired convenience overload: registers a grain behavior without an explicit
+    ///     <c>behaviorId</c>, deriving the grain type key by reflecting
+    ///     <see cref="GrainBehaviorAttribute"/> (or falling back to the interface name) at runtime.
+    ///     Never called by generated code — <c>QuarkRegistrations.g.cs</c> always supplies
+    ///     <c>behaviorId</c> explicitly via the overload above. Prefer that overload (or the
+    ///     <c>Quark.CodeGenerator</c> source generator) in an AOT-published production silo.
+    /// </summary>
+    [RequiresUnreferencedCode(
+        "Reflects [GrainBehaviorAttribute] (or falls back to the interface name) off TBehavior to derive " +
+        "the grain type key. Call the AddGrainBehavior<TInterface,TBehavior>(string behaviorId, ...) " +
+        "overload directly, or use the Quark.CodeGenerator source generator, to avoid this at runtime.")]
+    public static IServiceCollection AddGrainBehavior<TInterface, [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
+        this IServiceCollection services,
+        Func<IServiceProvider, TBehavior>? factory = null)
+        where TInterface : IGrain
+        where TBehavior : class, IGrainBehavior, TInterface
+        => services.AddGrainBehavior<TInterface, TBehavior>(GetGrainTypeKey<TInterface, TBehavior>(), factory);
 
     /// <summary>
     ///     Registers a delegate that configures this grain type's per-call scope before
