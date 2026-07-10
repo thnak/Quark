@@ -223,3 +223,58 @@ silo.Services.AddBankGrainsBehaviors();                        // generated regi
 ```
 
 State written through `IGrainStorage` carries `[GenerateSerializer]` so the generator can emit the deep copier the provider uses to snapshot it. The event-sourced `LedgerState` needs no serializer — it is rebuilt from events. Swap `AddInMemoryGrainStorage()` for `AddRedisGrainStorage(...)` to persist across restarts with no grain-code changes. See the sample README for a full walkthrough.
+
+## Realm
+
+An Intersect-inspired MMO spatial backbone: maps, tile grids, scene transitions, movement authority, and Area-of-Interest (AoI) broadcast, plus a TCP bot-driver load harness. The most complete demonstration of placement, streaming, and timers working together at scale.
+
+**Source:** `samples/Realm/`
+
+### Architecture
+
+| Grain | Cardinality | Placement | Responsibility |
+|---|---|---|---|
+| `WorldGrain` | 1 (singleton) | `[HashBasedPlacement]` fixed key | World directory: map registry, spawn lookup, player login → assigns starting map. |
+| `MapGrain` | 1 per map | `[HashBasedPlacement]` | Authoritative tile grid, live entity roster (players + NPCs), per-tick simulation, the map's AoI broadcast stream. Sticky to one silo. |
+| `PlayerGrain` | 1 per player | `[PreferLocalPlacement]` | Per-player session: current map + coords, persistent state, move-intent ingress, AoI stream subscriptions (current map + cardinal neighbors). |
+
+NPCs are in-grain structs inside `MapGrain`, not separate grains — cheaper than one grain per NPC and Intersect-faithful. Each map runs a simple wander AI each tick, subject to the same bounds/collision rules as players.
+
+```
+samples/Realm/
+Realm.Common/          — DTOs, content models, stream-namespace constants
+Realm.GrainInterfaces/ — IWorldGrain, IMapGrain, IPlayerGrain
+Realm.Grains/          — WorldBehavior, MapBehavior, PlayerBehavior
+Realm.Content/         — static JSON world + content loader
+Realm.Server/          — silo host: TCP gateway, streams, storage, diagnostics
+Realm.Client/          — batch bot-driver load harness
+```
+
+### Running
+
+```bash
+# Terminal 1 — server (TCP gateway on port 30010)
+dotnet run --project samples/Realm/Realm.Server
+
+# Terminal 2 — bot-driver load harness
+dotnet run --project samples/Realm/Realm.Client -- --players 20 --rate 2 --duration 15
+```
+
+### Key patterns
+
+**AoI broadcast via per-map streams:**
+
+```csharp
+[ImplicitStreamSubscription(RealmConstants.StreamProvider)]
+// MapGrain publishes a batched DeltaBatch each tick; PlayerGrain subscribes to its
+// current map plus cardinal (N/S/E/W) neighbor maps, and re-subscribes on border crossing.
+```
+
+**Diagnostics wired for hang detection:**
+
+```csharp
+silo.Services.AddQuarkDiagnostics<RealmDiagnosticsListener>();
+silo.Services.AddQuarkStuckGrainDetector();
+```
+
+See the sample's `README.md` and `ROADMAP.md` for the full architecture diagram, benchmark results, and a log of real framework gaps found while building this sample (a scheduler reentrancy deadlock, a `Quark.Diagnostics` circular-DI bug, and a multi-silo activation-placement gap).

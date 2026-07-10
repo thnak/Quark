@@ -1,13 +1,17 @@
 using Microsoft.Extensions.Hosting;
 using Quark.Client;
 using Quark.Core;
+using Quark.Diagnostics;
 using Quark.Persistence.InMemory;
 using Quark.Runtime;
+using Quark.Serialization;
 using Quark.Streaming.InMemory;
 using Quark.Transport.Tcp;
 using Realm.Common;
+using Realm.Common.Dtos;
 using Realm.Content;
 using Realm.Grains;
+using Realm.Server;
 
 IHost host = Host.CreateDefaultBuilder(args)
     .UseQuark(silo =>
@@ -18,11 +22,15 @@ IHost host = Host.CreateDefaultBuilder(args)
 
         silo.Services.AddInMemoryGrainStorage();
         silo.Services.AddMemoryStreams(RealmConstants.StreamProvider);
+        silo.Services.AddStreamableCodec<DeltaBatch, DeltaBatchCodec>();
 
         silo.Services.AddRealmContent();
         silo.Services.AddRealmCommonCopiers();
         silo.Services.AddRealmGrainStateCopiers();
         silo.Services.AddRealmGrainsBehaviors();
+
+        silo.Services.AddQuarkDiagnostics<RealmDiagnosticsListener>();
+        silo.Services.AddQuarkStuckGrainDetector();
     })
     .UseQuarkClient(client =>
     {

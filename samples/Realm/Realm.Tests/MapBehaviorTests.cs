@@ -6,8 +6,11 @@ using Quark.Core.Abstractions.Identity;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Serialization.Abstractions.Buffers;
+using Quark.Streaming.InMemory;
 using Quark.Testing.Harness;
+using Realm.Common;
 using Realm.Common.Dtos;
+using Realm.Common.Models;
 using Realm.Content;
 using Realm.GrainInterfaces;
 using Realm.Grains;
@@ -24,6 +27,7 @@ public sealed class MapBehaviorTests
             options.ConfigureSiloServices = services =>
             {
                 services.AddQuarkRuntime();
+                services.AddMemoryStreams(RealmConstants.StreamProvider);
                 services.AddSingleton<RealmContentLoader>();
                 services.AddGrainBehavior<IMapGrain, MapBehavior>();
                 services.AddScoped<IActivationMemory<MapRuntime>>(sp =>
@@ -48,10 +52,10 @@ public sealed class MapBehaviorTests
 
         Assert.True(result.Success);
         MapSnapshot snap = await map.SnapshotAsync();
-        Assert.Single(snap.Entities);
-        Assert.Equal("p1", snap.Entities[0].EntityId);
-        Assert.Equal(3, snap.Entities[0].At.X);
-        Assert.Equal(3, snap.Entities[0].At.Y);
+        EntitySnapshot? entity = Array.Find(snap.Entities, e => e.EntityId == "p1");
+        Assert.NotNull(entity);
+        Assert.Equal(3, entity!.At.X);
+        Assert.Equal(3, entity.At.Y);
     }
 
     [Fact]
@@ -64,7 +68,7 @@ public sealed class MapBehaviorTests
         await map.LeaveAsync("p1");
 
         MapSnapshot snap = await map.SnapshotAsync();
-        Assert.Empty(snap.Entities);
+        Assert.DoesNotContain(snap.Entities, e => e.EntityId == "p1");
     }
 
     [Fact]
@@ -83,8 +87,10 @@ public sealed class MapBehaviorTests
         Assert.Null(result.TransitionMapId);
 
         MapSnapshot snap = await map.SnapshotAsync();
-        Assert.Equal(4, snap.Entities[0].At.X);
-        Assert.Equal(3, snap.Entities[0].At.Y);
+        EntitySnapshot? entity = Array.Find(snap.Entities, e => e.EntityId == "p1");
+        Assert.NotNull(entity);
+        Assert.Equal(4, entity!.At.X);
+        Assert.Equal(3, entity.At.Y);
     }
 
     [Fact]
@@ -100,8 +106,10 @@ public sealed class MapBehaviorTests
         Assert.False(result.Success);
 
         MapSnapshot snap = await map.SnapshotAsync();
-        Assert.Equal(4, snap.Entities[0].At.X);
-        Assert.Equal(5, snap.Entities[0].At.Y);
+        EntitySnapshot? entity = Array.Find(snap.Entities, e => e.EntityId == "p1");
+        Assert.NotNull(entity);
+        Assert.Equal(4, entity!.At.X);
+        Assert.Equal(5, entity.At.Y);
     }
 
     [Fact]
@@ -179,9 +187,60 @@ public sealed class MapBehaviorTests
         MapSnapshot snap = await map.SnapshotAsync();
 
         Assert.Equal("map-nw", snap.MapId);
-        Assert.Equal(2, snap.Entities.Length);
         Assert.Contains(snap.Entities, e => e.EntityId == "p1");
         Assert.Contains(snap.Entities, e => e.EntityId == "p2");
+    }
+
+    [Fact]
+    public async Task NpcSpawns_ActivateFromContentOnMapActivation()
+    {
+        await using TestCluster cluster = await CreateClusterAsync();
+        IMapGrain map = cluster.Client.GetGrain<IMapGrain>("map-nw");
+
+        RealmContentLoader content = cluster.PrimarySilo.GetRequiredService<RealmContentLoader>();
+        MapContent mc = content.GetMap("map-nw")!;
+
+        MapSnapshot snap = await map.SnapshotAsync();
+        EntitySnapshot[] npcs = Array.FindAll(snap.Entities, e => e.Kind == EntityKind.Npc);
+
+        Assert.Equal(mc.NpcSpawns.Length, npcs.Length);
+        foreach (SpawnPoint sp in mc.NpcSpawns)
+            Assert.Contains(npcs, n => n.At.X == sp.X && n.At.Y == sp.Y);
+    }
+
+    [Fact]
+    public async Task Npc_WanderStaysInBoundsAndAvoidsCollisions()
+    {
+        await using TestCluster cluster = await CreateClusterAsync();
+        IMapGrain map = cluster.Client.GetGrain<IMapGrain>("map-nw");
+
+        RealmContentLoader content = cluster.PrimarySilo.GetRequiredService<RealmContentLoader>();
+        MapContent mc = content.GetMap("map-nw")!;
+        var blocked = new HashSet<(int X, int Y)>();
+        foreach (int[] pair in mc.Grid.BlockedCoords)
+            blocked.Add((pair[1], pair[0])); // [row, col] = [Y, X]
+
+        // Sample repeatedly across several tick periods (100ms) so the wander AI has a chance
+        // to move NPCs multiple times; every sample must still satisfy bounds/collision invariants.
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        int samples = 0;
+        while (DateTime.UtcNow < deadline)
+        {
+            MapSnapshot snap = await map.SnapshotAsync();
+            var occupied = new HashSet<(int X, int Y)>();
+            foreach (EntitySnapshot e in snap.Entities)
+            {
+                Assert.InRange(e.At.X, 0, mc.Width - 1);
+                Assert.InRange(e.At.Y, 0, mc.Height - 1);
+                Assert.DoesNotContain((e.At.X, e.At.Y), blocked);
+                Assert.True(occupied.Add((e.At.X, e.At.Y)),
+                    $"Entity '{e.EntityId}' overlaps another entity at ({e.At.X},{e.At.Y}).");
+            }
+            samples++;
+            await Task.Delay(25);
+        }
+
+        Assert.True(samples > 0);
     }
 }
 

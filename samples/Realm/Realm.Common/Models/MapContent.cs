@@ -8,5 +8,6 @@ public sealed class MapContent
     public int Height { get; set; }
     public TileGrid Grid { get; set; } = new();
     public SpawnPoint[] SpawnPoints { get; set; } = [];
+    public SpawnPoint[] NpcSpawns { get; set; } = [];
     public MapNeighbors Neighbors { get; set; } = new();
 }

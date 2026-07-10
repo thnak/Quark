@@ -16,20 +16,20 @@ public sealed class WorldBehavior : IGrainBehavior, IWorldGrain
 
     public Task<PlayerSpawn> LoginAsync(string playerId)
     {
-        MapContent? map = null;
-        SpawnPoint? spawn = null;
-        foreach (MapContent mc in _content.All.Values)
-        {
-            if (mc.SpawnPoints.Length > 0)
-            {
-                map = mc;
-                spawn = mc.SpawnPoints[0];
-                break;
-            }
-        }
+        List<MapContent> eligible = _content.All.Values
+            .Where(mc => mc.SpawnPoints.Length > 0)
+            .OrderBy(mc => mc.Id, StringComparer.Ordinal)
+            .ToList();
 
-        if (map is null || spawn is null)
+        if (eligible.Count == 0)
             throw new InvalidOperationException("No maps with spawn points are defined in content.");
+
+        // Deterministic per-playerId distribution across maps (stable for the lifetime of this
+        // process — GetHashCode is randomized per-process but constant within it — so repeat
+        // logins land the same player on the same map; different players spread across the world).
+        int idx = (int)((uint)playerId.GetHashCode() % (uint)eligible.Count);
+        MapContent map = eligible[idx];
+        SpawnPoint spawn = map.SpawnPoints[0];
 
         return Task.FromResult(new PlayerSpawn
         {

@@ -8,4 +8,5 @@ public interface IPlayerGrain : IGrainWithStringKey
     Task LoginAsync();
     Task MoveAsync(Direction dir);
     Task LogoutAsync();
+    Task<AoiStatus> GetAoiStatusAsync();
 }

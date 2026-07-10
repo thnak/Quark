@@ -12,6 +12,10 @@
   "spawnPoints": [
     { "x": 15, "y": 3 }
   ],
+  "npcSpawns": [
+    { "x": 2, "y": 2 },
+    { "x": 17, "y": 17 }
+  ],
   "neighbors": {
     "north": "map-nw",
     "south": null,

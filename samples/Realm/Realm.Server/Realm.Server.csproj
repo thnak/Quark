@@ -17,6 +17,7 @@
     <ProjectReference Include="../../../src/Quark.Serialization/Quark.Serialization.csproj"/>
     <ProjectReference Include="../../../src/Quark.Streaming.InMemory/Quark.Streaming.InMemory.csproj"/>
     <ProjectReference Include="../../../src/Quark.Persistence.InMemory/Quark.Persistence.InMemory.csproj"/>
+    <ProjectReference Include="../../../src/Quark.Diagnostics/Quark.Diagnostics.csproj"/>
     <PackageReference Include="Microsoft.Extensions.Hosting"/>
   </ItemGroup>
 </Project>

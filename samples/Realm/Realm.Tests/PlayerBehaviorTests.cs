@@ -8,6 +8,7 @@ using Quark.Persistence.InMemory;
 using Quark.Runtime;
 using Quark.Serialization;
 using Quark.Serialization.Abstractions.Buffers;
+using Quark.Streaming.InMemory;
 using Quark.Testing.Harness;
 using Realm.Common;
 using Realm.Common.Dtos;
@@ -29,6 +30,8 @@ public sealed class PlayerBehaviorTests
                 services.AddQuarkRuntime();
                 services.AddQuarkSerialization();
                 services.AddInMemoryGrainStorage();
+                services.AddMemoryStreams(RealmConstants.StreamProvider);
+                services.AddStreamableCodec<DeltaBatch, DeltaBatchCodec>();
                 services.AddRealmCommonCopiers();
                 services.AddRealmGrainStateCopiers();
 
@@ -50,6 +53,10 @@ public sealed class PlayerBehaviorTests
                         sp.GetRequiredService<IStorage<PlayerState>>(),
                         sp.GetRequiredService<ICallContext>(),
                         StorageOptions.DefaultStateName));
+                services.AddScoped<IActivationMemory<PlayerRuntime>>(sp =>
+                    new ActivationMemoryAccessor<PlayerRuntime>(
+                        sp.GetRequiredService<IActivationShellAccessor>()
+                          .Shell.GetOrCreateHolder<PlayerRuntime>()));
             };
             options.ConfigureClientServices = services =>
             {
@@ -69,8 +76,10 @@ public sealed class PlayerBehaviorTests
         await player.LoginAsync();
 
         RealmContentLoader content = cluster.PrimarySilo.GetRequiredService<RealmContentLoader>();
+        // WorldBehavior.LoginAsync is a deterministic pure function of playerId, so querying it
+        // again with the same id reliably returns the map the player actually spawned on.
         PlayerSpawn spawn = (await cluster.Client.GetGrain<IWorldGrain>(RealmConstants.WorldKey)
-            .LoginAsync("player-login-probe"));
+            .LoginAsync("player-login"));
 
         IMapGrain map = cluster.Client.GetGrain<IMapGrain>(spawn.MapId);
         MapSnapshot snap = await map.SnapshotAsync();
@@ -87,7 +96,7 @@ public sealed class PlayerBehaviorTests
         await player.LoginAsync();
 
         PlayerSpawn spawn = await cluster.Client.GetGrain<IWorldGrain>(RealmConstants.WorldKey)
-            .LoginAsync("probe");
+            .LoginAsync("player-move");
         IMapGrain map = cluster.Client.GetGrain<IMapGrain>(spawn.MapId);
 
         MapSnapshot before = await map.SnapshotAsync();
@@ -120,7 +129,7 @@ public sealed class PlayerBehaviorTests
 
         // Capture the position via the map before logout.
         PlayerSpawn spawn = await cluster.Client.GetGrain<IWorldGrain>(RealmConstants.WorldKey)
-            .LoginAsync("probe2");
+            .LoginAsync(playerId);
         IMapGrain map = cluster.Client.GetGrain<IMapGrain>(spawn.MapId);
         MapSnapshot snapAfterMove = await map.SnapshotAsync();
         EntitySnapshot? posBeforeLogout = Array.Find(snapAfterMove.Entities, e => e.EntityId == playerId);
@@ -144,6 +153,117 @@ public sealed class PlayerBehaviorTests
         Assert.NotNull(restored);
         Assert.Equal(savedX, restored!.At.X);
         Assert.Equal(savedY, restored.At.Y);
+    }
+
+    [Fact]
+    public async Task AoI_ObservesDeltasFromNeighborMapWithoutBeingOnIt()
+    {
+        await using TestCluster cluster = await CreateClusterAsync();
+
+        IPlayerGrain player = cluster.Client.GetGrain<IPlayerGrain>("player-aoi");
+        await player.LoginAsync();
+
+        IWorldGrain world = cluster.Client.GetGrain<IWorldGrain>(RealmConstants.WorldKey);
+        PlayerSpawn spawn = await world.LoginAsync("player-aoi");
+        MapDescriptor homeMap = await world.GetMapAsync(spawn.MapId);
+        string neighborMapId = FirstNeighbor(homeMap)
+            ?? throw new InvalidOperationException($"Map '{spawn.MapId}' has no neighbors to test AoI against.");
+
+        AoiStatus initialStatus = await player.GetAoiStatusAsync();
+        Assert.Contains(spawn.MapId, initialStatus.SubscribedMapIds);
+        Assert.Contains(neighborMapId, initialStatus.SubscribedMapIds);
+
+        // An entity enters the neighbor map — not the map the player is physically standing on.
+        IMapGrain neighborMap = cluster.Client.GetGrain<IMapGrain>(neighborMapId);
+        await neighborMap.EnterAsync("bystander", new Coord { X = 1, Y = 1 }, EntityKind.Npc);
+
+        // The neighbor map's tick timer (100ms period) flushes the delta batch to subscribers.
+        AoiStatus status = await WaitForAsync(
+            () => player.GetAoiStatusAsync(),
+            s => s.ReceivedDeltaCount > 0,
+            TimeSpan.FromSeconds(2));
+
+        Assert.True(status.ReceivedDeltaCount > 0);
+    }
+
+    [Fact]
+    public async Task AoI_SwapsSubscriptionsOnBorderCrossTransition()
+    {
+        await using TestCluster cluster = await CreateClusterAsync();
+
+        const string playerId = "player-swap";
+        IPlayerGrain player = cluster.Client.GetGrain<IPlayerGrain>(playerId);
+        await player.LoginAsync();
+
+        IWorldGrain world = cluster.Client.GetGrain<IWorldGrain>(RealmConstants.WorldKey);
+        PlayerSpawn spawn = await world.LoginAsync(playerId);
+        MapDescriptor homeMap = await world.GetMapAsync(spawn.MapId);
+        string neighborMapId = FirstNeighbor(homeMap)
+            ?? throw new InvalidOperationException($"Map '{spawn.MapId}' has no neighbors to cross into.");
+        Direction dir = DirectionTo(homeMap, neighborMapId);
+
+        string? droppedCandidate = AllNeighbors(homeMap).FirstOrDefault(n => n != neighborMapId);
+
+        IMapGrain originMap = cluster.Client.GetGrain<IMapGrain>(spawn.MapId);
+        for (int i = 0; i < 25; i++)
+        {
+            await player.MoveAsync(dir);
+            MapSnapshot snap = await originMap.SnapshotAsync();
+            if (!Array.Exists(snap.Entities, e => e.EntityId == playerId))
+                break;
+        }
+
+        MapSnapshot originAfter = await originMap.SnapshotAsync();
+        Assert.DoesNotContain(originAfter.Entities, e => e.EntityId == playerId);
+
+        MapDescriptor newHomeMap = await world.GetMapAsync(neighborMapId);
+        string? gainedCandidate = AllNeighbors(newHomeMap).FirstOrDefault(n => n != spawn.MapId);
+
+        AoiStatus afterStatus = await player.GetAoiStatusAsync();
+        Assert.Contains(neighborMapId, afterStatus.SubscribedMapIds);
+        Assert.Contains(spawn.MapId, afterStatus.SubscribedMapIds);
+        if (droppedCandidate is not null)
+            Assert.DoesNotContain(droppedCandidate, afterStatus.SubscribedMapIds);
+        if (gainedCandidate is not null)
+            Assert.Contains(gainedCandidate, afterStatus.SubscribedMapIds);
+    }
+
+    private static IEnumerable<string> AllNeighbors(MapDescriptor map)
+    {
+        if (map.NeighborNorth is not null) yield return map.NeighborNorth;
+        if (map.NeighborSouth is not null) yield return map.NeighborSouth;
+        if (map.NeighborEast is not null) yield return map.NeighborEast;
+        if (map.NeighborWest is not null) yield return map.NeighborWest;
+    }
+
+    /// <summary>
+    ///     Picks a crossing target preferring East, then South, then North, then West — the order
+    ///     verified (by hand, against Realm.Content/Data/*.json) to walk along the map's fixed spawn
+    ///     row/column without ever hitting a blocked tile for any of the 4 world maps.
+    /// </summary>
+    private static string? FirstNeighbor(MapDescriptor map) =>
+        map.NeighborEast ?? map.NeighborSouth ?? map.NeighborNorth ?? map.NeighborWest;
+
+    private static Direction DirectionTo(MapDescriptor map, string neighborMapId) => neighborMapId switch
+    {
+        _ when map.NeighborEast == neighborMapId => Direction.East,
+        _ when map.NeighborSouth == neighborMapId => Direction.South,
+        _ when map.NeighborNorth == neighborMapId => Direction.North,
+        _ when map.NeighborWest == neighborMapId => Direction.West,
+        _ => throw new InvalidOperationException($"'{neighborMapId}' is not a neighbor of '{map.Id}'.")
+    };
+
+    private static async Task<AoiStatus> WaitForAsync(
+        Func<Task<AoiStatus>> poll, Func<AoiStatus, bool> predicate, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        AoiStatus last = await poll();
+        while (!predicate(last) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+            last = await poll();
+        }
+        return last;
     }
 }
 
@@ -224,6 +344,10 @@ file sealed class TestPlayerGrainProxy : IPlayerGrain, IGrainProxyActivator<Test
 
     public Task LogoutAsync()
         => _invoker.InvokeVoidAsync(_grainId, new PPlayer_LogoutInvokable()).AsTask();
+
+    public Task<AoiStatus> GetAoiStatusAsync()
+        => _invoker.InvokeAsync<PPlayer_GetAoiStatusInvokable, AoiStatus>(
+               _grainId, new PPlayer_GetAoiStatusInvokable()).AsTask();
 }
 
 // ── Invokables ────────────────────────────────────────────────────────────────
@@ -320,4 +444,13 @@ file readonly struct PPlayer_LogoutInvokable : IGrainVoidInvokable
     public ValueTask Invoke(IGrainBehavior behavior)
         => new(((IPlayerGrain)behavior).LogoutAsync());
     public void Serialize(ref CodecWriter writer) { }
+}
+
+file readonly struct PPlayer_GetAoiStatusInvokable : IGrainInvokable<AoiStatus>
+{
+    public uint MethodId => 3u;
+    public ValueTask<AoiStatus> Invoke(IGrainBehavior behavior)
+        => new(((IPlayerGrain)behavior).GetAoiStatusAsync());
+    public void Serialize(ref CodecWriter writer) { }
+    public AoiStatus DeserializeResult(ref CodecReader reader) => new();
 }

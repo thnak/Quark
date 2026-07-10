@@ -13,6 +13,10 @@
     { "x": 3, "y": 3 },
     { "x": 15, "y": 8 }
   ],
+  "npcSpawns": [
+    { "x": 10, "y": 10 },
+    { "x": 17, "y": 17 }
+  ],
   "neighbors": {
     "north": null,
     "south": "map-sw",

@@ -1,8 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Placement;
 using Quark.Core.Abstractions.Timers;
 using Quark.Runtime;
+using Quark.Streaming.Abstractions;
+using Realm.Common;
 using Realm.Common.Dtos;
 using Realm.Common.Models;
 using Realm.Content;
@@ -17,20 +20,29 @@ public sealed class MapBehavior : IGrainBehavior, IMapGrain, IActivationLifecycl
     private readonly RealmContentLoader _content;
     private readonly ICallContext _ctx;
     private readonly IActivationShellAccessor _shell;
+    private readonly IStreamProvider? _streamProvider;
 
     public MapBehavior(
         IActivationMemory<MapRuntime> memory,
         RealmContentLoader content,
         ICallContext ctx,
-        IActivationShellAccessor shell)
+        IActivationShellAccessor shell,
+        [FromKeyedServices(RealmConstants.StreamProvider)] IStreamProvider? streamProvider = null)
     {
         _memory = memory;
         _content = content;
         _ctx = ctx;
         _shell = shell;
+        _streamProvider = streamProvider;
     }
 
     private MapRuntime S => _memory.Value;
+
+    /// <summary>Per-tick probability that an idle NPC attempts a random step.</summary>
+    private const double WanderChance = 0.35;
+
+    private static readonly Direction[] WanderDirections =
+        [Direction.North, Direction.South, Direction.East, Direction.West];
 
     public Task OnActivateAsync(CancellationToken ct)
     {
@@ -38,6 +50,7 @@ public sealed class MapBehavior : IGrainBehavior, IMapGrain, IActivationLifecycl
         MapContent mc = _content.GetMap(mapId)
             ?? throw new InvalidOperationException($"Unknown map '{mapId}'.");
 
+        S.MapId = mapId;
         S.Content = mc;
         foreach (int[] pair in mc.Grid.BlockedCoords)
         {
@@ -45,11 +58,33 @@ public sealed class MapBehavior : IGrainBehavior, IMapGrain, IActivationLifecycl
             S.BlockedTiles.Add((pair[1], pair[0]));
         }
 
+        for (int i = 0; i < mc.NpcSpawns.Length; i++)
+        {
+            SpawnPoint sp = mc.NpcSpawns[i];
+            string npcId = $"npc-{mapId}-{i}";
+            var at = new Coord { X = sp.X, Y = sp.Y };
+            S.Roster[npcId] = new EntityEntry { At = at, Kind = EntityKind.Npc };
+            S.PendingDeltas.Add(new EntityDelta { EntityId = npcId, Kind = EntityKind.Npc, At = CloneCoord(at) });
+        }
+
+        if (_streamProvider is not null)
+            S.Stream = _streamProvider.GetStream<DeltaBatch>(StreamId.Create(RealmConstants.MapStreamNamespace, mapId));
+
         S.TickTimer = _shell.Shell.RegisterTimer<MapRuntime>(
-            static (state, _) =>
+            static async (state, _) =>
             {
+                WanderTick(state);
+
+                if (state.Stream is not null && state.PendingDeltas.Count > 0)
+                {
+                    await state.Stream.OnNextAsync(new DeltaBatch
+                    {
+                        MapId = state.MapId,
+                        TickUtc = DateTimeOffset.UtcNow.UtcTicks,
+                        Deltas = state.PendingDeltas.ToArray()
+                    });
+                }
                 state.PendingDeltas.Clear();
-                return Task.CompletedTask;
             },
             S,
             new GrainTimerCreationOptions
@@ -59,6 +94,54 @@ public sealed class MapBehavior : IGrainBehavior, IMapGrain, IActivationLifecycl
             });
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Runs one wander step for every NPC in the roster: with <see cref="WanderChance" />
+    ///     probability, attempt a random cardinal step, applying the same bounds/blocked-tile/
+    ///     occupancy checks as <see cref="TryMoveAsync" />. NPCs never cross map borders — an
+    ///     out-of-bounds step is simply skipped rather than triggering a transition.
+    /// </summary>
+    private static void WanderTick(MapRuntime state)
+    {
+        MapContent? content = state.Content;
+        if (content is null || state.Roster.Count == 0)
+            return;
+
+        foreach ((string entityId, EntityEntry entry) in state.Roster)
+        {
+            if (entry.Kind != EntityKind.Npc)
+                continue;
+
+            if (Random.Shared.NextDouble() >= WanderChance)
+                continue;
+
+            Direction dir = WanderDirections[Random.Shared.Next(WanderDirections.Length)];
+            int newX = entry.At.X + DeltaX(dir);
+            int newY = entry.At.Y + DeltaY(dir);
+
+            if (newX < 0 || newX >= content.Width || newY < 0 || newY >= content.Height)
+                continue;
+
+            if (state.BlockedTiles.Contains((newX, newY)))
+                continue;
+
+            bool occupied = false;
+            foreach ((string otherId, EntityEntry other) in state.Roster)
+            {
+                if (otherId != entityId && other.At.X == newX && other.At.Y == newY)
+                {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (occupied)
+                continue;
+
+            Coord newCoord = new() { X = newX, Y = newY };
+            entry.At = newCoord;
+            state.PendingDeltas.Add(new EntityDelta { EntityId = entityId, Kind = EntityKind.Npc, At = CloneCoord(newCoord) });
+        }
     }
 
     public Task OnDeactivateAsync(DeactivationReason reason, CancellationToken ct)
