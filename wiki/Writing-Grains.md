@@ -223,7 +223,7 @@ behavior exactly like in an ASP.NET Core request — fresh per call, disposed wi
 manual scope juggling. Be clear about what that buys and what it doesn't:
 
 **What the per-call scope solves:** lifetime correctness. No stale change trackers, no `DbContext`
-shared across concurrent calls, natural per-tenant wiring via scope initializers.
+shared across concurrent calls, natural per-tenant wiring via a fresh per-call DI scope.
 
 **What it does not solve:** database performance. A scope per call is not a connection per call —
 but it isn't free batching either. The guidance:
