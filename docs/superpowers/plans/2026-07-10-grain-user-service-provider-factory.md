@@ -41,7 +41,9 @@ Modified files:
 - `src/Quark.Runtime/RuntimeServiceCollectionExtensions.cs` — new `AddQuarkOwnedScoped<T>`, new markers, new `AddGrainUserServiceProviderFactory<TInterface,TBehavior>`; remove `AddGrainScopeInitializer` family; wire new registry/holder into `AddQuarkRuntime()`; update `AddEagerActivationMemory<T>`.
 - `src/Quark.Runtime/SiloHostedService.cs` — replace `ApplyScopeInitializerRegistrations` with `ApplyUserServiceProviderFactoryRegistrations`; dispose the satellite provider on stop.
 - `src/Quark.Runtime/BehaviorStartupValidator.cs` — skip opted-in behaviors (their real construction path isn't ready yet at this point in hosted-service ordering).
-- `src/Quark.Runtime/GrainActivation.cs` — `RunActivationAsync` branches on the registry + holder.
+- `src/Quark.Runtime/GrainActivation.cs` — `RunActivationAsync` branches on the registry + holder (Task 7).
+- `src/Quark.Runtime/LocalGrainCallInvoker.cs` — **discovered during execution:** the actual per-call hot path (`InvokeAsync`/`InvokeVoidAsync`) also creates a fresh scope per call, independent of `RunActivationAsync` — both call sites branch via the same shared `GrainScopeBinder.CreateCallScope` helper (Task 7).
+- `tests/Quark.Performance/DispatchPipelineBenchmarks.cs` — one call site updated to the new `BindAndResolve` signature (Task 7).
 - `src/Quark.CodeGenerator/BehaviorRegistrationGenerator.cs` — detect the new interface, emit registration; switch `IActivationMemory<T>`/`IManagedActivationMemory<T>` inline emissions to `AddQuarkOwnedScoped`.
 - `tests/Quark.Tests.Unit/Runtime/BehaviorResolverTests.cs` — update call sites for the new signature.
 - `tests/Quark.Tests.Unit/Runtime/AddGrainBehaviorFactoryOverloadTests.cs` — replace the scope-initializer test with a user-service-provider-factory equivalent.
@@ -415,7 +417,7 @@ itself. This task is independent of the opt-in feature — it's a prerequisite r
 
 **Interfaces:**
 - Consumes: nothing new from Tasks 1–3.
-- Produces: `IBehaviorResolver.Resolve(GrainType grainType, IServiceProvider services)` (was `Resolve(GrainType grainType)`); `GrainScopeBinder.BindAndResolve(IServiceProvider bindingServices, IServiceProvider constructionServices, GrainActivation activation)` returning `IGrainBehavior` (was `async BindAndResolveAsync(IServiceProvider sp, GrainActivation activation, CancellationToken ct)` returning `ValueTask<IGrainBehavior>`). Task 7 (`GrainActivation.RunActivationAsync`) is the only other caller and is updated there.
+- Produces: `IBehaviorResolver.Resolve(GrainType grainType, IServiceProvider services)` (was `Resolve(GrainType grainType)`); `GrainScopeBinder.BindAndResolve(IServiceProvider bindingServices, IServiceProvider constructionServices, GrainActivation activation)` returning `IGrainBehavior` (was `async BindAndResolveAsync(IServiceProvider sp, GrainActivation activation, CancellationToken ct)` returning `ValueTask<IGrainBehavior>`). **Do not touch other callers of the old `BindAndResolveAsync`/`IBehaviorResolver.Resolve(GrainType)` signatures** — `src/Quark.Runtime/GrainActivation.cs`, `src/Quark.Runtime/LocalGrainCallInvoker.cs` (two call sites), and `tests/Quark.Performance/DispatchPipelineBenchmarks.cs` all still call the OLD signature and are intentionally left broken; Task 7 updates all of them together via a shared helper. This is expected, not a gap in this task.
 
 - [ ] **Step 1: Update the existing tests to the new signature (will fail to compile until Step 3)**
 
@@ -1055,23 +1057,63 @@ git commit -m "SiloHostedService: build user-service-provider registry and Quark
 
 ---
 
-## Task 7: `GrainActivation.RunActivationAsync` — branch on the opt-in path
+## Task 7: Branch every scope-creation call site on the opt-in path
+
+**REVISED SCOPE (discovered during execution, confirmed with the user):** `GrainActivation.RunActivationAsync`
+runs **once per activation** (lifecycle hook + eager init). Every actual grain method call goes through
+`LocalGrainCallInvoker.InvokeAsync`/`InvokeVoidAsync`, which creates its **own** fresh `IServiceScope` and
+calls `GrainScopeBinder` on **every call**, independent of `RunActivationAsync`. The original Task 7 scope
+(activation only) would have left the opt-in mechanism inert for real traffic. This task now covers all
+three call sites via one shared helper.
 
 **Files:**
+- Modify: `src/Quark.Runtime/GrainScopeBinder.cs` (add `CreateCallScope`)
 - Modify: `src/Quark.Runtime/GrainActivation.cs:881-891`
+- Modify: `src/Quark.Runtime/LocalGrainCallInvoker.cs` (two call sites, ~line 132-142 and ~218-226)
+- Modify: `tests/Quark.Performance/DispatchPipelineBenchmarks.cs` (one call site, ~line 159-163)
 
 **Interfaces:**
 - Consumes: `IUserServiceProviderRegistry`, `QuarkOnlyServiceProviderHolder` (Task 3), `CompositeServiceProvider` (Task 2), `GrainScopeBinder.BindAndResolve` (Task 4).
-- Produces: the completed `RunActivationAsync` — no further tasks build on this directly, but Task 8's tests exercise it end-to-end.
+- Produces: `GrainScopeBinder.CreateCallScope(IServiceProvider root, GrainActivation activation)` returning `(IServiceScope Scope, IServiceProvider ConstructionServices)` — the shared decision point every call site uses. No further tasks build on this directly, but Task 8's tests exercise it end-to-end.
 
 - [ ] **Step 1: There is no isolated unit test for this method today**
 
-`RunActivationAsync` is `internal` and exercised only through `LocalGrainCallInvoker`/`GrainActivationTable`
-integration flows — exactly like the original scope-initializer behavior, which was tested via
-`GrainScopeInitializerTests.cs` driving a real `LocalGrainCallInvoker`. Task 8 is the test for this method;
-implement it now.
+`RunActivationAsync`/`InvokeAsync`/`InvokeVoidAsync` are exercised only through `LocalGrainCallInvoker`/
+`GrainActivationTable` integration flows — exactly like the original scope-initializer behavior, which was
+tested via the now-deleted `GrainScopeInitializerTests.cs` driving a real `LocalGrainCallInvoker`. Task 8 is
+the test for this; implement it now.
 
-- [ ] **Step 2: Replace `RunActivationAsync`**
+- [ ] **Step 2: Add the shared `CreateCallScope` helper to `GrainScopeBinder`**
+
+In `src/Quark.Runtime/GrainScopeBinder.cs`, add this method alongside `BindAndResolve` (same class, same file):
+
+```csharp
+    /// <summary>
+    ///     Decides and creates the IServiceScope + construction provider for a grain call: the small
+    ///     Quark-only scope composed with a cached user provider for grain types that opted into
+    ///     IGrainUserServiceProviderFactory, or the flat root scope otherwise. The caller disposes the
+    ///     returned scope after the call/activation completes — <see cref="ConstructionServices"/> and
+    ///     anything resolved from it become invalid once the scope is disposed.
+    /// </summary>
+    public static (IServiceScope Scope, IServiceProvider ConstructionServices) CreateCallScope(
+        IServiceProvider root, GrainActivation activation)
+    {
+        IUserServiceProviderRegistry registry = root.GetRequiredService<IUserServiceProviderRegistry>();
+        QuarkOnlyServiceProviderHolder holder = root.GetRequiredService<QuarkOnlyServiceProviderHolder>();
+
+        bool useQuarkOnlyScope = holder.Provider is not null &&
+            registry.TryGet(activation.GrainType, out IServiceProvider? userProvider) && userProvider is not null;
+
+        IServiceScope scope = useQuarkOnlyScope ? holder.Provider!.CreateScope() : root.CreateScope();
+        IServiceProvider constructionServices = useQuarkOnlyScope
+            ? new CompositeServiceProvider(scope.ServiceProvider, userProvider!)
+            : scope.ServiceProvider;
+
+        return (scope, constructionServices);
+    }
+```
+
+- [ ] **Step 3: Replace `GrainActivation.RunActivationAsync`**
 
 In `src/Quark.Runtime/GrainActivation.cs`, replace the method (currently at lines 881-891):
 
@@ -1094,22 +1136,15 @@ with:
 ```csharp
     internal async Task RunActivationAsync(CancellationToken ct)
     {
-        IUserServiceProviderRegistry registry = _root.GetRequiredService<IUserServiceProviderRegistry>();
-        QuarkOnlyServiceProviderHolder holder = _root.GetRequiredService<QuarkOnlyServiceProviderHolder>();
-
-        bool useQuarkOnlyScope = holder.Provider is not null &&
-            registry.TryGet(GrainType, out IServiceProvider? userProvider) && userProvider is not null;
-
-        using IServiceScope scope = useQuarkOnlyScope ? holder.Provider!.CreateScope() : _root.CreateScope();
-        IServiceProvider constructionServices = useQuarkOnlyScope
-            ? new CompositeServiceProvider(scope.ServiceProvider, userProvider!)
-            : scope.ServiceProvider;
-
-        IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, constructionServices, this);
-        await RunEagerInitAsync(constructionServices, ct).ConfigureAwait(false);
-        if (behavior is IActivationLifecycle lifecycle)
+        (IServiceScope scope, IServiceProvider constructionServices) = GrainScopeBinder.CreateCallScope(_root, this);
+        using (scope)
         {
-            await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+            IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, constructionServices, this);
+            await RunEagerInitAsync(constructionServices, ct).ConfigureAwait(false);
+            if (behavior is IActivationLifecycle lifecycle)
+            {
+                await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+            }
         }
     }
 ```
@@ -1120,31 +1155,128 @@ single scope: ...`) to:
 ```csharp
     // Runs the full activation sequence:
     // 1. Bind shell accessor + call context, using the Quark-only scope for opted-in grain types
-    //    (see IUserServiceProviderRegistry/QuarkOnlyServiceProviderHolder) or the flat scope otherwise.
+    //    (see GrainScopeBinder.CreateCallScope) or the flat scope otherwise.
     // 2. Resolve behavior (ctor fires; any IEagerActivationMemory<T>.Load() calls register factories).
     // 3. Initialize all eager holders with the construction provider BEFORE OnActivateAsync.
     // 4. Call OnActivateAsync if the behavior implements IActivationLifecycle.
 ```
 
-- [ ] **Step 3: Full solution build**
+- [ ] **Step 4: Update `LocalGrainCallInvoker.InvokeAsync`'s callback**
+
+In `src/Quark.Runtime/LocalGrainCallInvoker.cs`, inside `InvokeAsync<TInvokable, TResult>`, replace the
+`activation.PostAsync(...)` callback body:
+
+```csharp
+                static async s =>
+                {
+                    using IServiceScope scope = s.Services.CreateScope();
+                    IServiceProvider sp = scope.ServiceProvider;
+                    IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, s.Activation, s.CancellationToken).ConfigureAwait(false);
+                    TResult r = await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                    if (s.CopierProvider?.TryGetCopier<TResult>() is { } copier)
+                    {
+                        r = copier.DeepCopy(r, new CopyContext());
+                    }
+                    return r;
+                }
+```
+
+with:
+
+```csharp
+                static async s =>
+                {
+                    (IServiceScope scope, IServiceProvider sp) = GrainScopeBinder.CreateCallScope(s.Services, s.Activation);
+                    using (scope)
+                    {
+                        IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, sp, s.Activation);
+                        TResult r = await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                        if (s.CopierProvider?.TryGetCopier<TResult>() is { } copier)
+                        {
+                            r = copier.DeepCopy(r, new CopyContext());
+                        }
+                        return r;
+                    }
+                }
+```
+
+- [ ] **Step 5: Update `LocalGrainCallInvoker.InvokeVoidAsync`'s callback**
+
+In the same file, inside `InvokeVoidAsync<TInvokable>`, replace the `activation.PostAsync(...)` callback body:
+
+```csharp
+                static async s =>
+                {
+                    using IServiceScope scope = s.Services.CreateScope();
+                    IServiceProvider sp = scope.ServiceProvider;
+                    IGrainBehavior behavior = await GrainScopeBinder.BindAndResolveAsync(sp, s.Activation, s.CancellationToken).ConfigureAwait(false);
+                    await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                }
+```
+
+with:
+
+```csharp
+                static async s =>
+                {
+                    (IServiceScope scope, IServiceProvider sp) = GrainScopeBinder.CreateCallScope(s.Services, s.Activation);
+                    using (scope)
+                    {
+                        IGrainBehavior behavior = GrainScopeBinder.BindAndResolve(scope.ServiceProvider, sp, s.Activation);
+                        await s.Invokable.Invoke(behavior).ConfigureAwait(false);
+                    }
+                }
+```
+
+- [ ] **Step 6: Fix the benchmark file's call site**
+
+In `tests/Quark.Performance/DispatchPipelineBenchmarks.cs`, this benchmark specifically measures the raw
+bind-and-resolve stage in isolation (not the opt-in decision) — update it to the new synchronous signature,
+it does not need `CreateCallScope`:
+
+```csharp
+    // Stage 3: GrainScopeBinder.BindAndResolveAsync — the 4 DI resolutions + behavior resolve.
+    [Benchmark]
+    public async ValueTask<IGrainBehavior> ScopeBindAndResolve()
+    {
+        using IServiceScope scope = _sp.CreateScope();
+        return await GrainScopeBinder.BindAndResolveAsync(scope.ServiceProvider, _bareActivation, default);
+    }
+```
+
+with:
+
+```csharp
+    // Stage 3: GrainScopeBinder.BindAndResolve — the 4 DI resolutions + behavior resolve.
+    [Benchmark]
+    public IGrainBehavior ScopeBindAndResolve()
+    {
+        using IServiceScope scope = _sp.CreateScope();
+        return GrainScopeBinder.BindAndResolve(scope.ServiceProvider, scope.ServiceProvider, _bareActivation);
+    }
+```
+
+- [ ] **Step 7: Full solution build**
 
 Run: `dotnet build Quark.slnx`
 Expected: SUCCEEDS. This is the first point since Task 1 where the whole solution should compile —
 confirm no remaining references to `GrainScopeInitializer`, `IGrainScopeInitializerRegistry`,
-`GrainScopeInitializerRegistry`, `AddGrainScopeInitializer`, or the old 1-arg `IBehaviorResolver.Resolve`/
+`GrainScopeInitializerRegistry`, `AddGrainScopeInitializer`, or the old `IBehaviorResolver.Resolve`/
 `GrainScopeBinder.BindAndResolveAsync` signatures anywhere in the solution.
 
-- [ ] **Step 4: Run the full unit test suite**
+- [ ] **Step 8: Run the full unit test suite**
 
 Run: `dotnet test tests/Quark.Tests.Unit/Quark.Tests.Unit.csproj`
-Expected: PASS — including all existing tests that exercise `RunActivationAsync` indirectly (activation
-lifecycle tests, mailbox tests, etc.), since the non-opted-in path is behaviorally identical to before.
+Expected: PASS — including all existing tests that exercise `RunActivationAsync`/`InvokeAsync`/
+`InvokeVoidAsync` indirectly (activation lifecycle tests, mailbox tests, invocation tests, etc.), since the
+non-opted-in path is behaviorally identical to before.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/Quark.Runtime/GrainActivation.cs
-git commit -m "GrainActivation: branch RunActivationAsync on the user-service-provider opt-in path"
+git add src/Quark.Runtime/GrainScopeBinder.cs src/Quark.Runtime/GrainActivation.cs \
+        src/Quark.Runtime/LocalGrainCallInvoker.cs tests/Quark.Performance/DispatchPipelineBenchmarks.cs
+git commit -m "Branch every scope-creation call site on the user-service-provider opt-in path"
 ```
 
 ---
