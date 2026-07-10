@@ -228,9 +228,10 @@ registration call into `AddMyAssemblyBehaviors()`:
 services.AddGrainUserServiceProviderFactory<IMyGrain, MyBehavior>();
 ```
 
-This registers a **satellite dependency resolver** per-grain (not per-call), allowing the behavior
-to inject a dedicated `IServiceProvider` on activation that reuses heavy, stateless user services
-across all calls to that grain without re-resolving them. See
+This registers a **satellite dependency resolver** per grain **type** (not per-activation, not
+per-call), allowing the behavior to inject a dedicated `IServiceProvider` — built once at silo
+startup and shared by every activation of that grain type — that reuses heavy, stateless user
+services across all calls without re-resolving them. See
 [`docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md`](../../docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md)
 for design details.
 
