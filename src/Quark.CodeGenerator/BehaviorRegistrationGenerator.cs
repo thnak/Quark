@@ -89,6 +89,14 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
+    internal static readonly DiagnosticDescriptor UnsupportedPersistenceWithUserServiceProviderFactory = new(
+        id: "QRK0056",
+        title: "Unsupported combination: IGrainUserServiceProviderFactory with persistent state",
+        messageFormat: "'{0}' implements IGrainUserServiceProviderFactory and also uses IPersistentActivationMemory<T> or [PersistentState] (IPersistentState<T>) — this combination is not yet supported (v1 limitation) and will throw at runtime instead of constructing correctly. Remove the IGrainUserServiceProviderFactory opt-in, or remove the persistent-state dependency, until cross-package storage-provider support is added.",
+        category: "Quark.CodeGenerator",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -306,6 +314,12 @@ public sealed class BehaviorRegistrationGenerator : IIncrementalGenerator
             Location loc = type.Locations.FirstOrDefault() ?? Location.None;
             diagList.Add(Diagnostic.Create(ImplicitStreamSubscriptionNoProvider, loc, type.Name));
             implicitNamespaces.Clear();
+        }
+
+        if (implementsUserServiceProviderFactory && (persistent.Count > 0 || persistentSlots.Count > 0))
+        {
+            Location loc = type.Locations.FirstOrDefault() ?? Location.None;
+            diagList.Add(Diagnostic.Create(UnsupportedPersistenceWithUserServiceProviderFactory, loc, type.Name));
         }
 
         return new BehaviorModel(

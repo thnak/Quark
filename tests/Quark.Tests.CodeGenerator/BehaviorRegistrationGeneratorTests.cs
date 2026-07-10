@@ -148,6 +148,72 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
+    public void Emits_QRK0056_For_UserServiceProviderFactory_With_IPersistentActivationMemory()
+    {
+        const string source = """
+                              using System;
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+                              using Quark.Persistence.Abstractions;
+
+                              namespace Demo;
+
+                              public sealed class OrderState { public decimal Total { get; set; } }
+
+                              public interface IOrderGrain : IGrainWithStringKey
+                              {
+                                  Task PlaceAsync();
+                              }
+
+                              public sealed class OrderBehavior : IGrainBehavior, IOrderGrain, IGrainUserServiceProviderFactory
+                              {
+                                  public OrderBehavior(IPersistentActivationMemory<OrderState> state) { }
+                                  public Task PlaceAsync() => Task.CompletedTask;
+
+                                  public static IServiceProvider CreateUserServiceProvider(IServiceProvider rootServices) => rootServices;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        Assert.Contains(result.Diagnostics, d =>
+            d.Id == "QRK0056" &&
+            d.Severity == DiagnosticSeverity.Error &&
+            d.GetMessage().Contains("OrderBehavior"));
+    }
+
+    [Fact]
+    public void Does_Not_Emit_QRK0056_For_UserServiceProviderFactory_Without_Persistence()
+    {
+        const string source = """
+                              using System;
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public interface ICounterGrain : IGrainWithStringKey
+                              {
+                                  Task IncrementAsync();
+                              }
+
+                              public sealed class CounterBehavior : IGrainBehavior, ICounterGrain, IGrainUserServiceProviderFactory
+                              {
+                                  public Task IncrementAsync() => Task.CompletedTask;
+
+                                  public static IServiceProvider CreateUserServiceProvider(IServiceProvider rootServices) => rootServices;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "QRK0056");
+    }
+
+    [Fact]
     public void Generates_IActivationMemory_Registration_Via_AddQuarkOwnedScoped()
     {
         const string source = """
