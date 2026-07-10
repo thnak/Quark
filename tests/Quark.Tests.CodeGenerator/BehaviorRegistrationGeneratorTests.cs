@@ -85,6 +85,106 @@ public sealed class BehaviorRegistrationGeneratorTests
     }
 
     [Fact]
+    public void Generates_UserServiceProviderFactory_Registration_When_Behavior_Opts_In()
+    {
+        const string source = """
+                              using System;
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public interface ICounterGrain : IGrainWithStringKey
+                              {
+                                  Task IncrementAsync();
+                              }
+
+                              public sealed class CounterBehavior : IGrainBehavior, ICounterGrain, IGrainUserServiceProviderFactory
+                              {
+                                  public Task IncrementAsync() => Task.CompletedTask;
+
+                                  public static IServiceProvider CreateUserServiceProvider(IServiceProvider rootServices) => rootServices;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains(
+            "AddGrainUserServiceProviderFactory<global::Demo.ICounterGrain, global::Demo.CounterBehavior>(",
+            generated);
+        Assert.Contains("behaviorId: \"CounterGrain\");", generated);
+    }
+
+    [Fact]
+    public void Does_Not_Generate_UserServiceProviderFactory_Registration_When_Behavior_Does_Not_Opt_In()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+
+                              namespace Demo;
+
+                              public interface ICounterGrain : IGrainWithStringKey
+                              {
+                                  Task IncrementAsync();
+                              }
+
+                              public sealed class CounterBehavior : IGrainBehavior, ICounterGrain
+                              {
+                                  public Task IncrementAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.DoesNotContain("AddGrainUserServiceProviderFactory<", generated);
+    }
+
+    [Fact]
+    public void Generates_IActivationMemory_Registration_Via_AddQuarkOwnedScoped()
+    {
+        const string source = """
+                              using System.Threading.Tasks;
+                              using Quark.Core.Abstractions.Grains;
+                              using Quark.Core.Abstractions.Hosting;
+
+                              namespace Demo;
+
+                              public sealed class CounterState { public int Value { get; set; } }
+
+                              public interface ICounterGrain : IGrainWithStringKey
+                              {
+                                  Task IncrementAsync();
+                              }
+
+                              public sealed class CounterBehavior : IGrainBehavior, ICounterGrain
+                              {
+                                  public CounterBehavior(IActivationMemory<CounterState> memory) { }
+                                  public Task IncrementAsync() => Task.CompletedTask;
+                              }
+                              """;
+
+        GeneratorTestResult result = GeneratorTestDriver.Run(source, new GrainProxyGenerator(), new BehaviorRegistrationGenerator());
+
+        AssertNoErrors(result.Diagnostics);
+        string generated = GetRegistrations(result);
+
+        Assert.Contains(
+            "RuntimeServiceCollectionExtensions.AddQuarkOwnedScoped<global::Quark.Core.Abstractions.Hosting.IActivationMemory<global::Demo.CounterState>>(services,",
+            generated);
+        Assert.DoesNotContain(
+            "services.AddScoped<global::Quark.Core.Abstractions.Hosting.IActivationMemory<global::Demo.CounterState>>(",
+            generated);
+    }
+
+    [Fact]
     public void Generates_IPersistentActivationMemory_Scoped_Registration()
     {
         const string source = """
