@@ -179,6 +179,7 @@ The generator emits a `BehaviorModel` for any class that:
 | `QRK0051` | Behavior class implements multiple `IGrain`-derived interfaces — ambiguous; add `[GrainBehavior("typeName")]` |
 | `QRK0052` | Two behaviors use `IPersistentState<T>` on the same `T` with conflicting (stateName, providerName) combinations |
 | `QRK0053` | Behavior carries `[ImplicitStreamSubscription]` but the assembly does not reference `Quark.Streaming.InMemory` — auto-registration is skipped (warning) |
+| `QRK0056` | Behavior implements `IGrainUserServiceProviderFactory` and also uses `IPersistentActivationMemory<T>`/`[PersistentState]` — unsupported combination (v1 limitation) |
 
 ### State type detection
 
@@ -246,7 +247,14 @@ plain `AddScoped<T>()` — both approaches are functionally identical.
 
 **v1 limitation**: `IPersistentActivationMemory<T>` and `[PersistentState]` are not yet supported on
 behaviors that implement `IGrainUserServiceProviderFactory`; these features will be enabled in a future
-release.
+release. The generator reports this combination as a build error (`QRK0056`) rather than letting it fail
+at runtime.
+
+**v1 limitation**: `CompositeServiceProvider` (the fallback provider used for opted-in behaviors) does not
+merge `IEnumerable<T>` registrations across the Quark-only and user-supplied providers — MS.DI always
+returns a non-null collection for `IEnumerable<T>`, so the Quark-only side's (possibly empty) result always
+wins and the user provider's registrations for that type are never consulted. If a behavior needs multiple
+registered implementations of an interface, aggregate them inside `CreateUserServiceProvider` itself.
 
 ## SerializerGenerator
 
