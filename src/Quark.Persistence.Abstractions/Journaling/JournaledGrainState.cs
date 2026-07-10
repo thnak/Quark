@@ -10,4 +10,7 @@ public sealed class JournaledGrainState<TState, TEvent>
     public TState State { get; set; } = new();
     public List<TEvent> StagedEvents { get; } = [];
     public int ConfirmedVersion { get; set; }
+
+    /// <summary>The <see cref="ConfirmedVersion" /> captured by the most recent snapshot write.</summary>
+    public int LastSnapshotVersion { get; set; }
 }
