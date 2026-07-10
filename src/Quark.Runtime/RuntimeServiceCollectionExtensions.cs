@@ -50,7 +50,8 @@ public static class RuntimeServiceCollectionExtensions
 
         // Activation table
         services.TryAddSingleton<GrainActivationTable>();
-        services.TryAddSingleton<IGrainScopeInitializerRegistry, GrainScopeInitializerRegistry>();
+        services.TryAddSingleton<IUserServiceProviderRegistry, UserServiceProviderRegistry>();
+        services.TryAddSingleton<QuarkOnlyServiceProviderHolder>();
 
         // Per-call scope services — one instance per IServiceScope created per grain call
         services.TryAddScoped<ActivationShellAccessor>();
@@ -203,35 +204,31 @@ public static class RuntimeServiceCollectionExtensions
         => services.AddGrainBehavior<TInterface, TBehavior>(GetGrainTypeKey<TInterface, TBehavior>(), factory);
 
     /// <summary>
-    ///     Registers a delegate that configures this grain type's per-call scope before
-    ///     the behavior instance and its scoped dependencies are resolved.
+    ///     Registers <typeparamref name="TBehavior"/>'s <see cref="IGrainUserServiceProviderFactory" />
+    ///     opt-in. Called by the generated <c>QuarkRegistrations.g.cs</c> path with an explicit
+    ///     <paramref name="behaviorId"/> always supplied; use this overload directly for hand-wired
+    ///     (non-generator) test/sample registrations too.
     /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="initializer">The per-call scope initializer delegate.</param>
     /// <param name="behaviorId">
-    ///     Explicit grain type key, known at compile time. Must match the <c>behaviorId</c> passed to the
-    ///     corresponding <see cref="AddGrainBehavior{TInterface,TBehavior}"/> call for the same
-    ///     <typeparamref name="TInterface"/>/<typeparamref name="TBehavior"/> pair — otherwise this
-    ///     initializer registers under a different key than the behavior and silently never runs. When
-    ///     <c>null</c> (the default), falls back to reflecting <see cref="GrainBehaviorAttribute"/> or the
-    ///     interface name at runtime, exactly as <see cref="AddGrainBehavior{TInterface,TBehavior}"/> does
-    ///     when its own <c>behaviorId</c> is omitted.
+    ///     Explicit grain type key. Must match the <c>behaviorId</c> passed to the corresponding
+    ///     <see cref="AddGrainBehavior{TInterface,TBehavior}"/> call — otherwise this registers under a
+    ///     different key and silently never applies. When <c>null</c>, falls back to reflecting
+    ///     <see cref="GrainBehaviorAttribute"/> or the interface name, exactly as
+    ///     <see cref="AddGrainBehavior{TInterface,TBehavior}"/> does when its own <c>behaviorId</c> is
+    ///     omitted.
     /// </param>
-    public static IServiceCollection AddGrainScopeInitializer<TInterface, [DynamicallyAccessedMembers(
+    public static IServiceCollection AddGrainUserServiceProviderFactory<TInterface, [DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors)] TBehavior>(
         this IServiceCollection services,
-        GrainScopeInitializer initializer,
         string? behaviorId = null)
         where TInterface : IGrain
-        where TBehavior : class, IGrainBehavior, TInterface
+        where TBehavior : class, IGrainBehavior, TInterface, IGrainUserServiceProviderFactory
     {
-        ArgumentNullException.ThrowIfNull(initializer);
-
 #pragma warning disable IL2026 // Fallback only reached for hand-wired (non-generator) registrations.
         string key = behaviorId ?? GetGrainTypeKey<TInterface, TBehavior>();
 #pragma warning restore IL2026
-        services.AddSingleton<IGrainScopeInitializerRegistration>(
-            new GrainScopeInitializerRegistration(new GrainType(key), initializer));
+        services.AddSingleton<IUserServiceProviderFactoryRegistration>(
+            new UserServiceProviderFactoryRegistration(new GrainType(key), TBehavior.CreateUserServiceProvider));
 
         return services;
     }
@@ -248,6 +245,23 @@ public static class RuntimeServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(strategy);
         services.AddSingleton<IGrainPlacementStrategyRegistration>(
             new GrainPlacementStrategyRegistration(typeof(TBehavior), strategy));
+        return services;
+    }
+
+    /// <summary>
+    ///     Registers a Quark-owned scoped service AND captures a replayable marker so it can be
+    ///     reconstructed onto a separate "Quark-only" satellite <see cref="IServiceCollection" /> at
+    ///     startup (see <see cref="IGrainUserServiceProviderFactory" />). Used by the source generator
+    ///     for per-behavior accessor registrations (<c>IActivationMemory&lt;T&gt;</c> etc.) — every
+    ///     assembly's accessors become replayable this way, whether or not any behavior opts in.
+    /// </summary>
+    public static IServiceCollection AddQuarkOwnedScoped<TService>(
+        this IServiceCollection services,
+        Func<IServiceProvider, TService> factory)
+        where TService : class
+    {
+        services.AddScoped(factory);
+        services.AddSingleton<IQuarkOwnedServiceRegistration>(new QuarkOwnedServiceRegistration<TService>(factory));
         return services;
     }
 
@@ -279,7 +293,7 @@ public static class RuntimeServiceCollectionExtensions
         this IServiceCollection services)
         where T : class
     {
-        services.AddScoped<IEagerActivationMemory<T>>(static sp =>
+        services.AddQuarkOwnedScoped<IEagerActivationMemory<T>>(static sp =>
             new EagerActivationMemoryAccessor<T>(
                 sp.GetRequiredService<IActivationShellAccessor>()
                   .Shell.GetOrCreateEagerHolder<T>()));
@@ -334,15 +348,28 @@ public static class RuntimeServiceCollectionExtensions
         public void Apply(TransportGrainDispatcherRegistry registry) => registry.Register(grainType, dispatcher);
     }
 
-    internal interface IGrainScopeInitializerRegistration
+    internal interface IQuarkOwnedServiceRegistration
     {
-        void Apply(IGrainScopeInitializerRegistry registry);
+        void Apply(IServiceCollection satelliteServices);
     }
 
-    private sealed class GrainScopeInitializerRegistration(GrainType grainType, GrainScopeInitializer initializer)
-        : IGrainScopeInitializerRegistration
+    private sealed class QuarkOwnedServiceRegistration<TService>(Func<IServiceProvider, TService> factory)
+        : IQuarkOwnedServiceRegistration
+        where TService : class
     {
-        public void Apply(IGrainScopeInitializerRegistry registry) => registry.Register(grainType, initializer);
+        public void Apply(IServiceCollection satelliteServices) => satelliteServices.AddScoped(factory);
+    }
+
+    internal interface IUserServiceProviderFactoryRegistration
+    {
+        void Apply(IUserServiceProviderRegistry registry, IServiceProvider rootServices);
+    }
+
+    private sealed class UserServiceProviderFactoryRegistration(GrainType grainType, Func<IServiceProvider, IServiceProvider> factory)
+        : IUserServiceProviderFactoryRegistration
+    {
+        public void Apply(IUserServiceProviderRegistry registry, IServiceProvider rootServices)
+            => registry.Register(grainType, factory(rootServices));
     }
 
     internal interface IGrainPlacementStrategyRegistration
