@@ -28,6 +28,38 @@ namespace Quark.Runtime;
 ///     idle-worker registry (<see cref="_idleWorkers"/>) target a single idle worker directly on each
 ///     shard's empty-&gt;non-empty transition, instead of every worker contending on one shared
 ///     semaphore -- see docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md.
+///
+///     KNOWN HAZARD -- bounded-worker-pool reentrancy deadlock (found 2026-07-10 via the Realm
+///     sample's TCP bot-driver benchmark; this is why <c>RuntimeServiceCollectionExtensions</c>
+///     currently wires up <see cref="SimpleActivationScheduler"/> instead of this type by default).
+///     <see cref="RunWorkerAsync"/> treats a worker as fully busy -- unavailable to dequeue
+///     <em>anything</em>, including any other activation's ready-queue entry -- for the entire time
+///     it is inside <c>await activation.DrainAndCompleteAsync(...)</c>. A grain method that makes a
+///     synchronous cross-activation call (the ordinary shape of any grain-to-grain call: the callee's
+///     <c>PostAsync</c> is awaited from inside the caller's own mailbox item) keeps its worker in that
+///     busy state for the callee's entire round trip. If the number of activations simultaneously
+///     mid-drain-and-blocked-on-such-a-call reaches <see cref="SiloRuntimeOptions.SchedulerMaxConcurrentActivations"/>,
+///     and enough of those calls target a shared, not-yet-serviced downstream activation, every
+///     worker can end up transitively blocked waiting on a target that only a worker -- and every
+///     worker is blocked -- could service. This is a genuine circular self-deadlock, not a rare
+///     timing race: reproduced reliably (isolated unit repro, no TCP/DI involved) at worker counts of
+///     1, 2, and 4 with a many-callers-fan-in-to-few-targets shape (N caller activations each making
+///     a nested <c>PostAsync</c> into one of a handful of "hot" activations, e.g. players calling into
+///     a small set of maps); did not reproduce at <see cref="Environment.ProcessorCount"/> workers on
+///     a 32-core box purely because 32 simultaneous blocked chains never occurred there -- on a
+///     smaller-core deployment, or under enough concurrent callers, the same condition is reachable
+///     at the default worker count too, matching the original Realm hang. Confirmed via a captured
+///     scheduler-diagnostics trace: the stranded activation's <c>Scheduled</c> event (successful
+///     <c>TryMarkScheduled</c> + <c>EnqueueToShard</c>) was followed by a "Waited(6000.8ms)" gap
+///     before any worker's <c>DrainStarted</c> -- the ready-queue entry sat untouched, not silently
+///     dropped. <see cref="SimpleActivationScheduler"/> is immune by construction: it spawns a fresh,
+///     unbounded <c>Task.Run</c> per scheduled activation instead of routing through a fixed pool of
+///     worker loops, so a nested call always gets its own execution slot regardless of how many other
+///     activations are already mid-drain. A real fix here would need to stop a worker's dispatch loop
+///     from being "busy" while blocked on a nested call it isn't actually executing (e.g. spinning up
+///     transient extra capacity for reentrant calls, or restructuring drain execution so it never
+///     synchronously occupies a worker slot across an inter-activation await) -- out of scope for the
+///     investigation that found this; not yet fixed.
 /// </remarks>
 internal sealed class ActivationScheduler : IActivationScheduler
 {

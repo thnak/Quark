@@ -124,6 +124,15 @@ sidesteps the composite machinery entirely and is unaffected by the bug — `Add
 registration). This is a real bug in `Quark.Diagnostics` independent of this benchmark; worth a separate
 fix, out of scope here.
 
+> **Update (2026-07-10, Realm Phase 6):** fixed. `EnsureComposite` now routes each registered listener
+> through a private `DiagnosticListenerRegistration` wrapper type instead of depending on
+> `IEnumerable<IQuarkDiagnosticListener>` directly, so the composite's own `IQuarkDiagnosticListener`
+> binding never appears in the list it fans out to — no more self-reference, no more recursive
+> resolution. `AstroSimRunner`/`PingPongRunner`/`FairnessRunner` now call `services.AddQuarkDiagnostics(listener)`
+> again (verified against a live silo: benchmarks run to completion, no hang). See
+> `src/Quark.Diagnostics/DiagnosticsServiceCollectionExtensions.cs` and the regression tests in
+> `tests/Quark.Tests.Unit/Diagnostics/DiagnosticsCompositeRegistrationTests.cs`.
+
 The driver samples `Count` once/sec during the run and prints a rolling `messages/sec` line, then a final
 summary (total messages, elapsed, average msg/sec, ticks completed, bodies simulated) — matching
 `LocalStreamingTest`'s existing console-output style.

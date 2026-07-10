@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Client;
-using Quark.Diagnostics.Abstractions;
+using Quark.Diagnostics;
 using Quark.Performance.Shared;
 using Quark.Runtime;
 using Quark.Testing.Harness;
@@ -38,9 +38,7 @@ public static class FairnessRunner
             {
                 services.AddQuarkRuntime();
                 services.Configure<SiloRuntimeOptions>(o => o.SchedulerDrainBudget = cli.DrainBudget);
-                // Direct singleton registration -- NOT services.AddQuarkDiagnostics(listener), which
-                // has a known circular-DI bug (see docs/superpowers/specs/2026-07-08-astro-sim-benchmark-design.md).
-                services.AddSingleton<IQuarkDiagnosticListener>(listener);
+                services.AddQuarkDiagnostics(listener);
                 services.AddGrainBehavior<IWorkGrain, WorkGrainBehavior>();
             };
             options.ConfigureClientServices = services =>

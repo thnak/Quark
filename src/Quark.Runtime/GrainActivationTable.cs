@@ -14,7 +14,16 @@ public sealed class GrainActivationTable : IAsyncDisposable
 {
     // Lazy<Task<>> pattern: two concurrent callers both get the same Lazy; only one
     // actually runs the factory; both await the same Task.
-    private readonly ConcurrentDictionary<GrainId, Lazy<ValueTask<GrainActivation>>> _activations = new();
+    //
+    // The cached value is a Task<GrainActivation>, not a ValueTask<GrainActivation> — a
+    // ValueTask is documented as unsafe to consume from more than one awaiter (its backing
+    // IValueTaskSource can only be awaited once), so caching one here and handing the same
+    // struct instance to every concurrent caller of an already-active grain is a latent
+    // correctness bug: two callers racing to await the same cached ValueTask can leave one of
+    // them suspended forever. Task natively supports any number of concurrent awaiters, so
+    // GetOrCreateAsync converts the caller's ValueTask to a Task once (via AsTask()) before
+    // caching, then wraps a *fresh* ValueTask around the shared Task for every call.
+    private readonly ConcurrentDictionary<GrainId, Lazy<Task<GrainActivation>>> _activations = new();
     private readonly ILogger<GrainActivationTable> _logger;
     private readonly int _maxActivations;
 
@@ -32,7 +41,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        foreach (Lazy<ValueTask<GrainActivation>> lazy in _activations.Values)
+        foreach (Lazy<Task<GrainActivation>> lazy in _activations.Values)
         {
             if (!lazy.IsValueCreated)
             {
@@ -61,9 +70,9 @@ public sealed class GrainActivationTable : IAsyncDisposable
     public ValueTask<GrainActivation> GetOrCreateAsync(GrainId grainId, Func<ValueTask<GrainActivation>> factory)
     {
         // Existing grains are always reachable — only the creation of *new* activations is capped.
-        if (_activations.TryGetValue(grainId, out Lazy<ValueTask<GrainActivation>>? existing))
+        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? existing))
         {
-            return existing.Value;
+            return new ValueTask<GrainActivation>(existing.Value);
         }
 
         // Best-effort cap: the count check races with concurrent adds, so the live total may briefly
@@ -73,9 +82,10 @@ public sealed class GrainActivationTable : IAsyncDisposable
             throw new GrainActivationLimitExceededException(grainId, _maxActivations);
         }
 
-        return _activations.GetOrAdd(grainId,
-            static (_, f) => new Lazy<ValueTask<GrainActivation>>(f),
-            factory).Value;
+        Lazy<Task<GrainActivation>> lazy = _activations.GetOrAdd(grainId,
+            static (_, f) => new Lazy<Task<GrainActivation>>(() => f().AsTask()),
+            factory);
+        return new ValueTask<GrainActivation>(lazy.Value);
     }
 
     /// <summary>
@@ -85,10 +95,10 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public void RemoveIfFaulted(GrainId grainId)
     {
-        if (_activations.TryGetValue(grainId, out Lazy<ValueTask<GrainActivation>>? lazy)
+        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? lazy)
             && lazy is { IsValueCreated: true, Value.IsFaulted: true })
         {
-            _activations.TryRemove(new KeyValuePair<GrainId, Lazy<ValueTask<GrainActivation>>>(grainId, lazy));
+            _activations.TryRemove(new KeyValuePair<GrainId, Lazy<Task<GrainActivation>>>(grainId, lazy));
         }
     }
 
@@ -120,9 +130,9 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public bool TryGetActivation(GrainId grainId, out GrainActivation? activation)
     {
-        if (_activations.TryGetValue(grainId, out Lazy<ValueTask<GrainActivation>>? lazy) && lazy.IsValueCreated)
+        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? lazy) && lazy.IsValueCreated)
         {
-            ValueTask<GrainActivation> task = lazy.Value;
+            Task<GrainActivation> task = lazy.Value;
             if (task.IsCompletedSuccessfully)
             {
                 activation = task.Result;
@@ -148,7 +158,7 @@ public sealed class GrainActivationTable : IAsyncDisposable
     /// </summary>
     public async Task TryDeactivateAsync(GrainId grainId) // TODO did not called anywhere
     {
-        if (_activations.TryRemove(grainId, out Lazy<ValueTask<GrainActivation>>? lazy) && lazy.IsValueCreated)
+        if (_activations.TryRemove(grainId, out Lazy<Task<GrainActivation>>? lazy) && lazy.IsValueCreated)
         {
             try
             {

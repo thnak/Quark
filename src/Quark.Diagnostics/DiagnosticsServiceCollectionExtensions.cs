@@ -5,7 +5,7 @@ using Quark.Diagnostics.Abstractions;
 
 namespace Quark.Diagnostics;
 
-public static class DiagnosticsServiceCollectionExtensions// TODO did not implemented or used in any elsewhere
+public static class DiagnosticsServiceCollectionExtensions
 {
     /// <summary>
     ///     Registers the Quark diagnostic system with a custom listener.
@@ -15,7 +15,8 @@ public static class DiagnosticsServiceCollectionExtensions// TODO did not implem
         this IServiceCollection services)
         where TListener : class, IQuarkDiagnosticListener
     {
-        services.AddSingleton<IQuarkDiagnosticListener, TListener>();
+        services.AddSingleton<TListener>();
+        services.AddSingleton(sp => new DiagnosticListenerRegistration(sp.GetRequiredService<TListener>()));
         EnsureComposite(services);
         return services;
     }
@@ -27,7 +28,7 @@ public static class DiagnosticsServiceCollectionExtensions// TODO did not implem
     public static IServiceCollection AddQuarkDiagnostics(
         this IServiceCollection services, IQuarkDiagnosticListener listener)
     {
-        services.AddSingleton(listener);
+        services.AddSingleton(new DiagnosticListenerRegistration(listener));
         EnsureComposite(services);
         return services;
     }
@@ -54,33 +55,25 @@ public static class DiagnosticsServiceCollectionExtensions// TODO did not implem
 
     private static void EnsureComposite(IServiceCollection services)
     {
-        // Replace any previous composite registration so it wraps ALL registered listeners.
-        // We do this by removing the old composite (if any) and re-registering.
-        for (int i = services.Count - 1; i >= 0; i--)
-        {
-            if (services[i].ServiceType == typeof(CompositeDiagnosticListener))
-            {
-                services.RemoveAt(i);
-                break;
-            }
-        }
-
-        services.AddSingleton<CompositeDiagnosticListener>();
+        // TryAdd, not Add: every AddQuarkDiagnostics call routes its listener through a
+        // DiagnosticListenerRegistration (see CompositeDiagnosticListener's constructor doc for why
+        // that indirection exists), so the composite itself only needs registering once no matter
+        // how many listeners are added.
+        services.TryAddSingleton<CompositeDiagnosticListener>();
 
         // The runtime resolves IQuarkDiagnosticListener; point it at the composite.
-        // Remove any existing IQuarkDiagnosticListener → composite binding to avoid duplicates.
-        for (int i = services.Count - 1; i >= 0; i--)
-        {
-            ServiceDescriptor d = services[i];
-            if (d.ServiceType == typeof(IQuarkDiagnosticListener)
-                && d.ImplementationType == typeof(CompositeDiagnosticListener))
-            {
-                services.RemoveAt(i);
-                break;
-            }
-        }
-
-        services.AddSingleton<IQuarkDiagnosticListener>(
+        services.TryAddSingleton<IQuarkDiagnosticListener>(
             sp => sp.GetRequiredService<CompositeDiagnosticListener>());
     }
+}
+
+/// <summary>
+///     Wraps a listener registered via <c>AddQuarkDiagnostics</c> so <see cref="CompositeDiagnosticListener" />
+///     can enumerate exactly the listeners callers registered — never itself. See the constructor
+///     doc on <see cref="CompositeDiagnosticListener" /> for why depending on
+///     <c>IEnumerable&lt;IQuarkDiagnosticListener&gt;</c> directly would self-reference and deadlock.
+/// </summary>
+public sealed class DiagnosticListenerRegistration(IQuarkDiagnosticListener listener)
+{
+    public IQuarkDiagnosticListener Listener { get; } = listener;
 }

@@ -10,8 +10,16 @@ public sealed class CompositeDiagnosticListener : IQuarkDiagnosticListener
 {
     private readonly IQuarkDiagnosticListener[] _listeners;
 
-    public CompositeDiagnosticListener(IEnumerable<IQuarkDiagnosticListener> listeners)
-        => _listeners = listeners.ToArray();
+    /// <summary>
+    ///     Takes registrations through <see cref="DiagnosticListenerRegistration" /> rather than
+    ///     <c>IEnumerable&lt;IQuarkDiagnosticListener&gt;</c> directly: the composite is itself bound
+    ///     to <see cref="IQuarkDiagnosticListener" /> (so runtime code that resolves the single
+    ///     interface gets the fan-out), and depending on the same interface here would pull that
+    ///     self-referencing binding into the list — resolving it recursively constructs the composite
+    ///     a second time, which needs the same list again, and so on until the resolver deadlocks.
+    /// </summary>
+    public CompositeDiagnosticListener(IEnumerable<DiagnosticListenerRegistration> registrations)
+        => _listeners = registrations.Select(r => r.Listener).ToArray();
 
     public void OnGrainActivating(in GrainActivatingEvent e)
     {

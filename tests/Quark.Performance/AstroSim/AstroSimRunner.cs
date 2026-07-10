@@ -3,7 +3,7 @@ using System.Numerics;
 using Microsoft.Extensions.DependencyInjection;
 using Quark.Client;
 using Quark.Core.Abstractions.Hosting;
-using Quark.Diagnostics.Abstractions;
+using Quark.Diagnostics;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Testing.Harness;
@@ -29,17 +29,7 @@ public static class AstroSimRunner
             options.ConfigureSiloServices = services =>
             {
                 services.AddQuarkRuntime();
-                // NOT services.AddQuarkDiagnostics(listener) — that helper
-                // (Quark.Diagnostics/DiagnosticsServiceCollectionExtensions.cs, itself marked
-                // "did not implemented or used in any elsewhere") is circular: its EnsureComposite
-                // step registers IQuarkDiagnosticListener as a factory that resolves
-                // CompositeDiagnosticListener, whose constructor resolves
-                // IEnumerable<IQuarkDiagnosticListener> — which includes that very factory.
-                // Resolving IQuarkDiagnosticListener (which happens on every grain call) then
-                // self-recurses and the silo never finishes starting (confirmed: hangs forever,
-                // verified with dotnet-dump). Registering the listener instance directly avoids
-                // the composite machinery entirely.
-                services.AddSingleton<IQuarkDiagnosticListener>(listener);
+                services.AddQuarkDiagnostics(listener);
                 services.AddSingleton(simOptions);
                 services.AddGrainBehavior<IChunkGrain, ChunkGrainBehavior>();
                 services.AddScoped<IActivationMemory<ChunkState>>(sp =>

@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quark.Client;
 using Quark.Core.Abstractions.Identity;
-using Quark.Diagnostics.Abstractions;
+using Quark.Diagnostics;
 using Quark.Performance.AstroSim;
 using Quark.Runtime;
 using Quark.Testing.Harness;
@@ -51,9 +51,7 @@ public static class PingPongRunner
             options.ConfigureSiloServices = services =>
             {
                 services.AddQuarkRuntime();
-                // NOT services.AddQuarkDiagnostics(listener) -- confirmed circular-DI bug, see
-                // docs/superpowers/specs/2026-07-08-astro-sim-benchmark-design.md section 5.
-                services.AddSingleton<IQuarkDiagnosticListener>(new BenchmarkDiagnosticListener());
+                services.AddQuarkDiagnostics(new BenchmarkDiagnosticListener());
                 services.AddGrainBehavior<IPingPongGrain, PingPongGrainBehavior>();
                 services.AddGrainBehavior<IReentrantPingPongGrain, ReentrantPingPongGrainBehavior>();
             };
