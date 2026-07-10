@@ -103,6 +103,21 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
         }
     }
 
+    private static async Task FanOutAsync(List<Task> tasks)
+    {
+        Task all = Task.WhenAll(tasks);
+        try
+        {
+            await all.ConfigureAwait(false);
+        }
+        catch when (all.Exception is not null)
+        {
+            // Task.WhenAll aggregates every failure into all.Exception; awaiting surfaces only the first.
+            // Rethrow the flattened AggregateException to preserve the prior all-failures contract.
+            throw all.Exception;
+        }
+    }
+
     public async ValueTask PublishAsync<T>(StreamId streamId, T item, StreamSequenceToken? token)
     {
         // Ensure implicitly-subscribed grains are activated before fanning out so the
@@ -122,16 +137,18 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
                 snapshot = [..list];
             }
 
-            List<Exception>? errors = null;
+            var tasks = new List<Task>(snapshot.Count);
             foreach (Subscription sub in snapshot)
             {
-                try { await sub.OnNext(item!, token).ConfigureAwait(false); }
-                catch (Exception ex) { (errors ??= []).Add(ex); }
+                Task task;
+                // Convert a synchronous throw into a faulted task so every subscriber is still invoked
+                // and the failure is aggregated by FanOutAsync (matches the prior per-subscriber try/catch).
+                try { task = sub.OnNext(item!, token).AsTask(); }
+                catch (Exception ex) { task = Task.FromException(ex); }
+                tasks.Add(task);
             }
-            if (errors is { Count: > 0 })
-            {
-                throw new AggregateException(errors);
-            }
+
+            await FanOutAsync(tasks).ConfigureAwait(false);
         }
 
         if (_untyped.TryGetValue(streamId, out List<(Guid SubId, IUntypedStreamObserver Observer)>? untypedList))
@@ -139,16 +156,22 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
             List<(Guid, IUntypedStreamObserver)> snapshot;
             lock (untypedList) { snapshot = [..untypedList]; }
 
-            List<Exception>? untypedErrors = null;
+            var shared = new SharedStreamItem(item!);
+            var tasks = new List<Task>(snapshot.Count);
             foreach (var (_, obs) in snapshot)
             {
-                try { await obs.OnNextAsync(item!, token).ConfigureAwait(false); }
-                catch (Exception ex) { (untypedErrors ??= []).Add(ex); }
+                Task task;
+                try
+                {
+                    task = obs is ISharedEncodingStreamObserver enc
+                        ? enc.OnNextSharedAsync(shared, token)
+                        : obs.OnNextAsync(item!, token);
+                }
+                catch (Exception ex) { task = Task.FromException(ex); }
+                tasks.Add(task);
             }
-            if (untypedErrors is { Count: > 0 })
-            {
-                throw new AggregateException(untypedErrors);
-            }
+
+            await FanOutAsync(tasks).ConfigureAwait(false);
         }
     }
 
@@ -165,13 +188,15 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
             snapshot = [..list];
         }
 
-        List<Exception>? errors = null;
+        var tasks = new List<Task>(snapshot.Count);
         foreach (Subscription sub in snapshot)
         {
-            try { await sub.OnError(ex).ConfigureAwait(false); }
-            catch (Exception e) { (errors ??= []).Add(e); }
+            Task task;
+            try { task = sub.OnError(ex).AsTask(); }
+            catch (Exception e) { task = Task.FromException(e); }
+            tasks.Add(task);
         }
-        if (errors is { Count: > 0 }) throw new AggregateException(errors);
+        await FanOutAsync(tasks).ConfigureAwait(false);
     }
 
     public async ValueTask PublishCompletedAsync(StreamId streamId)
@@ -187,15 +212,14 @@ public sealed class StreamSubscriptionRegistry : IUntypedStreamSubscriptionRegis
             snapshot = [..list];
         }
 
-        List<Exception>? errors = null;
+        var tasks = new List<Task>(snapshot.Count);
         foreach (Subscription sub in snapshot)
         {
-            try { await sub.OnCompleted().ConfigureAwait(false); }
-            catch (Exception ex) { (errors ??= []).Add(ex); }
+            Task task;
+            try { task = sub.OnCompleted().AsTask(); }
+            catch (Exception ex) { task = Task.FromException(ex); }
+            tasks.Add(task);
         }
-        if (errors is { Count: > 0 })
-        {
-            throw new AggregateException(errors);
-        }
+        await FanOutAsync(tasks).ConfigureAwait(false);
     }
 }
