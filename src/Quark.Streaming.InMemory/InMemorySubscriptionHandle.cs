@@ -24,7 +24,4 @@ internal sealed class InMemorySubscriptionHandle<T> : StreamSubscriptionHandle<T
         _onUnsubscribe(HandleId);
         return Task.CompletedTask;
     }
-
-    public override Task ResumeAsync(IAsyncObserver<T> observer, StreamSequenceToken? token = null)
-        => throw new NotSupportedException("InMemory stream subscriptions cannot be resumed; create a new subscription instead.");
 }

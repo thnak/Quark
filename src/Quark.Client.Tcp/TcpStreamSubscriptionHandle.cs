@@ -12,21 +12,18 @@ public sealed class TcpStreamSubscriptionHandle<T> : StreamSubscriptionHandle<T>
 {
     private readonly TcpStreamPushDispatcher _dispatcher;
     private readonly TcpGatewayConnection _connection;
-    private readonly TcpClientStreamSubscription<T> _sub;
     private readonly Guid _handleId;
 
     internal TcpStreamSubscriptionHandle(
         Guid handleId,
         StreamId streamId,
         TcpStreamPushDispatcher dispatcher,
-        TcpGatewayConnection connection,
-        TcpClientStreamSubscription<T> sub)
+        TcpGatewayConnection connection)
     {
         _handleId = handleId;
         StreamId = streamId;
         _dispatcher = dispatcher;
         _connection = connection;
-        _sub = sub;
     }
 
     public override Guid HandleId => _handleId;
@@ -47,11 +44,5 @@ public sealed class TcpStreamSubscriptionHandle<T> : StreamSubscriptionHandle<T>
 
         await _connection.SendOneWayAsync(envelope).ConfigureAwait(false);
         _dispatcher.Unregister(_handleId);
-    }
-
-    public override Task ResumeAsync(IAsyncObserver<T> observer, StreamSequenceToken? token = null)
-    {
-        _sub.SetObserver(observer);
-        return Task.CompletedTask;
     }
 }

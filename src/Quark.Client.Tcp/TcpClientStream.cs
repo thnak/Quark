@@ -55,7 +55,7 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
         var sub = new TcpClientStreamSubscription<T>(subId, _streamId, observer, _codec);
         _dispatcher.Register(subId, sub);
 
-        return new TcpStreamSubscriptionHandle<T>(subId, _streamId, _dispatcher, _connection, sub);
+        return new TcpStreamSubscriptionHandle<T>(subId, _streamId, _dispatcher, _connection);
     }
 
     public ValueTask<StreamSubscriptionHandle<T>> SubscribeAsync(
@@ -73,7 +73,7 @@ public sealed class TcpClientStream<T> : IAsyncStream<T>
     {
         var handles = _dispatcher.GetForStream(_streamId)
             .OfType<TcpClientStreamSubscription<T>>()
-            .Select(StreamSubscriptionHandle<T> (s) => new TcpStreamSubscriptionHandle<T>(s.SubId, _streamId, _dispatcher, _connection, s))
+            .Select(StreamSubscriptionHandle<T> (s) => new TcpStreamSubscriptionHandle<T>(s.SubId, _streamId, _dispatcher, _connection))
             .ToList();
         return ValueTask.FromResult<IList<StreamSubscriptionHandle<T>>>(handles);
     }

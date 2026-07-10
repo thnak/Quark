@@ -12,7 +12,4 @@ public sealed class SequentialToken : StreamSequenceToken
         if (other is SequentialToken st) return SequenceNumber.CompareTo(st.SequenceNumber);
         throw new ArgumentException($"Cannot compare SequentialToken to {other.GetType().Name}.", nameof(other));
     }
-
-    public override bool Newer(StreamSequenceToken other)
-        => other is SequentialToken st && SequenceNumber > st.SequenceNumber;
 }

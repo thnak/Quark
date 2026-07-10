@@ -9,7 +9,7 @@ internal sealed class TcpClientStreamSubscription<T> : IClientStreamSubscription
     public Guid SubId { get; }
     public StreamId StreamId { get; }
 
-    private volatile IAsyncObserver<T> _observer;
+    private readonly IAsyncObserver<T> _observer;
     private readonly IFieldCodec<T> _codec;
 
     public TcpClientStreamSubscription(
@@ -22,12 +22,6 @@ internal sealed class TcpClientStreamSubscription<T> : IClientStreamSubscription
         StreamId = streamId;
         _observer = observer;
         _codec = codec;
-    }
-
-    public void SetObserver(IAsyncObserver<T> observer)
-    {
-        ArgumentNullException.ThrowIfNull(observer);
-        _observer = observer;
     }
 
     public async ValueTask DispatchAsync(ReadOnlyMemory<byte> payload, StreamSequenceToken token)
