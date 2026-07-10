@@ -17,12 +17,16 @@ namespace Bank.Grains;
 public sealed class LedgerBehavior : JournaledGrain<LedgerState, LedgerEvent>, ILedgerGrain
 {
     // The code generator registers IActivationMemory<JournaledGrainState<LedgerState, LedgerEvent>>
-    // for this constructor; ICallContext and ILogStorage come from the runtime / DI.
+    // for this constructor; ICallContext, ILogStorage, and ISnapshotStore come from the runtime / DI.
     public LedgerBehavior(
         IActivationMemory<JournaledGrainState<LedgerState, LedgerEvent>> memory,
         ICallContext ctx,
-        ILogStorage? log = null)
-        : base(memory, ctx, log) { }
+        ILogStorage? log = null,
+        ISnapshotStore? snapshot = null)
+        : base(memory, ctx, log, snapshot) { }
+
+    // Snapshot every 5 confirmed events so long-lived ledgers don't replay their whole history.
+    protected override int SnapshotInterval => 5;
 
     // Pure function: how each event mutates the projection. Used for both live updates and replay.
     protected override void TransitionState(LedgerState state, LedgerEvent @event)

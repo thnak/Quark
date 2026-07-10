@@ -25,6 +25,9 @@ IHost host = Host.CreateDefaultBuilder(args)
         // Event log — backs the JournaledGrain ledger.
         silo.Services.AddSingleton<ILogStorage, InMemoryLogStorage>();
 
+        // Snapshot store — lets the JournaledGrain ledger replay only post-snapshot events.
+        silo.Services.AddInMemorySnapshotStore();
+
         // Deep copiers for the storage-backed state types ([GenerateSerializer]).
         silo.Services.AddBankStateCopiers();
 
