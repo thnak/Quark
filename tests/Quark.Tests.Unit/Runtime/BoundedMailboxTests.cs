@@ -21,6 +21,7 @@ public sealed class BoundedMailboxTests
         new(new GrainId(Type, "g"), Type, isReentrant: false,
             new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider(),
             NullLogger<GrainActivation>.Instance,
+            SimpleActivationScheduler.Instance,
             mailboxCapacity: capacity,
             mailboxFullMode: mode);
 

@@ -63,12 +63,13 @@ public sealed class GrainActivation : IAsyncDisposable
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
 
-    public GrainActivation(
+    internal GrainActivation(
         GrainId grainId,
         GrainType grainType,
         bool isReentrant,
         IServiceProvider root,
         ILogger<GrainActivation> logger,
+        IActivationScheduler scheduler,
         IQuarkDiagnosticListener? diagnostics = null,
         int mailboxCapacity = 0,
         MailboxFullMode mailboxFullMode = MailboxFullMode.Wait)
@@ -82,8 +83,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _mailboxCapacity = mailboxCapacity;
         _mailboxFullMode = mailboxFullMode;
         _queue = CreateQueue(mailboxCapacity);
-        // Resolve from root DI so that tests with NullServiceProvider fall back to SimpleActivationScheduler.
-        _scheduler = root.GetService<IActivationScheduler>() ?? SimpleActivationScheduler.Instance;
+        _scheduler = scheduler;
         _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
 

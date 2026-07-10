@@ -14,7 +14,8 @@ public sealed class GrainTimerTests
     {
         var id = new GrainId(new GrainType("TimerTest"), "1");
         return new GrainActivation(id, id.Type, isReentrant: false,
-            services ?? new NullServiceProvider(), NullLogger<GrainActivation>.Instance);
+            services ?? new NullServiceProvider(), NullLogger<GrainActivation>.Instance,
+            SimpleActivationScheduler.Instance);
     }
 
     [Fact]

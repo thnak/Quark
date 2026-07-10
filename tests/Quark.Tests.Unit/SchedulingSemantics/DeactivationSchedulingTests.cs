@@ -63,7 +63,7 @@ public sealed class DeactivationSchedulingTests : IAsyncDisposable
     {
         var grainId = new GrainId(new GrainType("DelayTest"), "1");
         var activation = new GrainActivation(grainId, grainId.Type, isReentrant: false,
-            new NullServiceProvider(), NullLogger<GrainActivation>.Instance);
+            new NullServiceProvider(), NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         Assert.True(activation.IsDeactivationAllowed(now), "No delay has been set yet.");

@@ -21,7 +21,7 @@ public sealed class DrainStallDetectionTests
     private static GrainActivation Create() =>
         new(new GrainId(Type, "g"), Type, isReentrant: false,
             new ServiceCollection().BuildServiceProvider(),
-            NullLogger<GrainActivation>.Instance);
+            NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
 
     [Fact]
     public async Task DrainAsync_IncrementsConsecutiveEmptyDrains_WhileCancelledWithWorkQueued()

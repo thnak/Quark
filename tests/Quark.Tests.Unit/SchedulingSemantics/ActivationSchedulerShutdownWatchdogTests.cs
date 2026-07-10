@@ -24,13 +24,12 @@ public sealed class ActivationSchedulerShutdownWatchdogTests
         var scheduler = new ActivationScheduler(siloOptions, listener, diagnosticOptions);
 
         var services = new ServiceCollection();
-        services.AddSingleton<IActivationScheduler>(scheduler);
         await using ServiceProvider provider = services.BuildServiceProvider();
 
         var grainType = new GrainType("ShutdownWatchdogProbe");
         var activation = new GrainActivation(
             new GrainId(grainType, "g"), grainType, isReentrant: false,
-            provider, NullLogger<GrainActivation>.Instance);
+            provider, NullLogger<GrainActivation>.Instance, scheduler);
 
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

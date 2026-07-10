@@ -38,6 +38,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     private readonly MailboxFullMode _mailboxFullMode;
     private readonly IRequestDedupStore? _dedupStore;
     private readonly StatelessWorkerRouter? _statelessWorkerRouter;
+    private readonly IActivationScheduler _scheduler;
 
     internal LocalGrainCallInvoker(
         GrainActivationTable activationTable,
@@ -75,6 +76,9 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         _membershipSnapshot = membershipSnapshot;
         _dedupStore = dedupStore;
         _statelessWorkerRouter = statelessWorkerRouter;
+        // Resolve once here (rather than inside GrainActivation) so tests with a NullServiceProvider
+        // still fall back to SimpleActivationScheduler, and the dependency is explicit in GrainActivation's ctor.
+        _scheduler = services.GetService<IActivationScheduler>() ?? SimpleActivationScheduler.Instance;
     }
 
     /// <inheritdoc />
@@ -414,7 +418,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
 
         bool isReentrant = behaviorType.IsDefined(typeof(ReentrantAttribute), inherit: true);
         var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger,
-            _diagnostics, _mailboxCapacity, _mailboxFullMode);
+            _scheduler, _diagnostics, _mailboxCapacity, _mailboxFullMode);
 
         // Resolve behavior (ctor registers eager factories), init eager holders with the activation
         // scope's SP, then call OnActivateAsync if IActivationLifecycle. Single scope — no double construction.

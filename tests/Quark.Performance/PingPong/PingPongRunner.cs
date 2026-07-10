@@ -79,9 +79,11 @@ public static class PingPongRunner
             for (int i = 0; i < cli.Pairs; i++)
             {
                 var pingActivation = new GrainActivation(
-                    GrainId.Create(grainType, $"ping-{i}"), grainType, isReentrant: true, bareRoot, logger);
+                    GrainId.Create(grainType, $"ping-{i}"), grainType, isReentrant: true, bareRoot, logger,
+                    SimpleActivationScheduler.Instance);
                 var pongActivation = new GrainActivation(
-                    GrainId.Create(grainType, $"pong-{i}"), grainType, isReentrant: true, bareRoot, logger);
+                    GrainId.Create(grainType, $"pong-{i}"), grainType, isReentrant: true, bareRoot, logger,
+                    SimpleActivationScheduler.Instance);
                 bareActivations.Add(pingActivation);
                 bareActivations.Add(pongActivation);
                 pairs[i] = (new BareActivationPingable(pingActivation, behavior), new BareActivationPingable(pongActivation, behavior));

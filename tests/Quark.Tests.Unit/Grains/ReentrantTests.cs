@@ -12,7 +12,7 @@ public sealed class ReentrantTests
     {
         var grainId = new GrainId(new GrainType("G"), "1");
         return new GrainActivation(grainId, grainId.Type, isReentrant,
-            new NullServiceProvider(), NullLogger<GrainActivation>.Instance);
+            new NullServiceProvider(), NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
     }
 
     [Fact]

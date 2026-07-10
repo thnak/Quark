@@ -29,7 +29,8 @@ public sealed class StuckGrainDetectorStallTests
         var activation = new GrainActivation(
             grainId, Type, isReentrant: false,
             new ServiceCollection().BuildServiceProvider(),
-            NullLogger<GrainActivation>.Instance);
+            NullLogger<GrainActivation>.Instance,
+            SimpleActivationScheduler.Instance);
         activation.MarkActive();
         await table.GetOrCreateAsync(grainId, () => ValueTask.FromResult(activation));
 

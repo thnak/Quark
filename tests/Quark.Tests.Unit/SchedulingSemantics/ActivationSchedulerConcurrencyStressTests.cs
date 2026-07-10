@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Quark.Core.Abstractions.Hosting;
 using Quark.Core.Abstractions.Identity;
 using Quark.Runtime;
 using Xunit;
@@ -47,7 +46,6 @@ public sealed class ActivationSchedulerConcurrencyStressTests
         };
 
         await using var scheduler = new ActivationScheduler(options);
-        services.AddSingleton<IActivationScheduler>(scheduler);
         await using ServiceProvider root = services.BuildServiceProvider();
 
         var activations = new GrainActivation[activationCount];
@@ -58,7 +56,8 @@ public sealed class ActivationSchedulerConcurrencyStressTests
                 new GrainType("StressGrain"),
                 isReentrant: false,
                 root,
-                NullLogger<GrainActivation>.Instance);
+                NullLogger<GrainActivation>.Instance,
+                scheduler);
         }
 
         var completedCounts = new int[activationCount];
@@ -125,7 +124,6 @@ public sealed class ActivationSchedulerConcurrencyStressTests
             };
 
             await using var scheduler = new ActivationScheduler(options);
-            services.AddSingleton<IActivationScheduler>(scheduler);
             await using ServiceProvider root = services.BuildServiceProvider();
 
             var a1 = new GrainActivation(
@@ -133,13 +131,15 @@ public sealed class ActivationSchedulerConcurrencyStressTests
                 new GrainType("StressGrain"),
                 isReentrant: false,
                 root,
-                NullLogger<GrainActivation>.Instance);
+                NullLogger<GrainActivation>.Instance,
+                scheduler);
             var a2 = new GrainActivation(
                 new GrainId(new GrainType("StressGrain"), $"single-shard-b-{iteration}"),
                 new GrainType("StressGrain"),
                 isReentrant: false,
                 root,
-                NullLogger<GrainActivation>.Instance);
+                NullLogger<GrainActivation>.Instance,
+                scheduler);
 
             int completed1 = 0;
             int completed2 = 0;
@@ -194,7 +194,6 @@ public sealed class ActivationSchedulerConcurrencyStressTests
             };
 
             await using var scheduler = new ActivationScheduler(options);
-            services.AddSingleton<IActivationScheduler>(scheduler);
             await using ServiceProvider root = services.BuildServiceProvider();
 
             var activation = new GrainActivation(
@@ -202,7 +201,8 @@ public sealed class ActivationSchedulerConcurrencyStressTests
                 new GrainType("StressGrain"),
                 isReentrant: false,
                 root,
-                NullLogger<GrainActivation>.Instance);
+                NullLogger<GrainActivation>.Instance,
+                scheduler);
 
             int completed = 0;
 

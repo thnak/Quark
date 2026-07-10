@@ -15,7 +15,7 @@ public sealed class CascadingTerminationTests
 {
     private static GrainActivation MakeActivation(GrainId id, IServiceProvider? sp = null)
         => new(id, id.Type, isReentrant: false, sp ?? EmptySp.Instance,
-            NullLogger<GrainActivation>.Instance);
+            NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
 
     private static GrainId Id(string type, string key) => new(new GrainType(type), key);
 

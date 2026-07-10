@@ -11,7 +11,7 @@ public sealed class GrainActivationLifecycleTests
 {
     private static GrainActivation MakeActivation(GrainId id)
         => new(id, id.Type, isReentrant: false,
-            new NullServiceProvider(), NullLogger<GrainActivation>.Instance);
+            new NullServiceProvider(), NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
 
     [Fact]
     public async Task Activation_StartsInActivatingState()

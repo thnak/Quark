@@ -19,7 +19,7 @@ public sealed class GrainIdleCollectionTests
     {
         var id = new GrainId(new GrainType("IdleTest"), "1");
         return new GrainActivation(id, id.Type, isReentrant: false,
-            new NullServiceProvider(), NullLogger<GrainActivation>.Instance);
+            new NullServiceProvider(), NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
     }
 
     // -------------------------------------------------------------------------

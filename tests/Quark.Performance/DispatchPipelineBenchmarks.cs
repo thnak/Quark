@@ -85,14 +85,16 @@ public class DispatchPipelineBenchmarks
             PingPongGrainType,
             isReentrant: false,
             _sp,
-            _sp.GetRequiredService<ILogger<GrainActivation>>());
+            _sp.GetRequiredService<ILogger<GrainActivation>>(),
+            _sp.GetRequiredService<IActivationScheduler>());
 
         _bareActivationReentrant = new GrainActivation(
             GrainId.Create(PingPongGrainType, "bare-reentrant"),
             PingPongGrainType,
             isReentrant: true,
             _sp,
-            _sp.GetRequiredService<ILogger<GrainActivation>>());
+            _sp.GetRequiredService<ILogger<GrainActivation>>(),
+            _sp.GetRequiredService<IActivationScheduler>());
 
         var diagServices = new ServiceCollection();
         diagServices.AddLogging();
