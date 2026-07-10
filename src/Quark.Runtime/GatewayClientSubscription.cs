@@ -52,7 +52,7 @@ public sealed class GatewayClientSubscription : ISharedEncodingStreamObserver
     [RequiresUnreferencedCode(
         "Stream item type may be trimmed by the linker. " +
         "Use typed IAsyncObserver<T> subscriptions for AOT-safe streaming.")]
-    public Task OnNextSharedAsync(SharedStreamItem item, StreamSequenceToken? token)
+    public async Task OnNextSharedAsync(SharedStreamItem item, StreamSequenceToken? token)
 #pragma warning restore IL3051, IL2046
     {
         if (!RuntimeFeature.IsDynamicCodeSupported)
@@ -61,7 +61,7 @@ public sealed class GatewayClientSubscription : ISharedEncodingStreamObserver
                 "Use typed stream subscriptions in Native AOT contexts.");
 
         ReadOnlyMemory<byte> bytes = item.GetOrEncode(Encode);
-        return _push(bytes, token);
+        await _push(bytes, token).ConfigureAwait(false);
     }
 
     [RequiresDynamicCode(
