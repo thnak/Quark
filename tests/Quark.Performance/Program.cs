@@ -96,6 +96,8 @@ public class Program
             typeof(CacheLocalityBenchmarks),
             typeof(SchedulerShardDistributionBenchmarks),
             typeof(ActivationLifecycleBenchmarks),
+            typeof(UserServiceProviderFactoryBenchmarks),
+            typeof(StreamFanOutBenchmarks),
         });
 
         switcher.Run(args);
