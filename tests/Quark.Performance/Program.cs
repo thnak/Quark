@@ -85,6 +85,13 @@ public class Program
             return;
         }
 
+        // Check if user wants a tight-loop profile driver (for dotnet-trace / perf tooling)
+        if (args.Length > 0 && args[0].Equals("Profile", StringComparison.OrdinalIgnoreCase))
+        {
+            await ProfileRunner.RunAsync(args);
+            return;
+        }
+
         // Otherwise run BenchmarkDotNet benchmarks
         var switcher = new BenchmarkSwitcher(new[]
         {

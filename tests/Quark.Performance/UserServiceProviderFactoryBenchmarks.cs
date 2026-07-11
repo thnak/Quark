@@ -18,7 +18,15 @@ namespace Quark.Performance;
 /// (GrainScopeBinder.CreateCallScope + BindAndResolve) and end-to-end (full IGrainCallInvoker round
 /// trip). Both variants run the real production startup path (BehaviorStartupValidator then
 /// SiloHostedService) so the opted-in side exercises the actual satellite-provider wiring, not a
-/// hand-rolled stand-in. See
+/// hand-rolled stand-in, AND both behaviors are registered with an explicit compile-time factory (the
+/// shape BehaviorRegistrationGenerator emits) rather than the reflection-based ActivatorUtilities
+/// fallback -- ruling out reflection cost as a confound in the absolute numbers.
+/// A dotnet-trace run of an earlier, reflection-based version of this benchmark showed high inclusive
+/// time inside ActivatorUtilities.CreateInstance and read as reflection overhead; switching to a
+/// compile-time factory here to test that reading changed throughput by ~1% (noise), disproving it --
+/// that inclusive time was ExpensiveUserRepository's own construction cost (Guid.NewGuid() x64)
+/// showing up as a callee under ActivatorUtilities' stack frame, not ActivatorUtilities' own work.
+/// Kept the compile-time factory anyway since it's what production code actually runs. See
 /// docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md.
 /// </summary>
 [SimpleJob(launchCount: 1, warmupCount: 3, iterationCount: 5)]
@@ -63,7 +71,12 @@ public class UserServiceProviderFactoryBenchmarks
         });
         notOptedInServices.AddQuarkRuntime();
         notOptedInServices.AddScoped<ExpensiveUserRepository>();
-        notOptedInServices.AddGrainBehavior<IExpensiveGrain, NotOptedInBehavior>();
+        // Compile-time factory (what BehaviorRegistrationGenerator emits in production) instead of
+        // the reflection-based ActivatorUtilities fallback -- see class doc comment: this was tried
+        // to rule out reflection cost as a confound, and measurably didn't change the numbers, but is
+        // kept since it's what production code actually runs.
+        notOptedInServices.AddGrainBehavior<IExpensiveGrain, NotOptedInBehavior>(
+            factory: static sp => new NotOptedInBehavior(sp.GetRequiredService<ExpensiveUserRepository>()));
         _notOptedInSp = notOptedInServices.BuildServiceProvider();
         await StartHostedServicesAsync(_notOptedInSp);
 
@@ -97,7 +110,8 @@ public class UserServiceProviderFactoryBenchmarks
             o.SiloName = "silo-opted-in";
         });
         optedInServices.AddQuarkRuntime();
-        optedInServices.AddGrainBehavior<IExpensiveGrain, OptedInBehavior>();
+        optedInServices.AddGrainBehavior<IExpensiveGrain, OptedInBehavior>(
+            factory: static sp => new OptedInBehavior(sp.GetRequiredService<ExpensiveUserRepository>()));
         optedInServices.AddGrainUserServiceProviderFactory<IExpensiveGrain, OptedInBehavior>();
         _optedInSp = optedInServices.BuildServiceProvider();
         await StartHostedServicesAsync(_optedInSp);
