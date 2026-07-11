@@ -207,15 +207,42 @@ silo.Services.AddScoped<IActivationMemory<MyState>>(sp =>
 
 The `BehaviorRegistrationGenerator` eliminates this boilerplate — see [Source Generators](Source-Generators).
 
+## Quark-owned services vs. user services
+
+Every constructor parameter a behavior asks for comes out of a DI container, but it falls into one of
+two categories:
+
+| | Quark-owned services | User services |
+|---|---|---|
+| Registered by | The runtime — `AddManagedActivationMemory<T>`, `AddEagerActivationMemory<T>`, and the `BehaviorRegistrationGenerator`'s per-behavior accessor registrations all funnel through `AddQuarkOwnedScoped<T>` | The developer — ordinary `silo.Services.AddScoped/AddSingleton/AddTransient<T>()` |
+| Examples | `IActivationShellAccessor`, `ICallContext`/`ICallContextSetter`, `IBehaviorResolver`, `IActivationMemory<T>`, `IManagedActivationMemory<T>`, `IEagerActivationMemory<T>`, `IPersistentActivationMemory<T>` | Repositories, HTTP clients, domain/business services — anything a behavior's constructor needs that isn't a Quark abstraction |
+| Lifetime Quark guarantees | Fresh every call (or scoped to the activation, for shell-backed state) | Whatever the developer registered it as |
+
+**By default the two categories are not actually separated at resolution time.** Both are registered on
+the same `silo.Services` `IServiceCollection` and resolved from the same flat `IServiceScope`, created
+fresh for every grain call (see "Local call flow" above). A behavior's constructor has no way to tell
+which category a given parameter belongs to, and doesn't need to — they're just registrations in one
+container. Reusing a single flat per-call scope for both is what keeps every service, Quark's and the
+developer's alike, provably per-call. That's the actual point of the engine model: it's the mechanism
+that rules out the "a grain leaks a scoped `DbContext` across its lifetime" class of bug the Framework
+model was prone to (see the Framework-vs-Engine table above).
+
+The two categories only become **visibly separate** — living in two different containers instead of
+one — when a behavior opts into `IGrainUserServiceProviderFactory` below, trading the "everything
+re-resolved per call" default for a long-lived, per-grain-type-cached provider for its *own* services.
+Making that trade safely, so a cached user registration can never accidentally shadow a Quark-owned
+type, is why that mechanism needs a second "Quark-only" satellite container and a
+`CompositeServiceProvider` to recombine the two — machinery that doesn't exist, and isn't needed, on
+the default path.
+
 ## Opt-in user-service-provider factory (per-grain-type cached DI)
 
-By default, every grain call pays for a fresh `IServiceScope` created from the root `IServiceProvider` —
-cheap for typical Quark-owned dependencies, but wasteful when a behavior's *own* constructor dependencies
-form a non-trivial graph (a repository backed by a connection pool, a rules engine, anything with real
-construction cost) that is effectively stateless/reusable across calls. `IGrainUserServiceProviderFactory`
-is an opt-in mechanism, declared directly on the behavior class, that lets a developer supply their own
-long-lived `IServiceProvider` for those services, built once per **grain type** at silo startup instead of
-once per call:
+`IGrainUserServiceProviderFactory` is an opt-in mechanism, declared directly on the behavior class,
+that lets a developer supply their own long-lived `IServiceProvider` for their *own* services (the
+right-hand column above) — built once per **grain type** at silo startup instead of once per call.
+Reach for it when a behavior's own constructor dependencies form a non-trivial graph (a repository
+backed by a connection pool, a rules engine, anything with real construction cost) that's effectively
+stateless/reusable across calls:
 
 ```csharp
 public interface IGrainUserServiceProviderFactory

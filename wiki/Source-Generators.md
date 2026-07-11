@@ -236,14 +236,19 @@ services across all calls without re-resolving them. See
 [`docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md`](../../docs/superpowers/specs/2026-07-10-grain-user-service-provider-factory-design.md)
 for design details.
 
-#### Activation memory accessor registration changes
+#### Activation memory accessor registration
 
-When a behavior implements `IGrainUserServiceProviderFactory`, the generator changes how it registers
-activation memory accessors (`IActivationMemory<T>`, `IManagedActivationMemory<T>`, `IEagerActivationMemory<T>`):
-instead of plain `AddScoped<T>()`, each is registered via `AddQuarkOwnedScoped<T>()`. This ensures the
-accessor is resolved from the Quark-owned satellite provider (not the user's), preserving scope semantics
-for opted-in behaviors. For behaviors that do not implement the interface, accessors continue to use
-plain `AddScoped<T>()` — both approaches are functionally identical.
+Every generated activation-memory accessor (`IActivationMemory<T>`, `IManagedActivationMemory<T>`,
+`IEagerActivationMemory<T>`) is registered via `AddQuarkOwnedScoped<T>()` rather than plain
+`AddScoped<T>()` — **unconditionally, for every behavior in the assembly**, whether or not that specific
+behavior implements `IGrainUserServiceProviderFactory`. This isn't scoped to opted-in behaviors only:
+the "Quark-only" satellite provider is built once and shared process-wide (see
+[Architecture § Quark-owned services vs. user services](Architecture#quark-owned-services-vs-user-services)),
+so every assembly's accessors need to already be replayable onto it the moment *any* behavior in the
+process opts in, not just the ones that do. On the default (non-satellite) resolution path,
+`AddQuarkOwnedScoped<T>()` performs the exact same `services.AddScoped<T>()` registration under the
+hood and additionally captures a replayable marker — so a behavior that never opts in sees no
+behavioral difference from plain `AddScoped<T>()`, it's simply always the mechanism used.
 
 **v1 limitation**: `IPersistentActivationMemory<T>` and `[PersistentState]` are not yet supported on
 behaviors that implement `IGrainUserServiceProviderFactory`; these features will be enabled in a future

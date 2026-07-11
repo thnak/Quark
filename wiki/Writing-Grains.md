@@ -168,7 +168,10 @@ var self = _factory.GetGrain<IMyGrain>(_ctx.GrainId);
 
 ## Opt-in user-service-provider factory
 
-By default, a behavior's constructor dependencies are re-resolved from a fresh `IServiceScope` on
+Every service a behavior's constructor asks for is either Quark-owned (`IActivationMemory<T>`,
+`ICallContext`, etc.) or a user service the developer registered themselves — see
+[Architecture § Quark-owned services vs. user services](Architecture#quark-owned-services-vs-user-services)
+for that distinction. By default, both kinds are re-resolved from the same fresh `IServiceScope` on
 **every** grain call. That's the right default, but it's wasteful when a behavior's own (non-Quark)
 dependencies form an expensive graph (a repository backed by a connection pool, a rules engine, ...)
 that's effectively stateless/reusable across calls. Implement `IGrainUserServiceProviderFactory`
