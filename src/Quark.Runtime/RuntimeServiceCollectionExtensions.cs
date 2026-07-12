@@ -75,27 +75,23 @@ public static class RuntimeServiceCollectionExtensions
 
         // Activation scheduler — drives centralized drain dispatch; replaces per-activation loops.
         //
-        // Falls back to SimpleActivationScheduler rather than the sharded ActivationScheduler
-        // (see docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md and
-        // 2026-07-09-scheduler-wake-signal-sharding-design.md) because the sharded scheduler has a
-        // reproducible bounded-worker-pool reentrancy deadlock under real concurrent load: a
-        // grain-to-grain call (a synchronous nested PostAsync from inside a worker's own drain)
-        // keeps that worker "busy" for the callee's whole round trip, and if enough concurrently
-        // in-flight calls fan into a shared, not-yet-serviced target activation to exceed
-        // SchedulerMaxConcurrentActivations, every worker can end up transitively blocked waiting on
-        // a target only a worker — and every worker is blocked — could service. Confirmed via the
-        // Realm sample's TCP-driven bot-driver benchmark (20 concurrent players, 2 moves/sec, 15s) —
-        // hangs consistently against ActivationScheduler, completes cleanly (600/600 moves, p99
-        // ~46ms) against SimpleActivationScheduler, on an otherwise-identical build — and root-caused
-        // with an isolated, TCP-free unit repro plus a captured scheduler-diagnostics trace showing a
-        // stranded activation's ready-queue entry sitting unserviced for 6+ seconds after a
-        // successful Schedule. Full writeup is in ActivationScheduler's class remarks. Fixing this
-        // needs the dispatch loop to stop treating "blocked on a nested call" as "busy" (e.g.
-        // transient extra capacity for reentrant calls, or restructuring drain execution so it never
-        // synchronously occupies a worker slot across an inter-activation await) — nontrivial, not
-        // done yet. Swap back to `new ActivationScheduler(...)` once that's fixed — see the design
-        // docs above for the contention-reduction rationale this fallback gives up in the meantime.
-        services.TryAddSingleton<IActivationScheduler>(sp => SimpleActivationScheduler.Instance);
+        // ActivationScheduler (sharded ready queue, work-stealing sweep — see
+        // docs/superpowers/specs/2026-07-09-work-stealing-scheduler-design.md and
+        // 2026-07-09-scheduler-wake-signal-sharding-design.md) is the default again as of GitHub
+        // issue #167's fix: it previously had a reproducible bounded-worker-pool reentrancy deadlock
+        // (a nested grain-to-grain call could keep enough workers "busy" waiting on each other's
+        // replies to exhaust SchedulerMaxConcurrentActivations — full history in that type's class
+        // remarks), which is why SimpleActivationScheduler was the fallback for a while. That's now
+        // mitigated by a self-hosted stall watchdog that spins up transient overflow capacity when
+        // the ready queue stops making progress — see
+        // docs/superpowers/specs/2026-07-12-scheduler-reentrancy-deadlock-fix.md.
+        // SimpleActivationScheduler (unbounded Task.Run per activation, no concurrency cap or other
+        // QoS knobs) remains available for callers that want it explicitly — e.g. the
+        // `--bare` PingPong benchmark mode.
+        services.TryAddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
+            sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
+            sp.GetService<IQuarkDiagnosticListener>(),
+            sp.GetService<IOptions<DiagnosticOptions>>()?.Value));
 
         // Stateless-worker pool router (singleton; pool dictionaries keyed by logical grain id)
         services.TryAddSingleton<StatelessWorkerRouter>();

@@ -90,8 +90,17 @@ public sealed class ReminderIntegrationTests
             services.AddSingleton<IReminderStorage>(storage);
         };
 
-        await using (TestCluster cluster1 = await TestCluster.CreateAsync(
-            BuildOptions(sharedStorage, pollInterval: TimeSpan.FromMilliseconds(50))))
+        // InitialSilosCount = 1 (TestClusterOptions defaults to 2): a "restart" is one process
+        // replacing another, not two concurrently-polling silos racing over shared reminder
+        // storage with no leader election/dedup between them -- the default 2-silo shape lets
+        // both silos' independent DefaultReminderService poll loops observe the same due entry
+        // and fire it on two separate GrainActivation instances, and GetReceiveCountAsync below
+        // can then land on whichever one didn't receive the tick.
+        await using (TestCluster cluster1 = await TestCluster.CreateAsync(options =>
+        {
+            BuildOptions(sharedStorage, pollInterval: TimeSpan.FromMilliseconds(50))(options);
+            options.InitialSilosCount = 1;
+        }))
         {
             IReminderTestGrain grain = cluster1.Client.GetGrain<IReminderTestGrain>("restart-test");
             // dueTime = 2s so cluster1 shuts down before the first tick, leaving NextFireAt in the future.
@@ -99,8 +108,11 @@ public sealed class ReminderIntegrationTests
         }
         // cluster1 disposed — grain activations gone, storage still has entry with NextFireAt ~now+2s.
 
-        await using TestCluster cluster2 = await TestCluster.CreateAsync(
-            BuildOptions(sharedStorage, pollInterval: TimeSpan.FromMilliseconds(50)));
+        await using TestCluster cluster2 = await TestCluster.CreateAsync(options =>
+        {
+            BuildOptions(sharedStorage, pollInterval: TimeSpan.FromMilliseconds(50))(options);
+            options.InitialSilosCount = 1;
+        });
 
         // Wait for the 2s due time to expire and the reminder to fire.
         await Task.Delay(2500);

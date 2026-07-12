@@ -101,6 +101,47 @@ public sealed class SiloRuntimeOptions
     public SchedulerOverloadMode SchedulerOverloadMode { get; set; } = SchedulerOverloadMode.Wait;
 
     /// <summary>
+    ///     How long the scheduler's ready queue must show zero completed drains before the
+    ///     stall watchdog spins up transient overflow capacity (see
+    ///     <see cref="SchedulerMaxOverflowWorkers"/>). Rescues the bounded-worker-pool reentrancy
+    ///     deadlock a nested cross-activation call can cause (GitHub issue #167) by treating a
+    ///     sustained lack of progress as a signal to add capacity rather than waiting forever.
+    ///     This needs to trip fast, not just "eventually": measured against the Realm sample's
+    ///     bot-driver benchmark (20 players, 2 moves/sec — legitimate `PlayerGrain`-&gt;`MapGrain`
+    ///     nested calls, not an adversarial shape), an initial 3-second default made the rescue
+    ///     the steady-state path for nearly every call (p50 latency ~3.0s, matching the threshold
+    ///     almost exactly) rather than a rare safety net — this workload's natural nested-call
+    ///     concurrency routinely exceeds <see cref="SchedulerMaxConcurrentActivations"/>'s default,
+    ///     so the rescue fires far more often than "deadlock" alone would suggest. 250ms cut p50 to
+    ///     ~240ms — still slower than a from-scratch structural fix would be, but a documented,
+    ///     tunable cost instead of a multi-second stall. Kept comfortably above 100ms specifically
+    ///     because `ActivationSchedulerTests.Spec6` asserts non-completion within a 100ms window at
+    ///     `SchedulerMaxConcurrentActivations=1` — a threshold at or below that risks a false-positive
+    ///     rescue mid-assertion. Workloads with heavy legitimate nested-call fan-out may want to tune
+    ///     this lower still (or raise <see cref="SchedulerMaxConcurrentActivations"/> instead, if the
+    ///     workload's natural concurrent-activation count is known and stable). Default: 250 milliseconds.
+    /// </summary>
+    public TimeSpan SchedulerStallThreshold { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    ///     How often the stall watchdog polls for lack of progress. Cheap to check (a few counter
+    ///     reads), so this can run frequently — kept well under <see cref="SchedulerStallThreshold"/>
+    ///     so the rescue reacts promptly once the threshold is actually exceeded, rather than adding
+    ///     its own extra latency on top. Default: 50 milliseconds.
+    /// </summary>
+    public TimeSpan SchedulerStallCheckInterval { get; set; } = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    ///     Maximum number of transient overflow workers the stall watchdog may spin up beyond
+    ///     <see cref="SchedulerMaxConcurrentActivations"/> once <see cref="SchedulerStallThreshold"/>
+    ///     is exceeded with a non-empty ready queue. Peak effective concurrency during a rescue is
+    ///     <see cref="SchedulerMaxConcurrentActivations"/> + this value. Overflow workers retire once
+    ///     the backlog clears. <c>0</c> disables the watchdog entirely (a full opt-out for
+    ///     deployments that want a hard, unrescuable cap). Default: <see cref="Environment.ProcessorCount"/>.
+    /// </summary>
+    public int SchedulerMaxOverflowWorkers { get; set; } = Environment.ProcessorCount;
+
+    /// <summary>
     ///     Default maximum number of concurrent local worker activations for a
     ///     <c>[StatelessWorker]</c> grain that does not specify <c>maxLocalWorkers</c>.
     ///     Applied when <c>maxLocalWorkers</c> is <c>-1</c> (the attribute default).

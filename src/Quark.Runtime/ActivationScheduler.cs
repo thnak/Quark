@@ -29,9 +29,9 @@ namespace Quark.Runtime;
 ///     shard's empty-&gt;non-empty transition, instead of every worker contending on one shared
 ///     semaphore -- see docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md.
 ///
-///     KNOWN HAZARD -- bounded-worker-pool reentrancy deadlock (found 2026-07-10 via the Realm
-///     sample's TCP bot-driver benchmark; this is why <c>RuntimeServiceCollectionExtensions</c>
-///     currently wires up <see cref="SimpleActivationScheduler"/> instead of this type by default).
+///     FIXED HAZARD (was: bounded-worker-pool reentrancy deadlock, found 2026-07-10 via the Realm
+///     sample's TCP bot-driver benchmark; see GitHub issue #167) -- kept here for historical context,
+///     since the underlying mechanism it warns about is still real, just now mitigated.
 ///     <see cref="RunWorkerAsync"/> treats a worker as fully busy -- unavailable to dequeue
 ///     <em>anything</em>, including any other activation's ready-queue entry -- for the entire time
 ///     it is inside <c>await activation.DrainAndCompleteAsync(...)</c>. A grain method that makes a
@@ -45,21 +45,30 @@ namespace Quark.Runtime;
 ///     timing race: reproduced reliably (isolated unit repro, no TCP/DI involved) at worker counts of
 ///     1, 2, and 4 with a many-callers-fan-in-to-few-targets shape (N caller activations each making
 ///     a nested <c>PostAsync</c> into one of a handful of "hot" activations, e.g. players calling into
-///     a small set of maps); did not reproduce at <see cref="Environment.ProcessorCount"/> workers on
-///     a 32-core box purely because 32 simultaneous blocked chains never occurred there -- on a
-///     smaller-core deployment, or under enough concurrent callers, the same condition is reachable
-///     at the default worker count too, matching the original Realm hang. Confirmed via a captured
-///     scheduler-diagnostics trace: the stranded activation's <c>Scheduled</c> event (successful
-///     <c>TryMarkScheduled</c> + <c>EnqueueToShard</c>) was followed by a "Waited(6000.8ms)" gap
-///     before any worker's <c>DrainStarted</c> -- the ready-queue entry sat untouched, not silently
-///     dropped. <see cref="SimpleActivationScheduler"/> is immune by construction: it spawns a fresh,
-///     unbounded <c>Task.Run</c> per scheduled activation instead of routing through a fixed pool of
-///     worker loops, so a nested call always gets its own execution slot regardless of how many other
-///     activations are already mid-drain. A real fix here would need to stop a worker's dispatch loop
-///     from being "busy" while blocked on a nested call it isn't actually executing (e.g. spinning up
-///     transient extra capacity for reentrant calls, or restructuring drain execution so it never
-///     synchronously occupies a worker slot across an inter-activation await) -- out of scope for the
-///     investigation that found this; not yet fixed.
+///     a small set of maps). Confirmed via a captured scheduler-diagnostics trace: the stranded
+///     activation's <c>Scheduled</c> event (successful <c>TryMarkScheduled</c> + <c>EnqueueToShard</c>)
+///     was followed by a "Waited(6000.8ms)" gap before any worker's <c>DrainStarted</c> -- the
+///     ready-queue entry sat untouched, not silently dropped.
+///
+///     FIX -- transient overflow capacity, not a structural rewrite. A true structural fix (release a
+///     worker's slot around the specific await where it makes an outbound nested call, reacquire on
+///     resume) was evaluated and rejected: <c>MailboxWorkItem.ExecuteAsync</c> runs the drained
+///     delegate via <c>ExecutionContext.Run</c> against a context captured back at enqueue time, which
+///     breaks naive <c>AsyncLocal</c>-based ambient signaling across that boundary -- a working version
+///     would need an explicit parameter threaded through <c>IMailboxWorkItem</c>,
+///     <c>LocalGrainCallInvoker</c>'s per-call state types, and the source-generated proxy signatures
+///     (<c>Quark.CodeGenerator</c>). Chosen instead: a self-hosted stall watchdog
+///     (<see cref="RunStallWatchdogAsync"/>) that spins up temporary overflow workers
+///     (<see cref="RunOverflowWorkerAsync"/>, up to <see cref="SiloRuntimeOptions.SchedulerMaxOverflowWorkers"/>)
+///     once the ready queue shows zero completed drains for longer than
+///     <see cref="SiloRuntimeOptions.SchedulerStallThreshold"/> -- the same conceptual fix
+///     <see cref="SimpleActivationScheduler"/> gets "for free" from its unbounded <c>Task.Run</c>-per-
+///     activation design, applied narrowly and only when actually needed. This turns the deadlock into
+///     a bounded, self-healing stall rather than eliminating the resource-exhaustion pattern outright
+///     -- an even more adversarial fan-in shape than <c>SchedulerMaxConcurrentActivations +
+///     SchedulerMaxOverflowWorkers</c> concurrently-blocked chains could still stall past that bound;
+///     not claimed to be impossible, just self-healing within a documented, configurable limit. See
+///     docs/superpowers/specs/2026-07-12-scheduler-reentrancy-deadlock-fix.md.
 /// </remarks>
 internal sealed class ActivationScheduler : IActivationScheduler
 {
@@ -117,6 +126,18 @@ internal sealed class ActivationScheduler : IActivationScheduler
     private readonly IQuarkDiagnosticListener _diagnostics;
     private readonly TimeSpan _shutdownStalledThreshold;
 
+    // Stall-watchdog / overflow-capacity state -- see the FIX section of the class remarks above.
+    // _lastProgressTimestamp (Stopwatch ticks) is touched by every completed drain, primary or
+    // overflow; the watchdog compares against it, not against any single worker's state, since the
+    // failure mode is "the whole ready queue stopped moving," not "one worker is slow."
+    private long _lastProgressTimestamp;
+    private readonly TimeSpan _stallThreshold;
+    private readonly TimeSpan _stallCheckInterval;
+    private readonly int _maxOverflowWorkers;
+    private int _overflowWorkerCount;
+    private readonly ConcurrentDictionary<Task, byte> _overflowWorkers = new();
+    private readonly Task _stallWatchdog;
+
     public ActivationScheduler(
         SiloRuntimeOptions options,
         IQuarkDiagnosticListener? diagnostics = null,
@@ -128,6 +149,9 @@ internal sealed class ActivationScheduler : IActivationScheduler
         _overloadMode = options.SchedulerOverloadMode;
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
         _shutdownStalledThreshold = (diagnosticOptions ?? new DiagnosticOptions()).ShutdownStalledThreshold;
+        _stallThreshold = options.SchedulerStallThreshold;
+        _stallCheckInterval = options.SchedulerStallCheckInterval;
+        _maxOverflowWorkers = Math.Max(0, options.SchedulerMaxOverflowWorkers);
 
         _shards = new ConcurrentQueue<GrainActivation>[concurrency];
         for (int i = 0; i < concurrency; i++)
@@ -151,6 +175,11 @@ internal sealed class ActivationScheduler : IActivationScheduler
             int workerIndex = i; // stagger each worker's round-robin start so they don't all sweep in lockstep
             _workers[i] = Task.Run(() => RunWorkerAsync(workerIndex, _cts.Token));
         }
+
+        _lastProgressTimestamp = Stopwatch.GetTimestamp();
+        _stallWatchdog = _maxOverflowWorkers > 0
+            ? Task.Run(() => RunStallWatchdogAsync(_cts.Token))
+            : Task.CompletedTask;
     }
 
     /// <summary>Deterministic, stable-for-the-activation's-lifetime shard assignment.</summary>
@@ -207,7 +236,11 @@ internal sealed class ActivationScheduler : IActivationScheduler
     {
         await _cts.CancelAsync().ConfigureAwait(false);
 
-        Task allWorkers = Task.WhenAll(_workers);
+        // Snapshot live overflow workers after requesting cancellation -- CheckForStallAndSpawnOverflow
+        // checks _cts.IsCancellationRequested before spawning a new one, so this is complete modulo a
+        // narrow best-effort race (matches this class's existing tolerance for small races elsewhere,
+        // e.g. stale _idleWorkers entries).
+        Task allWorkers = Task.WhenAll(_workers.Append(_stallWatchdog).Concat(_overflowWorkers.Keys));
 
         // Surface a stuck shutdown instead of just hanging silently — a hung drain worker
         // otherwise blocks host shutdown indefinitely with no other observable signal. The wait
@@ -322,76 +355,202 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 // process this activation normally.
             }
 
-            _capacityGates?[cursor].Release();
-            QuarkInstruments.SchedulerReadyQueueDepth.Add(-1);
-            _diagnostics.OnSchedulerReadyQueueDepthChanged(
-                new SchedulerReadyQueueDepthChangedEvent(_shardCounts[cursor], -1));
+            await DrainDispatchedActivationAsync(activation, cursor, ct).ConfigureAwait(false);
+            cursor = (cursor + 1) % shardCount;
+        }
+    }
 
-            if (!activation.TryBeginDrain())
+    /// <summary>
+    ///     Given a just-dequeued activation, drains it and handles capacity-gate release,
+    ///     diagnostics, the fairness-yield signal, and rescheduling -- shared by
+    ///     <see cref="RunWorkerAsync"/> (primary workers) and <see cref="RunOverflowWorkerAsync"/>
+    ///     (transient rescue workers, see the FIX section of the class remarks) so both loops apply
+    ///     identical drain-dispatch logic instead of maintaining two copies of it.
+    /// </summary>
+    private async Task DrainDispatchedActivationAsync(GrainActivation activation, int shardIndex, CancellationToken ct)
+    {
+        _capacityGates?[shardIndex].Release();
+        QuarkInstruments.SchedulerReadyQueueDepth.Add(-1);
+        _diagnostics.OnSchedulerReadyQueueDepthChanged(
+            new SchedulerReadyQueueDepthChangedEvent(_shardCounts[shardIndex], -1));
+
+        if (!activation.TryBeginDrain())
+        {
+            // Should not happen: _scheduled stays claimed for the whole drain (see
+            // GrainActivation.CompleteDrain), so this activation cannot have a second ready-queue
+            // entry while a drain is in flight. Defensive no-op in case that invariant is ever
+            // violated — the in-flight drain's CompleteDrain will reschedule if work remains.
+            return;
+        }
+
+        long enqueuedAt = activation.TakeSchedulerEnqueueTime();
+        double waitMs = enqueuedAt > 0 ? Stopwatch.GetElapsedTime(enqueuedAt).TotalMilliseconds : 0;
+        QuarkInstruments.SchedulerActivationWaitDuration.Record(waitMs);
+        _diagnostics.OnSchedulerActivationWaited(new SchedulerActivationWaitedEvent(activation.GrainId, waitMs));
+
+        _diagnostics.OnSchedulerDrainStarted(new SchedulerDrainStartedEvent(activation.GrainId));
+        QuarkInstruments.SchedulerActiveDrains.Add(1);
+
+        long drainStart = Stopwatch.GetTimestamp();
+        ActivationDrainResult result;
+        bool needsReschedule;
+        try
+        {
+            (result, needsReschedule) =
+                await activation.DrainAndCompleteAsync(_drainBudget, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            QuarkInstruments.SchedulerActiveDrains.Add(-1);
+        }
+
+        // Progress signal for the stall watchdog -- any completed drain, from a primary or overflow
+        // worker, counts as forward progress and resets the "how long has the ready queue been
+        // stuck" clock. See the FIX section of the class remarks.
+        Interlocked.Exchange(ref _lastProgressTimestamp, Stopwatch.GetTimestamp());
+
+        double drainMs = Stopwatch.GetElapsedTime(drainStart).TotalMilliseconds;
+        QuarkInstruments.SchedulerDrainDuration.Record(drainMs);
+        QuarkInstruments.SchedulerDrainItems.Add(result.ItemsProcessed);
+        _diagnostics.OnSchedulerDrainCompleted(
+            new SchedulerDrainCompletedEvent(activation.GrainId, result.ItemsProcessed, drainMs));
+
+        // Fairness yield: drain hit budget with work still pending.
+        if (result.HasMoreWork && result.ItemsProcessed >= _drainBudget)
+        {
+            QuarkInstruments.SchedulerDrainYields.Add(1);
+            _diagnostics.OnSchedulerDrainYielded(
+                new SchedulerDrainYieldedEvent(activation.GrainId, result.ItemsProcessed));
+        }
+
+        if (!result.IsCompleted && (result.HasMoreWork || needsReschedule))
+        {
+            if (activation.TryMarkScheduled())
             {
-                // Should not happen: _scheduled stays claimed for the whole drain (see
-                // GrainActivation.CompleteDrain), so this activation cannot have a second ready-queue
-                // entry while a drain is in flight. Defensive no-op in case that invariant is ever
-                // violated — the in-flight drain's CompleteDrain will reschedule if work remains.
-                cursor = (cursor + 1) % shardCount;
-                continue;
+                activation.SetSchedulerEnqueueTime();
+                int rescheduleShardIndex = ShardFor(activation);
+
+                // Matches the pre-existing (pre-work-stealing) design's behavior exactly: a
+                // reschedule that can't fit under a configured SchedulerReadyQueueCapacity is
+                // silently dropped rather than blocking the worker or throwing -- the prior
+                // Channel<T>-based design did the same via a bare TryWrite with an ignored return
+                // value. Not a new behavior introduced by this change; out of scope to fix here.
+                if (_capacityGates is null || _capacityGates[rescheduleShardIndex].Wait(0))
+                {
+                    EnqueueToShard(rescheduleShardIndex, activation);
+                }
             }
+        }
+    }
 
-            long enqueuedAt = activation.TakeSchedulerEnqueueTime();
-            double waitMs = enqueuedAt > 0 ? Stopwatch.GetElapsedTime(enqueuedAt).TotalMilliseconds : 0;
-            QuarkInstruments.SchedulerActivationWaitDuration.Record(waitMs);
-            _diagnostics.OnSchedulerActivationWaited(new SchedulerActivationWaitedEvent(activation.GrainId, waitMs));
+    /// <summary>
+    ///     Transient rescue capacity spun up by <see cref="RunStallWatchdogAsync"/> when the ready
+    ///     queue shows no progress for too long -- see the FIX section of the class remarks. Sweeps
+    ///     shards using the same <see cref="TryDequeueAny"/> logic as a primary worker, but unlike a
+    ///     primary worker it never registers on <see cref="_idleWorkers"/> or parks: after a short run
+    ///     of consecutive empty sweeps it just retires, since overflow workers are meant to drain a
+    ///     backlog and disappear, not join the steady-state pool.
+    /// </summary>
+    private async Task RunOverflowWorkerAsync(CancellationToken ct)
+    {
+        int shardCount = _shards.Length;
+        int cursor = 0;
+        int consecutiveEmptySweeps = 0;
 
-            _diagnostics.OnSchedulerDrainStarted(new SchedulerDrainStartedEvent(activation.GrainId));
-            QuarkInstruments.SchedulerActiveDrains.Add(1);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                GrainActivation? activation = TryDequeueAny(ref cursor);
+                if (activation is null)
+                {
+                    // A few consecutive empty full-shard sweeps, not a single miss -- avoids
+                    // retiring on a transient timing gap right as the backlog is still draining.
+                    if (++consecutiveEmptySweeps >= 3)
+                        return;
 
-            long drainStart = Stopwatch.GetTimestamp();
-            ActivationDrainResult result;
-            bool needsReschedule;
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                consecutiveEmptySweeps = 0;
+                await DrainDispatchedActivationAsync(activation, cursor, ct).ConfigureAwait(false);
+                cursor = (cursor + 1) % shardCount;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown in progress -- fine to just retire.
+        }
+    }
+
+    /// <summary>
+    ///     Polls <see cref="CheckForStallAndSpawnOverflow"/> on <see cref="SiloRuntimeOptions.SchedulerStallCheckInterval"/>.
+    ///     Not started at all when <see cref="_maxOverflowWorkers"/> is 0 (full opt-out).
+    /// </summary>
+    private async Task RunStallWatchdogAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(_stallCheckInterval);
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                CheckForStallAndSpawnOverflow();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown in progress.
+        }
+    }
+
+    /// <summary>
+    ///     Synchronous, independently-testable stall check -- same split as
+    ///     <c>StuckGrainDetector.PollOnce()</c>/<c>GrainIdleCollector.CollectIdleGrains()</c>, so a
+    ///     test can drive this directly instead of racing a real <see cref="PeriodicTimer"/>. Spawns
+    ///     at most one additional overflow worker per call (a gradual ramp, not a thundering herd) --
+    ///     if the stall persists, the next tick spawns another, up to <see cref="_maxOverflowWorkers"/>.
+    /// </summary>
+    internal void CheckForStallAndSpawnOverflow()
+    {
+        if (_cts.IsCancellationRequested)
+            return;
+
+        bool hasBacklog = false;
+        for (int i = 0; i < _shardCounts.Length; i++)
+        {
+            if (Volatile.Read(ref _shardCounts[i]) > 0)
+            {
+                hasBacklog = true;
+                break;
+            }
+        }
+        if (!hasBacklog)
+            return;
+
+        double elapsedMs = Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastProgressTimestamp)).TotalMilliseconds;
+        if (elapsedMs < _stallThreshold.TotalMilliseconds)
+            return;
+
+        if (Interlocked.Increment(ref _overflowWorkerCount) > _maxOverflowWorkers)
+        {
+            Interlocked.Decrement(ref _overflowWorkerCount);
+            return;
+        }
+
+        Task overflowTask = null!;
+        overflowTask = Task.Run(async () =>
+        {
             try
             {
-                (result, needsReschedule) =
-                    await activation.DrainAndCompleteAsync(_drainBudget, ct).ConfigureAwait(false);
+                await RunOverflowWorkerAsync(_cts.Token).ConfigureAwait(false);
             }
             finally
             {
-                QuarkInstruments.SchedulerActiveDrains.Add(-1);
+                Interlocked.Decrement(ref _overflowWorkerCount);
+                _overflowWorkers.TryRemove(overflowTask, out _);
             }
-
-            double drainMs = Stopwatch.GetElapsedTime(drainStart).TotalMilliseconds;
-            QuarkInstruments.SchedulerDrainDuration.Record(drainMs);
-            QuarkInstruments.SchedulerDrainItems.Add(result.ItemsProcessed);
-            _diagnostics.OnSchedulerDrainCompleted(
-                new SchedulerDrainCompletedEvent(activation.GrainId, result.ItemsProcessed, drainMs));
-
-            // Fairness yield: drain hit budget with work still pending.
-            if (result.HasMoreWork && result.ItemsProcessed >= _drainBudget)
-            {
-                QuarkInstruments.SchedulerDrainYields.Add(1);
-                _diagnostics.OnSchedulerDrainYielded(
-                    new SchedulerDrainYieldedEvent(activation.GrainId, result.ItemsProcessed));
-            }
-
-            if (!result.IsCompleted && (result.HasMoreWork || needsReschedule))
-            {
-                if (activation.TryMarkScheduled())
-                {
-                    activation.SetSchedulerEnqueueTime();
-                    int rescheduleShardIndex = ShardFor(activation);
-
-                    // Matches the pre-existing (pre-work-stealing) design's behavior exactly: a
-                    // reschedule that can't fit under a configured SchedulerReadyQueueCapacity is
-                    // silently dropped rather than blocking the worker or throwing -- the prior
-                    // Channel<T>-based design did the same via a bare TryWrite with an ignored return
-                    // value. Not a new behavior introduced by this change; out of scope to fix here.
-                    if (_capacityGates is null || _capacityGates[rescheduleShardIndex].Wait(0))
-                    {
-                        EnqueueToShard(rescheduleShardIndex, activation);
-                    }
-                }
-            }
-
-            cursor = (cursor + 1) % shardCount;
-        }
+        });
+        _overflowWorkers[overflowTask] = 0;
     }
 }
