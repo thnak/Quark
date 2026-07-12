@@ -82,27 +82,29 @@ for the original motivation (closing the gap to Akka's ping-pong figure).
 
 | Stage | Mean | Allocated |
 |---|---:|---:|
-| `ActivationTableLookup` — steady-state table lookup | 87.8 ns | 0 B |
-| `ServiceScopeCreateDispose` — bare `IServiceScope` create+dispose | 124.5 ns | 128 B |
-| `ScopeBindAndResolve` — `GrainScopeBinder.BindAndResolve` (4 DI resolutions + behavior resolve) | 1,312.6 ns | 792 B |
-| `ExecutionContextCapture` — `ExecutionContext.Capture()` alone | 5.4 ns | 0 B |
-| `MailboxRoundTrip` — real mailbox round trip, non-reentrant | 4,059.2 ns | 661 B |
-| `MailboxRoundTripReentrant` — same, `isReentrant: true` (inline, no channel/scheduler hop) | 87.2 ns | 0 B |
-| `FullInvokeDiagnosticsOff` — complete `InvokeVoidAsync`, no-op diagnostics | 7,474.6 ns | 1960 B |
-| `FullInvokeDiagnosticsOn` — same, with a real (non-no-op) diagnostic listener | 8,072.3 ns | 1960 B |
-| `FullInvokeVoidAsync` — same call as `FullInvokeDiagnosticsOff`, named separately per the design's summary table | 14,750.6 ns⁺ | 1958 B |
-| `ChannelSignalPattern` — write + await forced-async completion signal (Quark's RPC-await pattern) | 8,069.5 ns⁺ | 312 B |
-| `ChannelNoSignalPattern` — write + return immediately, no completion wait | 115.5 ns | 0 B |
+| `ActivationTableLookup` — steady-state table lookup | 82.9 ns | 0 B |
+| `ServiceScopeCreateDispose` — bare `IServiceScope` create+dispose | 117.2 ns | 128 B |
+| `ScopeBindAndResolve` — `GrainScopeBinder.BindAndResolve` (4 DI resolutions + behavior resolve) | 1,228.8 ns | 792 B |
+| `ExecutionContextCapture` — `ExecutionContext.Capture()` alone | 5.8 ns | 0 B |
+| `MailboxRoundTrip` — real mailbox round trip, non-reentrant | 4,113.5 ns | 661 B |
+| `MailboxRoundTripReentrant` — same, `isReentrant: true` (inline, no channel/scheduler hop) | 87.8 ns | 0 B |
+| `FullInvokeDiagnosticsOff` — complete `InvokeVoidAsync`, no-op diagnostics | 7,798.8 ns | 1960 B |
+| `FullInvokeDiagnosticsOn` — same, with a real (non-no-op) diagnostic listener | 7,740.4 ns | 1960 B |
+| `FullInvokeVoidAsync` — same call as `FullInvokeDiagnosticsOff`, named separately per the design's summary table | 7,641.9 ns | 1960 B |
+| `ChannelSignalPattern` — write + await forced-async completion signal (Quark's RPC-await pattern) | 4,383.0 ns | 312 B |
+| `ChannelNoSignalPattern` — write + return immediately, no completion wait | 103.8 ns | 0 B |
 
-⁺ BenchmarkDotNet flagged `FullInvokeVoidAsync`'s distribution as multimodal (mValue=4.96) on this run
-— it's the same underlying call as `FullInvokeDiagnosticsOff`, so its ~2x-higher mean here is
-measurement noise (scheduling/GC interference under `--inProcess`), not a real difference. Re-run
-before citing this one number in isolation. `ChannelSignalPattern` also carries wide error bars for
-the same reason.
+Numbers above are from a confirming re-run. The first pass had flagged `FullInvokeVoidAsync`'s
+distribution as multimodal (mValue=4.96) and showed it at 14,750.6 ns — nearly 2x this run's 7,641.9
+ns, despite being the same underlying call as `FullInvokeDiagnosticsOff`. `ChannelSignalPattern` was
+similarly inflated the first time (8,069.5 ns vs. 4,383.0 ns here). Re-running with no multimodal flag
+and all three `FullInvoke*` variants landing within ~2% of each other confirms the first pass was
+measurement noise (scheduling/GC interference under `--inProcess`), not a real cost difference — the
+table above supersedes the earlier numbers.
 
 The mailbox round trip (`MailboxRoundTrip` vs `MailboxRoundTripReentrant`) is the single largest
-attributable cost in the non-reentrant path: ~4.06 μs for the channel write + scheduler wake + thread
-hop, vs ~87 ns when reentrancy skips the channel and runs inline — a ~46x difference for that one stage
+attributable cost in the non-reentrant path: ~4.11 μs for the channel write + scheduler wake + thread
+hop, vs ~88 ns when reentrancy skips the channel and runs inline — a ~47x difference for that one stage
 alone.
 
 | GrainCallBenchmarks | Mean | Allocated |
