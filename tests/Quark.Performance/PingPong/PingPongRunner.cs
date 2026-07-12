@@ -2,9 +2,11 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Quark.Client;
 using Quark.Core.Abstractions.Identity;
 using Quark.Diagnostics;
+using Quark.Diagnostics.Abstractions;
 using Quark.Performance.AstroSim;
 using Quark.Runtime;
 using Quark.Testing.Harness;
@@ -20,6 +22,7 @@ public static class PingPongRunner
 
         Console.WriteLine("=== Ping-Pong Throughput Benchmark ===");
         Console.WriteLine($"  Pairs: {cli.Pairs}, Duration: {cli.DurationSeconds}s, Mode: {mode}");
+        Console.WriteLine($"  Scheduler workers: {cli.SchedulerWorkers}{(cli.Bare ? " (ignored -- --bare bypasses ActivationScheduler entirely)" : "")}");
         if (cli.Bare)
         {
             Console.WriteLine("  Bare mode: bypasses LocalGrainCallInvoker/GrainScopeBinder entirely -- posts");
@@ -51,6 +54,23 @@ public static class PingPongRunner
             options.ConfigureSiloServices = services =>
             {
                 services.AddQuarkRuntime();
+                services.Configure<SiloRuntimeOptions>(o => o.SchedulerMaxConcurrentActivations = cli.SchedulerWorkers);
+
+                // AddQuarkRuntime() TryAdd-registers SimpleActivationScheduler (unbounded Task.Run
+                // per activation) as the default IActivationScheduler -- see the "KNOWN HAZARD" remark
+                // on RuntimeServiceCollectionExtensions.AddQuarkRuntime: the sharded ActivationScheduler
+                // under investigation here is NOT actually the runtime's default dispatch path, because
+                // of a documented reentrancy deadlock for grain-to-grain nested calls. That hazard needs
+                // a nested PostAsync from inside a worker's own drain; PingPong's volley is entirely
+                // client-driven (RunPairAsync calls the grain proxy from an external Task, never from
+                // inside another grain's behavior method), so it cannot trigger that deadlock -- safe to
+                // force ActivationScheduler here so --scheduler-workers has any effect at all. A plain
+                // AddSingleton after AddQuarkRuntime() wins DI's last-registration-wins resolution over
+                // the TryAdd default. See docs/superpowers/specs/2026-07-12-scheduler-sweep-scaling-investigation.md.
+                services.AddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
+                    sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
+                    sp.GetService<IQuarkDiagnosticListener>()));
+
                 services.AddQuarkDiagnostics(new BenchmarkDiagnosticListener());
                 services.AddGrainBehavior<IPingPongGrain, PingPongGrainBehavior>();
                 services.AddGrainBehavior<IReentrantPingPongGrain, ReentrantPingPongGrainBehavior>();
@@ -217,6 +237,7 @@ public static class PingPongRunner
 internal sealed class PingPongCliArgs
 {
     public int Pairs { get; private init; } = Environment.ProcessorCount;
+    public int SchedulerWorkers { get; private init; } = Environment.ProcessorCount;
     public double DurationSeconds { get; private init; } = 10;
     public bool Reentrant { get; private init; }
     public bool Bare { get; private init; }
@@ -224,6 +245,7 @@ internal sealed class PingPongCliArgs
     public static PingPongCliArgs Parse(string[] args)
     {
         int pairs = Environment.ProcessorCount;
+        int schedulerWorkers = Environment.ProcessorCount;
         double duration = 10;
         bool reentrant = false;
         bool bare = false;
@@ -234,6 +256,9 @@ internal sealed class PingPongCliArgs
             {
                 case "--pairs" when i + 1 < args.Length:
                     pairs = int.Parse(args[++i]);
+                    break;
+                case "--scheduler-workers" when i + 1 < args.Length:
+                    schedulerWorkers = int.Parse(args[++i]);
                     break;
                 case "--duration" when i + 1 < args.Length:
                     duration = double.Parse(args[++i]);
@@ -247,6 +272,13 @@ internal sealed class PingPongCliArgs
             }
         }
 
-        return new PingPongCliArgs { Pairs = pairs, DurationSeconds = duration, Reentrant = reentrant, Bare = bare };
+        return new PingPongCliArgs
+        {
+            Pairs = pairs,
+            SchedulerWorkers = schedulerWorkers,
+            DurationSeconds = duration,
+            Reentrant = reentrant,
+            Bare = bare,
+        };
     }
 }

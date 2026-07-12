@@ -9,9 +9,9 @@ project, dispatched from the same `Program.cs`:
 | **Standalone runners** | Sustained real-cluster throughput (msg/s) over a wall-clock duration | `dotnet run --project tests/Quark.Performance -- <RunnerName> [options]` |
 
 `Program.cs` checks `args[0]` for a runner name (`LocalStreaming`, `AstroSim`, `PingPong`,
-`MailboxContention`, `Fairness`, `SchedulingQuality`, `ActorLifecycle`, `Backpressure`,
-`CoreScalability`); anything else falls through to `BenchmarkSwitcher`, which hands the remaining
-args to BenchmarkDotNet.
+`SchedulerSkew`, `MailboxContention`, `Fairness`, `SchedulingQuality`, `ActorLifecycle`,
+`Backpressure`, `CoreScalability`); anything else falls through to `BenchmarkSwitcher`, which hands
+the remaining args to BenchmarkDotNet.
 
 **Always build/run benchmarks in `Release`** (`-c Release`) — Debug numbers are meaningless and
 BenchmarkDotNet will warn (or refuse) if it detects a Debug build.
@@ -89,10 +89,21 @@ unbounded pipelining). No counting-convention factor fixes that gap — read Pin
 other `tell`-based system's published figure.
 
 ```bash
-dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--duration SECONDS] [--reentrant] [--bare]
+dotnet run --project tests/Quark.Performance -- PingPong [--pairs N] [--scheduler-workers N] [--duration SECONDS] [--reentrant] [--bare]
 ```
 
 - `--pairs` (default `Environment.ProcessorCount`) — number of ping/pong grain pairs running concurrently
+- `--scheduler-workers` (default `Environment.ProcessorCount`) — maps to `SiloRuntimeOptions.SchedulerMaxConcurrentActivations`,
+  decoupled from `--pairs` and from actual core count. Use a low `--pairs` against a high
+  `--scheduler-workers` (e.g. `--pairs 4 --scheduler-workers 128`) to reproduce an idle-churn shape
+  where most scheduler shards sit permanently empty — see
+  `docs/superpowers/specs/2026-07-12-scheduler-sweep-scaling-investigation.md`. Ignored under `--bare`
+  (bypasses `ActivationScheduler`/`TestCluster` entirely). **Note:** passing this flag forces the
+  sharded `ActivationScheduler` in place of `AddQuarkRuntime()`'s default `SimpleActivationScheduler`
+  fallback (the option is otherwise a no-op — `SimpleActivationScheduler` ignores
+  `SchedulerMaxConcurrentActivations` entirely) — safe here because PingPong's volley is client-driven,
+  not a nested grain-to-grain call, so it can't hit `ActivationScheduler`'s documented reentrancy
+  deadlock (see that type's class remarks and `RuntimeServiceCollectionExtensions.AddQuarkRuntime`).
 - `--duration` (default `10`) — seconds to run
 - `--reentrant` — use a `[Reentrant]` grain variant instead of the default. `[Reentrant]` activations skip
   the mailbox channel and its forced-async completion signal entirely (`GrainActivation.PostAsync` calls
@@ -110,6 +121,29 @@ padded counter per pair (`PaddedCounter`, `PingPongRunner.cs`) specifically beca
 counter becomes the bottleneck at `--bare` rates (§16) — a lesson worth not re-learning.
 
 Sanity-check at a small scale first (`--pairs 4 --duration 3`) before trusting the default full-core run.
+
+### `SchedulerSkew`
+
+Reproduces a "few hot activations against a large configured N" shape: a small, fixed number of
+continuously-volleying ping/pong pairs run against an independently configured, much larger
+`SchedulerMaxConcurrentActivations` — most shards sit permanently empty for the whole run. Like
+`PingPong --scheduler-workers`, this forces the sharded `ActivationScheduler` in place of the default
+`SimpleActivationScheduler` (see that flag's note above — same reasoning applies here). Unlike
+`PingPong`, it also reports ready-queue wait-time percentiles (not just aggregate calls/s) — a sharper
+signal of idle-worker sweep/park overhead per hop, since throughput alone conflates every other
+per-call cost.
+
+```bash
+dotnet run --project tests/Quark.Performance -- SchedulerSkew [--hot-pairs N] [--scheduler-workers N] [--duration SECONDS]
+```
+
+- `--hot-pairs` (default `2`) — number of continuously-volleying ping/pong pairs
+- `--scheduler-workers` (default `128`) — maps to `SiloRuntimeOptions.SchedulerMaxConcurrentActivations`
+- `--duration` (default `10`) — seconds to run
+
+Sanity-check at a small scale first (`--hot-pairs 2 --scheduler-workers 32 --duration 3`). See
+`docs/superpowers/specs/2026-07-12-scheduler-sweep-scaling-investigation.md` for results and
+methodology.
 
 ### `AstroSim`
 
@@ -303,6 +337,9 @@ then plateaus/declines) as the finding, not whether any single step's efficiency
   fairness/throughput tradeoff.
 - Changed `SchedulerMaxConcurrentActivations` or the ready-queue's sharding/work-stealing? Run
   `SchedulingQuality` varying `--scheduler-workers`, and `MailboxContention` varying `--grains`.
+  For behavior specifically at N configured well above core count, or a few hot activations against
+  a large N, run `PingPong --pairs 4 --scheduler-workers {32,64,128}` and `SchedulerSkew` — see
+  `docs/superpowers/specs/2026-07-12-scheduler-sweep-scaling-investigation.md`.
 - Changed grain activation/deactivation hooks or `GrainActivationTable`? Run `ActorLifecycle`
   (with `--allocations` if the change could affect per-activation allocation), or for a precise,
   BenchmarkDotNet-measured bytes/op split between activate/deactivate/round-trip, run

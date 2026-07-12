@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Quark.Client;
 using Quark.Core.Abstractions.Hosting;
 using Quark.Diagnostics;
+using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
 using Quark.Runtime;
 using Quark.Testing.Harness;
@@ -30,6 +31,17 @@ public static class AstroSimRunner
             {
                 services.AddQuarkRuntime();
                 services.AddQuarkDiagnostics(listener);
+
+                // AddQuarkDiagnostics's own TryAddSingleton<IQuarkDiagnosticListener> silently loses to
+                // AddQuarkRuntime()'s TryAddSingleton<IQuarkDiagnosticListener>(NullDiagnosticListener.Instance)
+                // above, since AddQuarkRuntime() runs first and TryAdd only wins for the first caller --
+                // pre-existing bug discovered while investigating issue #164 (this ran, but `listener`
+                // never received any events, so "Total messages"/"msg/s" below silently always reported
+                // 0). A plain AddSingleton always appends a new descriptor and wins single-resolution
+                // (GetService<T>/GetRequiredService<T>) regardless of call order. See
+                // docs/superpowers/specs/2026-07-12-scheduler-sweep-scaling-investigation.md.
+                services.AddSingleton<IQuarkDiagnosticListener>(listener);
+
                 services.AddSingleton(simOptions);
                 services.AddGrainBehavior<IChunkGrain, ChunkGrainBehavior>();
                 services.AddScoped<IActivationMemory<ChunkState>>(sp =>

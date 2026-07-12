@@ -6,6 +6,7 @@ using Quark.Performance.CoreScalability;
 using Quark.Performance.Fairness;
 using Quark.Performance.MailboxContention;
 using Quark.Performance.PingPong;
+using Quark.Performance.SchedulerSkew;
 using Quark.Performance.SchedulingQuality;
 
 namespace Quark.Performance;
@@ -32,6 +33,13 @@ public class Program
         if (args.Length > 0 && args[0].Equals("PingPong", StringComparison.OrdinalIgnoreCase))
         {
             await PingPongRunner.RunAsync(args);
+            return;
+        }
+
+        // Check if user wants to run the scheduler skew benchmark
+        if (args.Length > 0 && args[0].Equals("SchedulerSkew", StringComparison.OrdinalIgnoreCase))
+        {
+            await SchedulerSkewRunner.RunAsync(args);
             return;
         }
 
