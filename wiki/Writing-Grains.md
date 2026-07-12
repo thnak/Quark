@@ -360,12 +360,30 @@ await room.Enter(self);
 
 ## Registering a grain
 
+**Preferred — generator-driven.** Reference `Quark.CodeGenerator` as an analyzer from both the
+grains (silo) project and the interfaces (client-facing) project:
+
+```csharp
+// In silo startup:
+silo.Services.AddMyGrainsBehaviors();          // emitted by BehaviorRegistrationGenerator —
+                                                // registers behavior + transport dispatcher + memory accessors
+
+// In client startup:
+client.Services.AddMyGrainInterfacesGrainProxies(); // emitted by ClientProxyRegistrationGenerator —
+                                                      // registers every IGrain/IGrainObserver proxy in the assembly
+```
+
+Each method name is derived from its own assembly's name — see [Source Generators](Source-Generators)
+for the naming rule and what each generator scans for.
+
+**Manual (tests / pre-generator)** — spelling out what the generators emit above, one grain at a time:
+
 ```csharp
 // In silo startup:
 silo.Services.AddGrainBehavior<IMyGrain, MyBehavior>();
 silo.Services.AddGrainTransportDispatcher(
     new GrainType("MyGrain"),
-    new MyGrainProxy_TransportDispatcher()); // emitted by BehaviorRegistrationGenerator
+    new MyGrainProxy_TransportDispatcher());
 
 silo.Services.AddScoped<IActivationMemory<MyState>>(sp =>
     new ActivationMemoryAccessor<MyState>(
@@ -373,7 +391,7 @@ silo.Services.AddScoped<IActivationMemory<MyState>>(sp =>
           .Shell.GetOrCreateHolder<MyState>()));
 
 // In client startup:
-client.Services.AddGrainProxy<IMyGrain, MyGrainProxy>(); // emitted by GrainProxyGenerator
+client.Services.AddGrainProxy<IMyGrain, MyGrainProxy>();
 ```
 
-The `BehaviorRegistrationGenerator` source generator emits a single `AddMyAssemblyBehaviors()` extension method that replaces all of the above boilerplate — see [Source Generators](Source-Generators).
+Test projects hand-write this manual form instead of running the generators — see [Testing](Testing).

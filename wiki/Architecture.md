@@ -22,7 +22,7 @@
 | `Quark.Streaming.Abstractions` | `IAsyncStream<T>`, `IAsyncObserver<T>`, `StreamId`, `[ImplicitStreamSubscription]` |
 | `Quark.Streaming.InMemory` | In-memory stream provider |
 | `Quark.Transactions` | `ITransactionalState<T>`, `[Transaction]`, 2PC coordinator |
-| `Quark.CodeGenerator` | Roslyn incremental generators: `GrainProxyGenerator`, `BehaviorRegistrationGenerator`, `SerializerGenerator` |
+| `Quark.CodeGenerator` | Roslyn incremental generators: `GrainProxyGenerator`, `ClientProxyRegistrationGenerator`, `BehaviorRegistrationGenerator`, `SerializerGenerator` |
 | `Quark.Analyzers` | AOT-safety Roslyn analyzers (QRK0001–QRK0003) |
 | `Quark.Testing` | `TestCluster`/`TestSilo`/`TestClient` in-process test harness |
 

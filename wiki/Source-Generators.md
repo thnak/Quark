@@ -1,11 +1,11 @@
 # Source Generators
 
-`Quark.CodeGenerator` ships three Roslyn incremental generators. All generated code is AOT-safe — no reflection, no `MakeGenericType`, no runtime type lookups on hot paths.
+`Quark.CodeGenerator` ships four Roslyn incremental generators. All generated code is AOT-safe — no reflection, no `MakeGenericType`, no runtime type lookups on hot paths.
 
 ## What each generator emits
 
-Three inputs you write — a grain **interface**, a **behavior** class, and `[GenerateSerializer]`
-**state/DTO** types — drive three generators. Each input fans out to the artifacts the client and
+Two inputs you write — a grain **interface** and a **behavior** class — plus `[GenerateSerializer]`
+**state/DTO** types drive four generators. Each input fans out to the artifacts the client and
 silo consume at runtime.
 
 ```mermaid
@@ -17,20 +17,24 @@ flowchart TB
     end
     subgraph Gen["Quark.CodeGenerator"]
         GPG[GrainProxyGenerator]
+        CPRG[ClientProxyRegistrationGenerator]
         BRG[BehaviorRegistrationGenerator]
         SG[SerializerGenerator]
     end
     IFACE --> GPG
+    IFACE --> CPRG
     BEH --> BRG
     DTO --> SG
 
     GPG --> PROXY["MyGrainProxy<br/>(client-side, implements IMyGrain)"]
     GPG --> DISP["MyGrainProxy_TransportDispatcher<br/>(silo-side, .Instance)"]
+    CPRG --> CREG["AddMyAssemblyGrainProxies()<br/>registers every IGrain/IGrainObserver proxy in the assembly"]
     BRG --> REG["AddMyAssemblyBehaviors()<br/>registers behavior + dispatcher + memory accessors"]
     SG --> CODEC["MyStateCodec : IFieldCodec&lt;T&gt;"]
     SG --> COPIER["MyStateCopier : IDeepCopier&lt;T&gt;"]
 
     REG -. registers .-> DISP
+    CREG -. registers .-> PROXY
 ```
 
 ## Grain ↔ proxy relationship at runtime
@@ -56,7 +60,9 @@ flowchart LR
 Both invokers reach the same `MyBehavior` — the proxy hides whether the grain is local or across the
 network. The pairing is by **grain type**: `AddGrainProxy<IMyGrain, MyGrainProxy>()` on the client and
 `AddGrainTransportDispatcher(new GrainType("MyGrain"), MyGrainProxy_TransportDispatcher.Instance)` on
-the silo (both emitted into the generated registration methods).
+the silo. In generator-driven projects neither call is hand-written — `ClientProxyRegistrationGenerator`
+emits the former into `AddMyAssemblyGrainProxies()` and `BehaviorRegistrationGenerator` emits the
+latter into `AddMyAssemblyBehaviors()`.
 
 ## GrainProxyGenerator
 
@@ -109,19 +115,97 @@ public sealed class CounterGrainProxy_TransportDispatcher : IGrainTransportDispa
 
 ### Usage
 
-The proxy is registered on the client side:
+The proxy can be registered on the client side one interface at a time:
 
 ```csharp
 client.Services.AddGrainProxy<ICounterGrain, CounterGrainProxy>();
 ```
 
-The transport dispatcher is registered on the silo side:
+The transport dispatcher is registered on the silo side the same way (or, more commonly, via
+`BehaviorRegistrationGenerator` — see below):
 
 ```csharp
 silo.Services.AddGrainTransportDispatcher(
     new GrainType("CounterGrain"),
     CounterGrainProxy_TransportDispatcher.Instance);
 ```
+
+In practice, prefer letting `ClientProxyRegistrationGenerator` (next section) register every proxy
+in the assembly at once rather than calling `AddGrainProxy<,>()` per interface.
+
+## ClientProxyRegistrationGenerator
+
+For every `interface` in the assembly that derives from `IGrain` or `IGrainObserver`, emits one
+`Add{AssemblyName}GrainProxies()` extension method (in a shared `QuarkClientRegistrations` partial
+class) that registers all of their generated proxies on the client in a single call:
+
+- `IGrain`-derived interfaces → `AddGrainProxy<TInterface, TProxy>()`
+- `IGrainObserver`-derived interfaces → `AddObserverProxy<TInterface, TProxy>()`
+
+The proxy type name is derived the same way `GrainProxyGenerator` names its output (`ICounterGrain`
+→ `CounterGrainProxy`), so the two generators always agree on what to reference.
+
+### Input
+
+Any `IGrain`/`IGrainObserver` interfaces already in the assembly — no extra attribute needed:
+
+```csharp
+public interface ICounterGrain : IGrainWithStringKey
+{
+    Task IncrementAsync();
+    Task<int> GetAsync();
+}
+
+public interface IGameObserver : IGrainObserver
+{
+    void OnEvent(GameEvent ev);
+}
+```
+
+### Generated output (simplified)
+
+```csharp
+// QuarkClientRegistrations.g.cs
+public static partial class QuarkClientRegistrations
+{
+    public static IServiceCollection AddMyGrainInterfacesGrainProxies(this IServiceCollection services)
+    {
+        Quark.Client.ClientServiceCollectionExtensions.AddGrainProxy<ICounterGrain, CounterGrainProxy>(services);
+        Quark.Client.ClientServiceCollectionExtensions.AddObserverProxy<IGameObserver, GameObserverProxy>(services);
+        return services;
+    }
+}
+```
+
+The method name is derived from the assembly name (`MyGrainInterfaces` → `AddMyGrainInterfacesGrainProxies`),
+mirroring how `BehaviorRegistrationGenerator` names `AddMyAssemblyBehaviors()` from the *silo-side*
+assembly.
+
+### Usage
+
+```csharp
+// Replaces per-interface AddGrainProxy<,>()/AddObserverProxy<,>() calls:
+.UseQuarkClient(client =>
+{
+    client.Services.AddLocalClusterClient();     // or UseLocalhostGateway/UseTcpGateway for TCP
+    client.Services.AddMyGrainInterfacesGrainProxies();
+})
+```
+
+This is the pattern used by current samples (`ChatRoom`, `Persistence`/Bank, `Realm`) — one generated
+call registers every grain and observer proxy declared in the interfaces assembly, instead of one
+`AddGrainProxy<,>()`/`AddObserverProxy<,>()` line per interface.
+
+### Trigger conditions
+
+- Runs over every `interface` declaration in the compilation that (transitively) implements
+  `Quark.Core.Abstractions.Grains.IGrain` or `IGrainObserver`. An interface implementing both is
+  ambiguous and is skipped (mirrors `GrainProxyGenerator`'s own skip rule).
+- **Guarded on `Quark.Client` being referenced** — if the compiling project doesn't reference
+  `Quark.Client` (e.g. a shared interfaces-only project consumed by both silo and client), no output
+  is emitted. Reference `Quark.Client` from whichever project should own the generated registration
+  method (typically the client project, or a shared interfaces project if both silo and client need
+  local proxies).
 
 ## BehaviorRegistrationGenerator
 

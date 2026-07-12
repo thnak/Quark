@@ -123,7 +123,8 @@ await _ctx.ReminderService.RegisterOrUpdateReminderAsync(_ctx.GrainId, "reminder
 | `IGrainBehavior` | Marker interface for per-call POCO behaviors |
 | `IActivationLifecycle` | `OnActivateAsync` / `OnDeactivateAsync` hooks on the behavior |
 | `BehaviorStartupValidator` | Validates all DI registrations at silo startup |
-| `BehaviorRegistrationGenerator` | Source generator that emits all DI wiring from behavior classes |
+| `BehaviorRegistrationGenerator` | Source generator that emits all silo-side DI wiring from behavior classes |
+| `ClientProxyRegistrationGenerator` | Source generator that emits all client-side proxy registrations from grain/observer interfaces |
 
 ### TCP gateway client
 
@@ -154,6 +155,7 @@ public sealed class CounterBehavior : IGrainBehavior, ICounterGrain { ... }
 - [ ] Replace `this.RegisterOrUpdateReminderAsync(...)` with `_ctx.ReminderService.RegisterOrUpdateReminderAsync(...)`
 - [ ] Register storage providers with explicit `AddInMemoryGrainStorage()` / `AddRedisGrainStorage()`
 - [ ] Register stream codecs with `AddStreamableCodec<T, TCodec>()`
-- [ ] Add `BehaviorRegistrationGenerator` to replace manual per-grain DI wiring
+- [ ] Add `BehaviorRegistrationGenerator` to replace manual per-grain silo-side DI wiring
+- [ ] Add `ClientProxyRegistrationGenerator` to replace manual per-interface client-side proxy registration
 - [ ] Run AOT analyzers and fix `QRK000x` warnings
 - [ ] Run Native AOT smoke build to catch trim warnings early

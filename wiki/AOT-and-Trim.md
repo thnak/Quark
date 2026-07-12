@@ -6,7 +6,7 @@ Quark is designed for Native AOT from the ground up. Every production package ha
 
 ### 1. Prefer source generation over reflection
 
-The code generators (`GrainProxyGenerator`, `BehaviorRegistrationGenerator`, `SerializerGenerator`) emit all proxy, serializer, copier, and registration code at build time. New features should integrate with the generators rather than resolving types at runtime.
+The code generators (`GrainProxyGenerator`, `ClientProxyRegistrationGenerator`, `BehaviorRegistrationGenerator`, `SerializerGenerator`) emit all proxy, serializer, copier, and registration code at build time. New features should integrate with the generators rather than resolving types at runtime.
 
 ### 2. Annotate unavoidable dynamic calls
 

@@ -79,7 +79,8 @@ flowchart LR
 | `AsReference<T>()` / `CreateObjectReference<T>()` | ✅ |
 | OpenTelemetry activity propagation | ✅ |
 | Native AOT + trim-safe throughout | ✅ |
-| `BehaviorRegistrationGenerator` (codegen DI wiring) | ✅ |
+| `BehaviorRegistrationGenerator` (codegen silo-side DI wiring) | ✅ |
+| `ClientProxyRegistrationGenerator` (codegen client-side proxy wiring) | ✅ |
 
 ## Quick start
 
@@ -147,6 +148,11 @@ var counter = factory.GetGrain<ICounterGrain>("my-counter");
 await counter.IncrementAsync();
 Console.WriteLine(await counter.GetAsync()); // 1
 ```
+
+The manual `AddGrainBehavior`/`AddGrainTransportDispatcher`/`AddScoped<IActivationMemory<T>>`/`AddGrainProxy`
+calls above spell out what the DI wiring does; in a real project, reference `Quark.CodeGenerator` and
+replace them with the generated `AddMyAssemblyBehaviors()` (silo) and `AddMyAssemblyGrainProxies()`
+(client) calls instead — see [Writing Grains § Registering a grain](Writing-Grains#registering-a-grain).
 
 ## Build commands
 
