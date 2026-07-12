@@ -172,6 +172,7 @@ dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r l
 - [Clustering and Transport](Clustering-and-Transport)
 - [Source Generators](Source-Generators)
 - [Testing](Testing)
+- [Benchmarks](Benchmarks)
 - [AOT and Trim](AOT-and-Trim)
 - [Samples](Samples)
 - [Orleans Migration Guide](Orleans-Migration)
