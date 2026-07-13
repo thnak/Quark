@@ -20,9 +20,12 @@ public static class PingPongRunner
         PingPongCliArgs cli = PingPongCliArgs.Parse(args);
         string mode = cli.Bare ? "Bare (no DI/scope resolution)" : cli.Reentrant ? "Reentrant" : "Non-reentrant";
 
+        string schedulerName = cli.Bare ? "SimpleActivationScheduler" : cli.SchedulerV2 ? "ArenaScheduler (V2)" : "ActivationScheduler (legacy)";
+
         Console.WriteLine("=== Ping-Pong Throughput Benchmark ===");
         Console.WriteLine($"  Pairs: {cli.Pairs}, Duration: {cli.DurationSeconds}s, Mode: {mode}");
-        Console.WriteLine($"  Scheduler workers: {cli.SchedulerWorkers}{(cli.Bare ? " (ignored -- --bare bypasses ActivationScheduler entirely)" : "")}");
+        Console.WriteLine($"  Scheduler: {schedulerName}");
+        Console.WriteLine($"  Scheduler workers: {cli.SchedulerWorkers}{(cli.Bare ? " (ignored -- --bare bypasses the scheduler entirely)" : "")}");
         if (cli.Bare)
         {
             Console.WriteLine("  Bare mode: bypasses LocalGrainCallInvoker/GrainScopeBinder entirely -- posts");
@@ -67,9 +70,22 @@ public static class PingPongRunner
                 // force ActivationScheduler here so --scheduler-workers has any effect at all. A plain
                 // AddSingleton after AddQuarkRuntime() wins DI's last-registration-wins resolution over
                 // the TryAdd default. See docs/superpowers/specs/2026-07-12-scheduler-sweep-scaling-investigation.md.
-                services.AddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
-                    sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
-                    sp.GetService<IQuarkDiagnosticListener>()));
+                // --v2 selects the next-generation ArenaScheduler (dedicated worker threads,
+                // per-worker work-stealing deques — see
+                // docs/superpowers/specs/2026-07-12-next-gen-scheduler-design.md). Same
+                // last-registration-wins override as the legacy path below.
+                if (cli.SchedulerV2)
+                {
+                    services.AddSingleton<IActivationScheduler>(sp => new ArenaScheduler(
+                        sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
+                        sp.GetService<IQuarkDiagnosticListener>()));
+                }
+                else
+                {
+                    services.AddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
+                        sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
+                        sp.GetService<IQuarkDiagnosticListener>()));
+                }
 
                 services.AddQuarkDiagnostics(new BenchmarkDiagnosticListener());
                 services.AddGrainBehavior<IPingPongGrain, PingPongGrainBehavior>();
@@ -241,6 +257,7 @@ internal sealed class PingPongCliArgs
     public double DurationSeconds { get; private init; } = 10;
     public bool Reentrant { get; private init; }
     public bool Bare { get; private init; }
+    public bool SchedulerV2 { get; private init; }
 
     public static PingPongCliArgs Parse(string[] args)
     {
@@ -249,6 +266,7 @@ internal sealed class PingPongCliArgs
         double duration = 10;
         bool reentrant = false;
         bool bare = false;
+        bool schedulerV2 = false;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -269,6 +287,9 @@ internal sealed class PingPongCliArgs
                 case "--bare":
                     bare = true;
                     break;
+                case "--v2":
+                    schedulerV2 = true;
+                    break;
             }
         }
 
@@ -279,6 +300,7 @@ internal sealed class PingPongCliArgs
             DurationSeconds = duration,
             Reentrant = reentrant,
             Bare = bare,
+            SchedulerV2 = schedulerV2,
         };
     }
 }
