@@ -14,6 +14,7 @@
  QRK0020 | Quark.BehaviorLifecycle | Warning | Mutable instance field on grain behavior will be reset between calls
  QRK0021 | Quark.BehaviorLifecycle | Warning | Writable auto-property on grain behavior will be reset between calls
  QRK0022 | Quark.BehaviorLifecycle | Warning | Static mutable state on grain behavior is shared across all activations
+ QRK0023 | Quark.BehaviorLifecycle | Warning | IActivationBehavior is not supported on a reentrant grain
  QRK0030 | Quark.Performance    | Warning | Grain behavior method returns Task; consider ValueTask
  QRK0031 | Quark.Performance    | Info    | Use ValueTask-native completion instead of Task.CompletedTask/Task.FromResult
  QRK0040 | Quark.Reentrancy     | Warning | Non-reentrant grain behavior awaits a call back into its own grain interface

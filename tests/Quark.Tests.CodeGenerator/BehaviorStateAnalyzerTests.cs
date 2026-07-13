@@ -380,4 +380,140 @@ public sealed class BehaviorStateAnalyzerTests
 
         Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0022");
     }
+
+    // -----------------------------------------------------------------------
+    // IActivationBehavior — per-activation instance: mutable fields/props allowed
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Does_Not_Report_MutableField_On_ActivationBehavior()
+    {
+        const string source = """
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IActivationBehavior, IMyGrain
+            {
+                private long _count;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new BehaviorStateAnalyzer());
+
+        // The instance lives for the whole activation, so mutable fields are legitimate state.
+        Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0020");
+    }
+
+    [Fact]
+    public void Does_Not_Report_WritableAutoProperty_On_ActivationBehavior()
+    {
+        const string source = """
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IActivationBehavior, IMyGrain
+            {
+                public string? Name { get; set; }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new BehaviorStateAnalyzer());
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0021");
+    }
+
+    [Fact]
+    public void Reports_MutableStaticField_On_ActivationBehavior()
+    {
+        const string source = """
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IActivationBehavior, IMyGrain
+            {
+                private static int s_shared;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new BehaviorStateAnalyzer());
+
+        // Statics are shared across all activations regardless of the instance-lifetime model.
+        Assert.Contains(diagnostics, d => d.Id == "QRK0022");
+    }
+
+    // -----------------------------------------------------------------------
+    // QRK0023 — IActivationBehavior on a reentrant grain
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Reports_ReentrantActivationBehavior()
+    {
+        const string source = """
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            [Reentrant]
+            public sealed class MyBehavior : IActivationBehavior, IMyGrain
+            {
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new BehaviorStateAnalyzer());
+
+        Assert.Contains(diagnostics, d => d.Id == "QRK0023");
+    }
+
+    [Fact]
+    public void Does_Not_Report_QRK0023_On_NonReentrant_ActivationBehavior()
+    {
+        const string source = """
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            public sealed class MyBehavior : IActivationBehavior, IMyGrain
+            {
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new BehaviorStateAnalyzer());
+
+        Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0023");
+    }
+
+    [Fact]
+    public void Does_Not_Report_QRK0023_On_Reentrant_PerCallBehavior()
+    {
+        const string source = """
+            using Quark.Core.Abstractions.Grains;
+
+            namespace Demo;
+
+            public interface IMyGrain : IGrain { }
+
+            [Reentrant]
+            public sealed class MyBehavior : IGrainBehavior, IMyGrain
+            {
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = AnalyzerTestDriver.Run(source, new BehaviorStateAnalyzer());
+
+        // [Reentrant] is fine on the default per-call model — QRK0023 is specific to IActivationBehavior.
+        Assert.DoesNotContain(diagnostics, d => d.Id == "QRK0023");
+    }
 }

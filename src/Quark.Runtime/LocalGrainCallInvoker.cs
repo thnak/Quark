@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -82,6 +83,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc />
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public async ValueTask<TResult> InvokeAsync<TInvokable, TResult>(
         GrainId grainId,
         TInvokable invokable,
@@ -135,6 +137,18 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 new InvokeCallState<TInvokable, TResult>(_services, activation, cancellationToken, invokable, _copierProvider),
                 static async s =>
                 {
+                    // Part A fast path: reuse the cached per-activation instance (no scope, no resolution).
+                    if (s.Activation.IsActivationScoped)
+                    {
+                        IGrainBehavior activationBehavior = s.Activation.BindActivationBehavior();
+                        TResult ar = await s.Invokable.Invoke(activationBehavior).ConfigureAwait(false);
+                        if (s.CopierProvider?.TryGetCopier<TResult>() is { } activationCopier)
+                        {
+                            ar = activationCopier.DeepCopy(ar, new CopyContext());
+                        }
+                        return ar;
+                    }
+
                     (IServiceScope scope, IServiceProvider sp) = GrainScopeBinder.CreateCallScope(s.Services, s.Activation);
                     using (scope)
                     {
@@ -169,6 +183,7 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     }
 
     /// <inheritdoc />
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
     public async ValueTask InvokeVoidAsync<TInvokable>(
         GrainId grainId,
         TInvokable invokable,
@@ -223,6 +238,14 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
                 new InvokeVoidState<TInvokable>(_services, activation, cancellationToken, invokable),
                 static async s =>
                 {
+                    // Part A fast path: reuse the cached per-activation instance (no scope, no resolution).
+                    if (s.Activation.IsActivationScoped)
+                    {
+                        IGrainBehavior activationBehavior = s.Activation.BindActivationBehavior();
+                        await s.Invokable.Invoke(activationBehavior).ConfigureAwait(false);
+                        return;
+                    }
+
                     (IServiceScope scope, IServiceProvider sp) = GrainScopeBinder.CreateCallScope(s.Services, s.Activation);
                     using (scope)
                     {
@@ -359,7 +382,11 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
     {
         try
         {
-            return await _activationTable.GetOrCreateAsync(grainId, () => CreateActivationAsync(grainId, ct))
+            // State-passing overload + static delegate: no per-call factory closure on the cache-hit
+            // path (the common case). All captured data travels in the struct tuple.
+            return await _activationTable.GetOrCreateAsync(
+                    grainId, (self: this, grainId, ct),
+                    static s => s.self.CreateActivationAsync(s.grainId, s.ct))
                 .ConfigureAwait(false);
         }
         catch
@@ -421,8 +448,23 @@ public sealed class LocalGrainCallInvoker : IGrainCallInvoker
         long activationStart = Stopwatch.GetTimestamp();
 
         bool isReentrant = behaviorType.IsDefined(typeof(ReentrantAttribute), inherit: true);
+
+        // Part A: per-activation behavior lifetime (IActivationBehavior). One-time interface check per
+        // activation (not per call) — AOT-safe (no dynamic code). Slice (d) will move this to a
+        // generator-emitted flag. Reentrant + activation-scoped is not yet supported (a shared instance
+        // under concurrent turns needs a per-turn call-context strategy) — fail loud rather than run
+        // with silently wrong call-context isolation.
+        bool isActivationScoped = typeof(IActivationBehavior).IsAssignableFrom(behaviorType);
+        if (isActivationScoped && isReentrant)
+        {
+            throw new NotSupportedException(
+                $"Grain behavior '{behaviorType.Name}' implements IActivationBehavior and is [Reentrant]. " +
+                "Per-activation behaviors are not yet supported on reentrant grains. " +
+                "Remove [Reentrant], or drop IActivationBehavior to use the default per-call model.");
+        }
+
         var activation = new GrainActivation(grainId, grainId.Type, isReentrant, _services, _activationLogger,
-            _scheduler, _diagnostics, _mailboxCapacity, _mailboxFullMode);
+            _scheduler, _diagnostics, _mailboxCapacity, _mailboxFullMode, isActivationScoped);
 
         // Resolve behavior (ctor registers eager factories), init eager holders with the activation
         // scope's SP, then call OnActivateAsync if IActivationLifecycle. Single scope — no double construction.
