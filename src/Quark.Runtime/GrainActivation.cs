@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Quark.Core.Abstractions.Grains;
 using Quark.Core.Abstractions.Hosting;
+using Quark.Core.Abstractions.Scheduling;
 using Quark.Core.Abstractions.Timers;
 using Quark.Diagnostics.Abstractions;
 using Quark.Persistence.Abstractions;
@@ -59,9 +60,27 @@ public sealed class GrainActivation : IAsyncDisposable
     // Probes never run scheduler-driven drains — Deactivate() must not schedule real work for them.
     private readonly bool _isProbe;
 
-    private readonly Channel<IMailboxWorkItem> _queue;
+    // Message-priority mailbox: one FIFO lane per MessagePriority value, indexed by (int)priority.
+    // The drain reads the highest-priority non-empty lane first, so a higher-priority message jumps
+    // ahead of lower-priority ones already queued for this grain (strict priority, FIFO within a lane).
+    // Each lane reuses the same bounded/unbounded Channel machinery the single mailbox used, so a
+    // bounded mailbox now bounds each lane independently (per-lane capacity).
+    private const int LaneCount = 4; // must equal the number of MessagePriority values
+    private readonly Channel<IMailboxWorkItem>[] _lanes;
     private readonly int _mailboxCapacity;
     private readonly MailboxFullMode _mailboxFullMode;
+
+    // Part A (activation-scoped behaviors): true when this grain type opted into IActivationBehavior.
+    // A single behavior instance + a single IServiceScope live for the whole activation — constructed
+    // once (EnsureActivationBehavior), reused for every call, and disposed on deactivation — instead of
+    // the per-call scope+resolution the default IGrainBehavior path pays. Only enabled for non-reentrant
+    // grains (LocalGrainCallInvoker.CreateActivationAsync throws for reentrant + IActivationBehavior),
+    // so the per-turn call-context refresh in BindActivationBehavior runs on a serial drain and is safe.
+    private readonly bool _isActivationScoped;
+    private IServiceScope? _activationScope;
+    private IServiceProvider? _activationConstructionServices;
+    private IGrainBehavior? _activationBehavior;
+    private ICallContextSetter? _activationCallContextSetter;
 
     internal GrainActivation(
         GrainId grainId,
@@ -72,7 +91,8 @@ public sealed class GrainActivation : IAsyncDisposable
         IActivationScheduler scheduler,
         IQuarkDiagnosticListener? diagnostics = null,
         int mailboxCapacity = 0,
-        MailboxFullMode mailboxFullMode = MailboxFullMode.Wait)
+        MailboxFullMode mailboxFullMode = MailboxFullMode.Wait,
+        bool isActivationScoped = false)
     {
         GrainId = grainId;
         GrainType = grainType;
@@ -82,8 +102,9 @@ public sealed class GrainActivation : IAsyncDisposable
         _diagnostics = diagnostics ?? NullDiagnosticListener.Instance;
         _mailboxCapacity = mailboxCapacity;
         _mailboxFullMode = mailboxFullMode;
-        _queue = CreateQueue(mailboxCapacity);
+        _lanes = CreateLanes(mailboxCapacity);
         _scheduler = scheduler;
+        _isActivationScoped = isActivationScoped;
         _lastAccessedTicks = DateTimeOffset.UtcNow.UtcTicks;
     }
 
@@ -102,6 +123,49 @@ public sealed class GrainActivation : IAsyncDisposable
                     FullMode = BoundedChannelFullMode.Wait,
                 });
 
+    // One Channel per priority lane. A bounded mailbox bounds each lane at `capacity` independently;
+    // this keeps the proven per-Channel enqueue/backpressure logic unchanged and stops a flood of one
+    // priority from consuming another lane's capacity.
+    private static Channel<IMailboxWorkItem>[] CreateLanes(int capacity)
+    {
+        var lanes = new Channel<IMailboxWorkItem>[LaneCount];
+        for (int i = 0; i < LaneCount; i++)
+            lanes[i] = CreateQueue(capacity);
+        return lanes;
+    }
+
+    // Reads the next work item, highest-priority lane first (Urgent → Low), FIFO within a lane.
+    private bool TryReadNext([System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out IMailboxWorkItem item)
+    {
+        for (int lane = LaneCount - 1; lane >= 0; lane--)
+        {
+            if (_lanes[lane].Reader.TryRead(out item))
+                return true;
+        }
+
+        item = null;
+        return false;
+    }
+
+    // True if any lane still holds an undispatched work item.
+    private bool MailboxHasWork()
+    {
+        for (int lane = 0; lane < LaneCount; lane++)
+        {
+            if (_lanes[lane].Reader.TryPeek(out _))
+                return true;
+        }
+
+        return false;
+    }
+
+    // Completes every lane's writer (mailbox shutdown).
+    private void CompleteLanes()
+    {
+        for (int lane = 0; lane < LaneCount; lane++)
+            _lanes[lane].Writer.TryComplete();
+    }
+
     // Probe constructor — no processing loop, used only by BehaviorStartupValidator.
     private GrainActivation(GrainId grainId, GrainType grainType, IServiceProvider root)
     {
@@ -110,7 +174,7 @@ public sealed class GrainActivation : IAsyncDisposable
         _root = root;
         _logger = NullLogger<GrainActivation>.Instance;
         _diagnostics = NullDiagnosticListener.Instance;
-        _queue = CreateQueue(0);
+        _lanes = CreateLanes(0);
         _scheduler = SimpleActivationScheduler.Instance;
         _status = GrainActivationStatus.Active;
         _lastAccessedTicks = 0;
@@ -130,6 +194,13 @@ public sealed class GrainActivation : IAsyncDisposable
 
     /// <summary>The grain type key used to look up the behavior class.</summary>
     public GrainType GrainType { get; }
+
+    /// <summary>
+    ///     True when this grain type opted into <c>IActivationBehavior</c> (per-activation lifetime).
+    ///     The dispatch path uses <see cref="BindActivationBehavior"/> — one cached instance + scope —
+    ///     instead of constructing a fresh behavior in a per-call scope.
+    /// </summary>
+    internal bool IsActivationScoped => _isActivationScoped;
 
     /// <summary>Current lifecycle status of this activation.</summary>
     public GrainActivationStatus ActivationStatus => _status;
@@ -163,7 +234,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
     // Phase 2: scheduler polls this after a drain to decide whether to reschedule.
     internal bool HasPendingWork
-        => _queue.Reader.TryPeek(out _) || _status == GrainActivationStatus.Deactivating;
+        => MailboxHasWork() || _status == GrainActivationStatus.Deactivating;
 
     /// <summary>
     ///     Returns or creates the <see cref="StateHolder{TState}" /> for the given state type.
@@ -389,7 +460,7 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         await _cts.CancelAsync().ConfigureAwait(false);
-        _queue.Writer.TryComplete();
+        CompleteLanes();
 
         // Phase 3: await the explicit completion signal set by RunDeactivationAsync, replacing
         // the old `await _processingLoop` pattern. Handles the case where Deactivate() was
@@ -472,7 +543,7 @@ public sealed class GrainActivation : IAsyncDisposable
         int count = 0;
 
         while (!ct.IsCancellationRequested && count < maxItems
-               && _queue.Reader.TryRead(out IMailboxWorkItem? item))
+               && TryReadNext(out IMailboxWorkItem? item))
         {
             Interlocked.Decrement(ref _pendingWorkCount);
             Interlocked.Exchange(ref _workItemStartedAt, Stopwatch.GetTimestamp());
@@ -492,7 +563,7 @@ public sealed class GrainActivation : IAsyncDisposable
             count++;
         }
 
-        bool hasMore = _queue.Reader.TryPeek(out _);
+        bool hasMore = MailboxHasWork();
 
         // Livelock detection: a drain pass that processes nothing while work remains queued means
         // this activation is being rescheduled without ever making progress (e.g. its own
@@ -534,7 +605,7 @@ public sealed class GrainActivation : IAsyncDisposable
         Interlocked.Exchange(ref _scheduled, 0);
         // Full memory barrier via Interlocked ensures items written by concurrent PostAsync calls
         // are visible before we peek the channel.
-        return _queue.Reader.TryPeek(out _) || _status == GrainActivationStatus.Deactivating;
+        return MailboxHasWork() || _status == GrainActivationStatus.Deactivating;
     }
 
     /// <summary>
@@ -578,7 +649,16 @@ public sealed class GrainActivation : IAsyncDisposable
     ///     inline — see that enum value's documentation for the scheduler-invisibility tradeoff.
     ///     Phase 3: rejects new work when the grain is already Deactivating or Inactive.
     /// </summary>
-    public ValueTask PostAsync(Func<ValueTask> workItem)
+    public ValueTask PostAsync(Func<ValueTask> workItem) => PostAsync(workItem, MessagePriority.Normal);
+
+    /// <summary>
+    ///     Posts a unit of work to this grain's mailbox at the given <paramref name="priority"/> and
+    ///     awaits its completion. A higher-priority post is drained ahead of lower-priority work already
+    ///     queued for this grain, but never interrupts the turn currently executing (non-preemptive);
+    ///     posts at the same priority preserve arrival order (FIFO). Reentrant activations run inline and
+    ///     ignore priority — see <see cref="ReentrantSchedulingMode.Immediate"/>.
+    /// </summary>
+    public ValueTask PostAsync(Func<ValueTask> workItem, MessagePriority priority)
     {
         if (_reentrantMode == ReentrantSchedulingMode.Immediate)
         {
@@ -595,7 +675,7 @@ public sealed class GrainActivation : IAsyncDisposable
                 new OperationCanceledException($"Grain {GrainId} is {status.ToString().ToLowerInvariant()}."));
         }
 
-        return PostCoreAsync(workItem);
+        return PostCoreAsync(workItem, priority);
     }
 
     /// <summary>
@@ -620,7 +700,7 @@ public sealed class GrainActivation : IAsyncDisposable
                 new OperationCanceledException($"Grain {GrainId} is {status.ToString().ToLowerInvariant()}."));
         }
 
-        return PostCoreAsync(state, workItem);
+        return PostCoreAsync(state, workItem, MessagePriority.Normal);
     }
 
     /// <summary>
@@ -644,10 +724,11 @@ public sealed class GrainActivation : IAsyncDisposable
                 new OperationCanceledException($"Grain {GrainId} is {status.ToString().ToLowerInvariant()}."));
         }
 
-        return PostCoreAsync(state, workItem);
+        return PostCoreAsync(state, workItem, MessagePriority.Normal);
     }
 
-    private async ValueTask PostCoreAsync<TState>(TState state, Func<TState, ValueTask> workItem)
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    private async ValueTask PostCoreAsync<TState>(TState state, Func<TState, ValueTask> workItem, MessagePriority priority)
     {
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         int depth = Interlocked.Increment(ref _pendingWorkCount);
@@ -658,7 +739,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
         if (_mailboxFullMode == MailboxFullMode.RejectWhenFull && _mailboxCapacity > 0)
         {
-            if (!_queue.Writer.TryWrite(item))
+            if (!_lanes[(int)priority].Writer.TryWrite(item))
             {
                 Interlocked.Decrement(ref _pendingWorkCount);
                 item.ReturnOnEnqueueFailure();
@@ -669,7 +750,7 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             try
             {
-                await _queue.Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
+                await _lanes[(int)priority].Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
             }
             catch
             {
@@ -682,7 +763,8 @@ public sealed class GrainActivation : IAsyncDisposable
         await item.WaitAsync().ConfigureAwait(false);
     }
 
-    private async ValueTask<TResult> PostCoreAsync<TState, TResult>(TState state, Func<TState, ValueTask<TResult>> workItem)
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<TResult> PostCoreAsync<TState, TResult>(TState state, Func<TState, ValueTask<TResult>> workItem, MessagePriority priority)
     {
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         int depth = Interlocked.Increment(ref _pendingWorkCount);
@@ -693,7 +775,7 @@ public sealed class GrainActivation : IAsyncDisposable
 
         if (_mailboxFullMode == MailboxFullMode.RejectWhenFull && _mailboxCapacity > 0)
         {
-            if (!_queue.Writer.TryWrite(item))
+            if (!_lanes[(int)priority].Writer.TryWrite(item))
             {
                 Interlocked.Decrement(ref _pendingWorkCount);
                 item.ReturnOnEnqueueFailure();
@@ -704,7 +786,7 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             try
             {
-                await _queue.Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
+                await _lanes[(int)priority].Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
             }
             catch
             {
@@ -717,7 +799,8 @@ public sealed class GrainActivation : IAsyncDisposable
         return await item.WaitAsync().ConfigureAwait(false);
     }
 
-    private async ValueTask PostCoreAsync(Func<ValueTask> workItem)
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    private async ValueTask PostCoreAsync(Func<ValueTask> workItem, MessagePriority priority)
     {
         Interlocked.Exchange(ref _lastAccessedTicks, DateTimeOffset.UtcNow.UtcTicks);
         int depth = Interlocked.Increment(ref _pendingWorkCount);
@@ -731,7 +814,7 @@ public sealed class GrainActivation : IAsyncDisposable
         if (_mailboxFullMode == MailboxFullMode.RejectWhenFull && _mailboxCapacity > 0)
         {
             // Fail fast when the bounded mailbox is full rather than waiting for space.
-            if (!_queue.Writer.TryWrite(item))
+            if (!_lanes[(int)priority].Writer.TryWrite(item))
             {
                 Interlocked.Decrement(ref _pendingWorkCount);
                 item.ReturnOnEnqueueFailure();
@@ -742,7 +825,7 @@ public sealed class GrainActivation : IAsyncDisposable
         {
             try
             {
-                await _queue.Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
+                await _lanes[(int)priority].Writer.WriteAsync(item, _cts.Token).ConfigureAwait(false);
             }
             catch
             {
@@ -784,7 +867,8 @@ public sealed class GrainActivation : IAsyncDisposable
         }
 
         await DisposeManagedHoldersAsync().ConfigureAwait(false);
-        _queue.Writer.TryComplete();
+        await DisposeActivationScopeAsync().ConfigureAwait(false);
+        CompleteLanes();
 
         long activatedAt = Interlocked.Read(ref _activatedAtTicks);
         TimeSpan lifetime = activatedAt > 0 ? Stopwatch.GetElapsedTime(activatedAt) : TimeSpan.Zero;
@@ -837,6 +921,38 @@ public sealed class GrainActivation : IAsyncDisposable
         }
     }
 
+    // Disposes the activation-lifetime scope (and everything resolved into it, including the cached
+    // behavior) after OnDeactivateAsync + managed-holder cleanup have run. No-op for the per-call model.
+    private async ValueTask DisposeActivationScopeAsync()
+    {
+        IServiceScope? scope = _activationScope;
+        if (scope is null)
+        {
+            return;
+        }
+
+        _activationBehavior = null;
+        _activationCallContextSetter = null;
+        _activationConstructionServices = null;
+        _activationScope = null;
+
+        try
+        {
+            if (scope is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                scope.Dispose();
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Error disposing activation scope for {GrainId}", GrainId);
+        }
+    }
+
     private async Task DisposeManagedHoldersAsync()
     {
         foreach (object obj in _memoryBag.Values)
@@ -861,6 +977,18 @@ public sealed class GrainActivation : IAsyncDisposable
         Func<IActivationLifecycle, Task> hook,
         CancellationToken cancellationToken = default)
     {
+        // Activation-scoped: run the hook on the single cached instance so a stateful behavior's
+        // OnDeactivateAsync observes the activation's final field state.
+        if (_isActivationScoped)
+        {
+            if (EnsureActivationBehavior() is IActivationLifecycle lifecycle)
+            {
+                await hook(lifecycle).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         (IServiceScope scope, IServiceProvider constructionServices) = GrainScopeBinder.CreateCallScope(_root, this);
         using (scope)
         {
@@ -872,6 +1000,46 @@ public sealed class GrainActivation : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Constructs the single per-activation behavior instance on first use (creating the
+    ///     activation-lifetime <see cref="IServiceScope"/>), binding the constant-for-the-activation
+    ///     shell reference and grain id once. Idempotent; only valid on <c>IActivationBehavior</c> grains.
+    ///     Called only on the serial activation/drain/deactivation path — not thread-safe by design,
+    ///     which is why reentrant grains are excluded (they would call it under concurrent turns).
+    /// </summary>
+    private IGrainBehavior EnsureActivationBehavior()
+    {
+        if (_activationBehavior is not null)
+        {
+            return _activationBehavior;
+        }
+
+        (IServiceScope scope, IServiceProvider constructionServices) = GrainScopeBinder.CreateCallScope(_root, this);
+        _activationScope = scope;
+        _activationConstructionServices = constructionServices;
+
+        ((ActivationShellAccessor)scope.ServiceProvider.GetRequiredService<IActivationShellAccessor>()).Shell = this;
+        _activationCallContextSetter = scope.ServiceProvider.GetRequiredService<ICallContextSetter>();
+        _activationCallContextSetter.Set(GrainId); // the grain's own id — constant for the activation
+
+        _activationBehavior = scope.ServiceProvider
+            .GetRequiredService<IBehaviorResolver>()
+            .Resolve(GrainType, constructionServices);
+        return _activationBehavior;
+    }
+
+    /// <summary>
+    ///     Returns the cached per-activation behavior instance for a call, refreshing the per-call
+    ///     idempotency key. Safe to mutate the shared call context here because activation-scoped grains
+    ///     are non-reentrant, so their turns drain serially. Invoked from the dispatch fast path.
+    /// </summary>
+    internal IGrainBehavior BindActivationBehavior()
+    {
+        IGrainBehavior behavior = EnsureActivationBehavior();
+        _activationCallContextSetter!.SetIdempotencyKey(QuarkRequestContext.IdempotencyKey);
+        return behavior;
+    }
+
     // Runs the full activation sequence:
     // 1. Bind shell accessor + call context, using the Quark-only scope for opted-in grain types
     //    (see GrainScopeBinder.CreateCallScope) or the flat scope otherwise.
@@ -880,6 +1048,20 @@ public sealed class GrainActivation : IAsyncDisposable
     // 4. Call OnActivateAsync if the behavior implements IActivationLifecycle.
     internal async Task RunActivationAsync(CancellationToken ct)
     {
+        // Activation-scoped: construct the single instance + scope now (first use) and keep them for the
+        // activation's lifetime. Eager init + OnActivateAsync run against that same cached instance.
+        if (_isActivationScoped)
+        {
+            IGrainBehavior behavior = EnsureActivationBehavior();
+            await RunEagerInitAsync(_activationConstructionServices!, ct).ConfigureAwait(false);
+            if (behavior is IActivationLifecycle lifecycle)
+            {
+                await lifecycle.OnActivateAsync(ct).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         (IServiceScope scope, IServiceProvider constructionServices) = GrainScopeBinder.CreateCallScope(_root, this);
         using (scope)
         {

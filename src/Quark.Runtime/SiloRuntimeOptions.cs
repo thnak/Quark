@@ -73,6 +73,14 @@ public sealed class SiloRuntimeOptions
     public MailboxFullMode MailboxFullMode { get; set; } = MailboxFullMode.Wait;
 
     /// <summary>
+    ///     Selects the activation scheduler implementation. Default: <see cref="Quark.Runtime.SchedulerKind.Legacy"/>
+    ///     (the established sharded-ready-queue scheduler). Set to <see cref="Quark.Runtime.SchedulerKind.ArenaV2"/>
+    ///     to opt into the next-generation arena scheduler
+    ///     (see docs/superpowers/specs/2026-07-12-next-gen-scheduler-design.md).
+    /// </summary>
+    public SchedulerKind SchedulerKind { get; set; } = SchedulerKind.Legacy;
+
+    /// <summary>
     ///     Maximum number of concurrent activation drains the scheduler may run simultaneously.
     ///     Default: <see cref="Environment.ProcessorCount"/>; floor of 1.
     /// </summary>
@@ -84,6 +92,21 @@ public sealed class SiloRuntimeOptions
     ///     Default: <c>64</c>; floor of 1.
     /// </summary>
     public int SchedulerDrainBudget { get; set; } = 64;
+
+    /// <summary>
+    ///     <see cref="SchedulerKind.ArenaV2"/> only. Safety ceiling on the number of suspended
+    ///     (awaiting) activation drains a single worker may hold before it stops taking on new work and
+    ///     applies backpressure. The arena scheduler runs a synchronously-completing turn inline but
+    ///     lets an <em>awaiting</em> turn suspend and frees its worker to run more activations; this caps
+    ///     how many such suspensions accumulate per worker, bounding memory and open per-call scopes
+    ///     under a flood of slow-awaiting turns. Peak concurrent suspended drains silo-wide is
+    ///     approximately this value times the worker count. Must exceed the deepest legitimate
+    ///     non-reentrant call-nesting depth: the async-resume deadlock-freedom relies on a worker being
+    ///     able to take on the nested call it is awaiting, so a cap below the nesting depth would
+    ///     reintroduce the bounded-worker deadlock. The generous default only trips under pathological
+    ///     async fan-out. Default: <c>256</c>; floor of 1.
+    /// </summary>
+    public int SchedulerMaxInFlightDrainsPerWorker { get; set; } = 256;
 
     /// <summary>
     ///     Capacity of the scheduler's global ready queue. <c>0</c> (the default) means unbounded.

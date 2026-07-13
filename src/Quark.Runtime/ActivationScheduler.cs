@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Numerics;
 using Quark.Diagnostics.Abstractions;
 
 namespace Quark.Runtime;
@@ -24,10 +25,12 @@ namespace Quark.Runtime;
 ///     <see cref="SiloRuntimeOptions.SchedulerMaxConcurrentActivations"/> concurrency guarantee: any
 ///     N distinct busy activations can still be serviced by N distinct workers concurrently,
 ///     regardless of which shard they land on.
-///     The idle-wake signal is sharded too: a per-worker <see cref="SemaphoreSlim"/> plus a lock-free
-///     idle-worker registry (<see cref="_idleWorkers"/>) target a single idle worker directly on each
+///     The idle-wake signal is sharded too: a per-worker <see cref="WorkerParkSignal"/> plus a lock-free
+///     idle-worker registry (<see cref="_idleBits"/>) target a single idle worker directly on each
 ///     shard's empty-&gt;non-empty transition, instead of every worker contending on one shared
 ///     semaphore -- see docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md.
+///     <see cref="WorkerParkSignal"/> is an allocation-free reusable-value-task park primitive that
+///     replaced <c>SemaphoreSlim.WaitAsync(ct)</c>, whose cancelable slow path allocated ~200 B per park.
 ///
 ///     FIXED HAZARD (was: bounded-worker-pool reentrancy deadlock, found 2026-07-10 via the Realm
 ///     sample's TCP bot-driver benchmark; see GitHub issue #167) -- kept here for historical context,
@@ -92,31 +95,47 @@ internal sealed class ActivationScheduler : IActivationScheduler
     // the common path (PingPong, AstroSim, most workloads) pays nothing for this.
     private readonly SemaphoreSlim[]? _capacityGates;
 
-    // One idle-wake semaphore per worker (indexed by workerIndex, same value as the worker's home
-    // shard index -- shard count == worker count, unchanged). Released only for a worker whose index
-    // is popped off _idleWorkers, so a given semaphore normally has at most one waiter -- unlike a
-    // single shared semaphore, which every worker's WaitAsync/every enqueuer's Release contends on.
+    // One idle-wake signal per worker (indexed by workerIndex, same value as the worker's home shard
+    // index -- shard count == worker count, unchanged). Set() only for a worker whose index was claimed
+    // from _idleBits, so a given signal normally has at most one parked waiter -- unlike a single shared
+    // semaphore, which every worker's wait/every enqueuer's release would contend on.
     // See docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md section 3.
-    private readonly SemaphoreSlim[] _workerSignals;
-
-    // Lock-free registry of worker indices that currently believe they're idle. An enqueuer's exact
-    // 0->1 transition (see _shardCounts) pops one entry (if any) and releases that worker's own
-    // semaphore -- a targeted wake instead of a broadcast. If the pop finds the stack empty, no
-    // release happens; a busy worker will still reach the transitioned shard on its own next full
-    // sweep after finishing its current drain, the same fallback the single-shared-semaphore design
-    // already relied on (a Release() against an already-positive semaphore doesn't queue a second
-    // waiter either).
     //
-    // A worker never removes its own entry: ConcurrentStack<T> has no remove-specific-value
-    // operation, only Pop (removes whatever is on top), so a "cancel my registration" Pop could
-    // remove a DIFFERENT worker's entry instead and strand it -- worse than the contention problem
-    // this design exists to fix. Stale entries (a worker listed idle while actually busy, because its
-    // own pre-park double-check found work without unregistering) are deliberately accepted: every
-    // worker still sweeps every shard unconditionally regardless of signal state, so no work is ever
-    // lost from a stale entry -- it only means a future transition's targeted release may land on a
-    // busy worker as a wasted credit, which self-corrects by making that worker's next park attempt a
-    // non-blocking no-op instead of a real park. See design spec section 4 for the full reasoning.
-    private readonly ConcurrentStack<int> _idleWorkers = new();
+    // WorkerParkSignal (a reusable IValueTaskSource async auto-reset event) replaces the earlier
+    // SemaphoreSlim(0, int.MaxValue): SemaphoreSlim.WaitAsync(ct)'s cancelable slow path allocated
+    // ~200 B per park (CancellationPromise<bool> + registration node + TaskNode), which dominated
+    // steady-state dispatch allocation whenever the workload ran in the "park regime" (round-trip longer
+    // than the spin-before-park window). WorkerParkSignal.WaitAsync() parks through a pooled value-task
+    // source, so a park allocates nothing. The token is dropped from the wait (DisposeAsync wakes every
+    // worker via Set() so each observes the cancelled token and exits, mirroring ArenaScheduler). A
+    // boolean auto-reset event is a sound replacement for the permit-counting semaphore because the wake
+    // is edge-triggered: after one wake a worker re-sweeps every shard until a sweep is empty, so a single
+    // signal drains arbitrarily many ready activations -- see the WorkerParkSignal remarks.
+    private readonly WorkerParkSignal[] _workerSignals;
+
+    // Lock-free registry of worker indices that currently believe they're idle, as a bitmask (bit i
+    // set == worker i registered idle). An enqueuer's exact 0->1 transition (see _shardCounts) claims
+    // one set bit (if any) via CAS and releases that worker's own semaphore -- a targeted wake instead
+    // of a broadcast. If no bit is set, no release happens; a busy worker will still reach the
+    // transitioned shard on its own next full sweep after finishing its current drain, the same
+    // fallback the single-shared-semaphore design already relied on (a Release() against an
+    // already-positive semaphore doesn't queue a second waiter either).
+    //
+    // Bitmask vs the earlier ConcurrentStack<int>: allocation-free (RegisterIdle is one Interlocked.Or,
+    // no per-idle node), and a worker's registration is a single idempotent bit rather than a stack
+    // that could accumulate duplicate entries for the same worker across park cycles -- one bit exactly
+    // matches "one worker can have at most one pending park," removing those spurious duplicate wakes.
+    // The Interlocked.Or (register) / CompareExchange (claim) are full barriers, so the wake-race
+    // happens-before argument is identical to the stack's: the register's barrier orders the worker's
+    // pre-park re-sweep after any enqueue that preceded it, and orders the bit visible to any enqueuer
+    // whose transition follows it. Stale bits (a worker listed idle while actually busy, because its
+    // pre-park double-check found work without clearing its bit) are still deliberately accepted:
+    // every worker sweeps every shard unconditionally regardless of signal state, so no work is lost --
+    // a stale bit only lets a future transition's targeted release land on a busy worker as a wasted
+    // credit, which self-corrects by making that worker's next park attempt a non-blocking no-op. Sized
+    // for worker count (== shard count); multiple 64-bit words cover machines with >64 cores.
+    // See docs/superpowers/specs/2026-07-09-scheduler-wake-signal-sharding-design.md section 4.
+    private readonly long[] _idleBits;
 
     private readonly CancellationTokenSource _cts = new();
     private readonly Task[] _workers;
@@ -165,9 +184,11 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 _capacityGates[i] = new SemaphoreSlim(_queueCapacity, _queueCapacity);
         }
 
-        _workerSignals = new SemaphoreSlim[concurrency];
+        _workerSignals = new WorkerParkSignal[concurrency];
         for (int i = 0; i < concurrency; i++)
-            _workerSignals[i] = new SemaphoreSlim(0, int.MaxValue);
+            _workerSignals[i] = new WorkerParkSignal();
+
+        _idleBits = new long[(concurrency + 63) >> 6];
 
         _workers = new Task[concurrency];
         for (int i = 0; i < concurrency; i++)
@@ -188,6 +209,19 @@ internal sealed class ActivationScheduler : IActivationScheduler
 
     public async ValueTask ScheduleAsync(GrainActivation activation, CancellationToken cancellationToken = default)
     {
+        // Reject scheduling once shutdown has begun. After DisposeAsync cancels _cts the drain workers
+        // exit, so any activation enqueued past that point would never be drained -- a silent enqueue
+        // would hang its poster forever (GrainActivation.DisposeAsync posts its own OnDeactivate turn
+        // through here during teardown, and awaits the drain). Throwing instead lets that poster fall
+        // back to draining itself inline (GrainActivation.DrainDirectlyAndDeactivateAsync). This restores
+        // the contract the earlier Channel<GrainActivation>-based ready queue provided implicitly -- its
+        // ScheduleAsync threw ChannelClosedException once the channel completed on shutdown; the
+        // ConcurrentQueue that replaced it has no closed state, so the guard is now explicit. The check
+        // is a single volatile read on the hot path and is only ever true during shutdown.
+        if (_cts.IsCancellationRequested)
+            throw new ObjectDisposedException(nameof(ActivationScheduler),
+                "The activation scheduler is shutting down and can no longer accept new work.");
+
         if (!activation.TryMarkScheduled())
             return;
 
@@ -224,22 +258,69 @@ internal sealed class ActivationScheduler : IActivationScheduler
         ConcurrentQueue<GrainActivation> shard = _shards[shardIndex];
         shard.Enqueue(activation);
         int depth = Interlocked.Increment(ref _shardCounts[shardIndex]);
-        if (depth == 1 && _idleWorkers.TryPop(out int idleWorker))
-            _workerSignals[idleWorker].Release();
+        if (depth == 1 && TryClaimIdleWorker(out int idleWorker))
+            _workerSignals[idleWorker].Set();
 
         QuarkInstruments.SchedulerReadyQueueDepth.Add(1);
         _diagnostics.OnSchedulerReadyQueueDepthChanged(
             new SchedulerReadyQueueDepthChangedEvent(depth, 1));
     }
 
+    /// <summary>
+    ///     Marks worker <paramref name="workerIndex"/> as idle in <see cref="_idleBits"/>. Idempotent:
+    ///     setting an already-set bit is a no-op, so a worker that registers idle across successive park
+    ///     cycles occupies exactly one bit. The <see cref="Interlocked.Or(ref long, long)"/> is a full
+    ///     barrier, ordering the worker's subsequent pre-park re-sweep after this registration.
+    /// </summary>
+    private void RegisterIdle(int workerIndex)
+        => Interlocked.Or(ref _idleBits[workerIndex >> 6], 1L << (workerIndex & 63));
+
+    /// <summary>
+    ///     Atomically claims and clears one set bit from <see cref="_idleBits"/> (any idle worker),
+    ///     returning its index. Returns <see langword="false"/> when no worker is registered idle. The
+    ///     per-word CAS guarantees two concurrent enqueuers never both claim the same worker; a lost CAS
+    ///     retries against the freshly observed word. Scans words low-to-high, lowest set bit first.
+    /// </summary>
+    private bool TryClaimIdleWorker(out int workerIndex)
+    {
+        for (int word = 0; word < _idleBits.Length; word++)
+        {
+            long observed = Volatile.Read(ref _idleBits[word]);
+            while (observed != 0)
+            {
+                int bit = BitOperations.TrailingZeroCount(observed);
+                long cleared = observed & ~(1L << bit);
+                long prior = Interlocked.CompareExchange(ref _idleBits[word], cleared, observed);
+                if (prior == observed)
+                {
+                    workerIndex = (word << 6) + bit;
+                    return true;
+                }
+
+                observed = prior; // Another thread mutated this word; retry with its current value.
+            }
+        }
+
+        workerIndex = -1;
+        return false;
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync().ConfigureAwait(false);
 
+        // Token-free park: a worker blocked in WorkerParkSignal.WaitAsync() cannot observe the cancelled
+        // token on its own (there is no token in the wait), so wake every worker. Each then re-checks
+        // ct.IsCancellationRequested after the park and exits its loop. Set() on an unparked worker is
+        // stored and consumed as a synchronous no-op on its next park attempt, before that re-check.
+        // Mirrors ArenaScheduler.DisposeAsync's "release every signal on shutdown."
+        foreach (WorkerParkSignal signal in _workerSignals)
+            signal.Set();
+
         // Snapshot live overflow workers after requesting cancellation -- CheckForStallAndSpawnOverflow
         // checks _cts.IsCancellationRequested before spawning a new one, so this is complete modulo a
         // narrow best-effort race (matches this class's existing tolerance for small races elsewhere,
-        // e.g. stale _idleWorkers entries).
+        // e.g. stale _idleBits entries).
         Task allWorkers = Task.WhenAll(_workers.Append(_stallWatchdog).Concat(_overflowWorkers.Keys));
 
         // Surface a stuck shutdown instead of just hanging silently — a hung drain worker
@@ -266,8 +347,8 @@ internal sealed class ActivationScheduler : IActivationScheduler
             // Worker cancellation is expected.
         }
         _cts.Dispose();
-        foreach (SemaphoreSlim workerSignal in _workerSignals)
-            workerSignal.Dispose();
+        // WorkerParkSignal holds no unmanaged/disposable resource (a reusable value-task source), so
+        // unlike the SemaphoreSlim it replaced there is nothing to dispose here.
         if (_capacityGates is not null)
         {
             foreach (SemaphoreSlim gate in _capacityGates)
@@ -321,38 +402,59 @@ internal sealed class ActivationScheduler : IActivationScheduler
                 if (ct.IsCancellationRequested)
                     return;
 
-                // Register as idle, then re-sweep once before parking (double-check). Any
-                // transition that landed before this Push is visible to this re-sweep -- the
-                // enqueuer's Interlocked.Increment happens-before any TryPop it performs, and this
-                // Push happens-before the re-sweep's reads. Any transition landing after this Push
-                // is visible to the enqueuer's TryPop, which will target this worker's own
-                // semaphore directly, and the subsequent WaitAsync below consumes that credit
-                // without blocking. There is no gap between "registered idle" and "unreachable by
-                // a wake."
-                _idleWorkers.Push(workerIndex);
-
-                activation = TryDequeueAny(ref cursor);
+                // Bounded, UNREGISTERED spin before touching the idle registry or parking. Under a
+                // hot workload the next item lands within microseconds, so re-checking the shards a
+                // few times catches it and skips both the RegisterIdle bit-set and
+                // SemaphoreSlim.WaitAsync(ct)'s slow path (an AsyncStateMachineBox + CancellationPromise
+                // per park) -- together these dominated steady-state dispatch allocation. This spin
+                // registers nothing, so it is pure optimism in front of the original race-guarded park
+                // below; it stops before SpinWait would yield the thread, so a genuinely idle system
+                // falls through and parks promptly instead of busy-waiting.
+                var spin = new SpinWait();
+                while (activation is null && !spin.NextSpinWillYield)
+                {
+                    spin.SpinOnce();
+                    activation = TryDequeueAny(ref cursor);
+                }
 
                 if (activation is null)
                 {
-                    // This worker's idle-stack entry is intentionally left in place here -- see
-                    // the class-level remarks on _idleWorkers for why a self-removal Pop would be
-                    // unsafe. It stays until an enqueuer's TryPop consumes it.
-                    try
-                    {
-                        await _workerSignals[workerIndex].WaitAsync(ct).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
+                    if (ct.IsCancellationRequested)
                         return;
+
+                    // Register as idle, then re-sweep once before parking (double-check). Any
+                    // transition that landed before this RegisterIdle is visible to this re-sweep --
+                    // the enqueuer's Interlocked.Increment happens-before any TryClaimIdleWorker it
+                    // performs, and this bit-set happens-before the re-sweep's reads. Any transition
+                    // landing after this bit-set is visible to the enqueuer's TryClaimIdleWorker, which
+                    // will target this worker's own semaphore directly, and the subsequent WaitAsync
+                    // below consumes that credit without blocking. There is no gap between "registered
+                    // idle" and "unreachable by a wake."
+                    RegisterIdle(workerIndex);
+
+                    activation = TryDequeueAny(ref cursor);
+
+                    if (activation is null)
+                    {
+                        // This worker's idle bit is intentionally left set here -- see the class-level
+                        // remarks on _idleBits for why stale bits are safe. It stays set until an
+                        // enqueuer's TryClaimIdleWorker consumes it.
+                        //
+                        // WorkerParkSignal.WaitAsync() is token-free (allocation-free park); DisposeAsync
+                        // Set()s every worker on cancellation, so a parked worker wakes and observes the
+                        // token here. A Set() that arrived before this park (an enqueuer targeting this
+                        // worker, or Dispose) is stored and consumed synchronously without blocking.
+                        await _workerSignals[workerIndex].WaitAsync().ConfigureAwait(false);
+
+                        if (ct.IsCancellationRequested)
+                            return;
+
+                        continue;
                     }
 
-                    continue;
+                    // The double-check found work. The idle bit set above is deliberately NOT cleared
+                    // -- see the class-level remarks on _idleBits. Fall through and process normally.
                 }
-
-                // The double-check found work. The idle-stack entry pushed above is deliberately
-                // NOT removed -- see the class-level remarks on _idleWorkers. Fall through and
-                // process this activation normally.
             }
 
             await DrainDispatchedActivationAsync(activation, cursor, ct).ConfigureAwait(false);
@@ -447,7 +549,7 @@ internal sealed class ActivationScheduler : IActivationScheduler
     ///     Transient rescue capacity spun up by <see cref="RunStallWatchdogAsync"/> when the ready
     ///     queue shows no progress for too long -- see the FIX section of the class remarks. Sweeps
     ///     shards using the same <see cref="TryDequeueAny"/> logic as a primary worker, but unlike a
-    ///     primary worker it never registers on <see cref="_idleWorkers"/> or parks: after a short run
+    ///     primary worker it never registers on <see cref="_idleBits"/> or parks: after a short run
     ///     of consecutive empty sweeps it just retires, since overflow workers are meant to drain a
     ///     backlog and disappear, not join the steady-state pool.
     /// </summary>

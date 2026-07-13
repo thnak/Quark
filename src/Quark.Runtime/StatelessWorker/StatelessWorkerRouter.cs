@@ -23,6 +23,13 @@ internal sealed class StatelessWorkerRouter
     private readonly IPlacementStrategyResolver _placementResolver;
     private readonly SiloRuntimeOptions _options;
 
+    // Cached once so the GetOrAdd cache-hit path allocates nothing. Passing the ResolvePolicy method
+    // group directly to GetOrAdd would allocate a fresh Func delegate on every call (the factory is
+    // never invoked after the first miss), and TryGetPolicy runs for every grain call — including
+    // non-stateless-worker grains, which cache a null policy — so that delegate churn hit the whole
+    // dispatch hot path.
+    private readonly Func<GrainType, StatelessWorkerPoolPolicy?> _resolvePolicy;
+
     public StatelessWorkerRouter(
         IGrainTypeRegistry typeRegistry,
         IPlacementStrategyResolver placementResolver,
@@ -31,6 +38,7 @@ internal sealed class StatelessWorkerRouter
         _typeRegistry = typeRegistry;
         _placementResolver = placementResolver;
         _options = options.Value;
+        _resolvePolicy = ResolvePolicy;
     }
 
     /// <summary>
@@ -39,7 +47,7 @@ internal sealed class StatelessWorkerRouter
     /// </summary>
     public bool TryGetPolicy(GrainType grainType, out StatelessWorkerPoolPolicy policy)
     {
-        StatelessWorkerPoolPolicy? cached = _policyCache.GetOrAdd(grainType, ResolvePolicy);
+        StatelessWorkerPoolPolicy? cached = _policyCache.GetOrAdd(grainType, _resolvePolicy);
         if (cached is null)
         {
             policy = default;

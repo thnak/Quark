@@ -88,10 +88,20 @@ public static class RuntimeServiceCollectionExtensions
         // SimpleActivationScheduler (unbounded Task.Run per activation, no concurrency cap or other
         // QoS knobs) remains available for callers that want it explicitly — e.g. the
         // `--bare` PingPong benchmark mode.
-        services.TryAddSingleton<IActivationScheduler>(sp => new ActivationScheduler(
-            sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value,
-            sp.GetService<IQuarkDiagnosticListener>(),
-            sp.GetService<IOptions<DiagnosticOptions>>()?.Value));
+        // SchedulerKind.ArenaV2 opts into the next-generation ArenaScheduler (dedicated worker threads,
+        // per-worker work-stealing deques — docs/superpowers/specs/2026-07-12-next-gen-scheduler-design.md).
+        // The default stays ActivationScheduler until the arena scheduler reaches parity across the full
+        // benchmark suite and its later phases (cooperative async resume, rescue) land.
+        services.TryAddSingleton<IActivationScheduler>(sp =>
+        {
+            SiloRuntimeOptions runtimeOptions = sp.GetRequiredService<IOptions<SiloRuntimeOptions>>().Value;
+            IQuarkDiagnosticListener? listener = sp.GetService<IQuarkDiagnosticListener>();
+            DiagnosticOptions? diagOptions = sp.GetService<IOptions<DiagnosticOptions>>()?.Value;
+
+            return runtimeOptions.SchedulerKind == SchedulerKind.ArenaV2
+                ? new ArenaScheduler(runtimeOptions, listener, diagOptions)
+                : new ActivationScheduler(runtimeOptions, listener, diagOptions);
+        });
 
         // Stateless-worker pool router (singleton; pool dictionaries keyed by logical grain id)
         services.TryAddSingleton<StatelessWorkerRouter>();

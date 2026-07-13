@@ -22,6 +22,7 @@ public static class AstroSimRunner
 
         Console.WriteLine("=== AstroSim Throughput Benchmark ===");
         Console.WriteLine($"  Bodies: {cli.Bodies:N0}, Grid: {cli.Grid}^3 ({totalChunks:N0} chunks), Duration: {cli.DurationSeconds}s");
+        Console.WriteLine($"  Scheduler: {(cli.SchedulerV2 ? "ArenaScheduler (V2)" : "ActivationScheduler (legacy)")}");
         Console.WriteLine();
 
         await using TestCluster cluster = await TestCluster.CreateAsync(options =>
@@ -30,6 +31,8 @@ public static class AstroSimRunner
             options.ConfigureSiloServices = services =>
             {
                 services.AddQuarkRuntime();
+                if (cli.SchedulerV2)
+                    services.Configure<SiloRuntimeOptions>(o => o.SchedulerKind = SchedulerKind.ArenaV2);
                 services.AddQuarkDiagnostics(listener);
 
                 // AddQuarkDiagnostics's own TryAddSingleton<IQuarkDiagnosticListener> silently loses to
@@ -149,12 +152,14 @@ internal sealed class AstroSimCliArgs
     public int Bodies { get; private init; } = 10_000_000;
     public int Grid { get; private init; } = 32;
     public double DurationSeconds { get; private init; } = 10;
+    public bool SchedulerV2 { get; private init; }
 
     public static AstroSimCliArgs Parse(string[] args)
     {
         int bodies = 10_000_000;
         int grid = 32;
         double duration = 10;
+        bool schedulerV2 = false;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -169,9 +174,12 @@ internal sealed class AstroSimCliArgs
                 case "--duration" when i + 1 < args.Length:
                     duration = double.Parse(args[++i]);
                     break;
+                case "--v2":
+                    schedulerV2 = true;
+                    break;
             }
         }
 
-        return new AstroSimCliArgs { Bodies = bodies, Grid = grid, DurationSeconds = duration };
+        return new AstroSimCliArgs { Bodies = bodies, Grid = grid, DurationSeconds = duration, SchedulerV2 = schedulerV2 };
     }
 }

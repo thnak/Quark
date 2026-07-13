@@ -92,6 +92,13 @@ public class Program
             return;
         }
 
+        // Per-type allocation attribution for a single grain call (in-process GCAllocationTick listener).
+        if (args.Length > 0 && args[0].Equals("AllocByType", StringComparison.OrdinalIgnoreCase))
+        {
+            await AllocByTypeProfiler.RunAsync(args);
+            return;
+        }
+
         // Otherwise run BenchmarkDotNet benchmarks
         var switcher = new BenchmarkSwitcher(new[]
         {
