@@ -89,6 +89,33 @@ public sealed class GrainActivationTable : IAsyncDisposable
     }
 
     /// <summary>
+    ///     State-passing overload of <see cref="GetOrCreateAsync(GrainId, Func{ValueTask{GrainActivation}})"/>
+    ///     that avoids the per-call factory-closure allocation on the hot (cache-hit) path — the caller
+    ///     passes a <c>static</c> delegate plus a struct <paramref name="state"/> instead of a lambda that
+    ///     captures its arguments. Dedup semantics are identical: the same <see cref="Lazy{T}"/> guarantees
+    ///     the factory runs at most once per grain. The closure over <paramref name="state"/>/
+    ///     <paramref name="factory"/> that the <see cref="Lazy{T}"/> needs is created only on a cache miss.
+    /// </summary>
+    public ValueTask<GrainActivation> GetOrCreateAsync<TState>(
+        GrainId grainId, TState state, Func<TState, ValueTask<GrainActivation>> factory)
+    {
+        if (_activations.TryGetValue(grainId, out Lazy<Task<GrainActivation>>? existing))
+        {
+            return new ValueTask<GrainActivation>(existing.Value);
+        }
+
+        if (_maxActivations > 0 && _activations.Count >= _maxActivations)
+        {
+            throw new GrainActivationLimitExceededException(grainId, _maxActivations);
+        }
+
+        Lazy<Task<GrainActivation>> lazy = _activations.GetOrAdd(grainId,
+            static (_, arg) => new Lazy<Task<GrainActivation>>(() => arg.factory(arg.state).AsTask()),
+            (state, factory));
+        return new ValueTask<GrainActivation>(lazy.Value);
+    }
+
+    /// <summary>
     ///     Removes the activation entry for <paramref name="grainId" /> if it is currently
     ///     faulted.  Called by the invoker after a failed activation so that the next call
     ///     can attempt a fresh activation.

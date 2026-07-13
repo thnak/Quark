@@ -22,6 +22,7 @@ namespace Quark.Performance;
 public class DispatchPipelineBenchmarks
 {
     private static readonly GrainType PingPongGrainType = new("PingPongGrain");
+    private static readonly GrainType ActivationPingPongGrainType = new("ActivationPingPongGrain");
     private static readonly Func<ValueTask<GrainActivation>> ThrowingFactory =
         static () => throw new InvalidOperationException("Factory should not run — activation must already exist.");
     private static readonly Func<ValueTask> NoOpWorkItem = static () => default;
@@ -30,6 +31,7 @@ public class DispatchPipelineBenchmarks
     private GrainActivationTable _activationTable = null!;
     private IGrainCallInvoker _invoker = null!;
     private GrainId _grainId;
+    private GrainId _activationGrainId;
     private GrainActivation _bareActivation = null!;
     private GrainActivation _bareActivationReentrant = null!;
 
@@ -69,14 +71,20 @@ public class DispatchPipelineBenchmarks
         services.AddGrainBehavior<IPingPongGrain, PingPongGrainBehavior>();
         _sp = services.BuildServiceProvider();
 
-        _sp.GetRequiredService<GrainTypeRegistry>().Register(PingPongGrainType, typeof(PingPongGrainBehavior));
+        GrainTypeRegistry typeReg = _sp.GetRequiredService<GrainTypeRegistry>();
+        typeReg.Register(PingPongGrainType, typeof(PingPongGrainBehavior));
+        // Part A: register the per-activation (IActivationBehavior) variant so the activation-scoped
+        // dispatch path can be measured against the per-call FullInvokeVoidAsync baseline.
+        typeReg.Register(ActivationPingPongGrainType, typeof(ActivationPingPongGrainBehavior));
 
         _activationTable = _sp.GetRequiredService<GrainActivationTable>();
         _invoker = _sp.GetRequiredService<IGrainCallInvoker>();
         _grainId = GrainId.Create(PingPongGrainType, "bench-0");
+        _activationGrainId = GrainId.Create(ActivationPingPongGrainType, "bench-act-0");
 
         // Pre-activate so the table-lookup and full-invoke benchmarks hit steady state.
         await _invoker.InvokeVoidAsync(_grainId, new PingPongBehavior_PingInvokable());
+        await _invoker.InvokeVoidAsync(_activationGrainId, new PingPongBehavior_PingInvokable());
 
         // Bare activations, constructed directly (bypassing GrainActivationTable) so mailbox-only
         // stages measure the channel/scheduler cost in isolation from DI/behavior resolution.
@@ -194,6 +202,13 @@ public class DispatchPipelineBenchmarks
     [Benchmark]
     public async ValueTask FullInvokeVoidAsync()
         => await _invoker.InvokeVoidAsync(_grainId, new PingPongBehavior_PingInvokable());
+
+    // Stage 8b: same complete call, but against an IActivationBehavior grain (Part A). Uses the cached
+    // per-activation instance + scope, so the ~792 B/call of ServiceScope create + DI resolution
+    // (stage 3) should drop out. The Allocated delta vs FullInvokeVoidAsync is Part A's payoff.
+    [Benchmark]
+    public async ValueTask FullInvokeVoidAsync_ActivationScoped()
+        => await _invoker.InvokeVoidAsync(_activationGrainId, new PingPongBehavior_PingInvokable());
 
     // Stage 9a: write + await a forced-async completion signal — Quark's real RPC-await pattern.
     [Benchmark]
