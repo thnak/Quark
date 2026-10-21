@@ -32,7 +32,7 @@ public sealed class FaultIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _redis = new RedisBuilder().Build();
+        _redis = new RedisBuilder("redis:7.0").Build();
         await _redis.StartAsync();
         BuildFixture(new FaultScenarioHolder());
     }
