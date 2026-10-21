@@ -40,8 +40,10 @@ jobs:
       - name: Restore
         run: dotnet restore Quark.slnx --verbosity minimal
 
+      # GitHub's Windows runners use the Windows container engine and cannot pull the Linux redis
+      # image Testcontainers needs, so fault-integration (real Redis) runs on Linux only.
       - name: Test
-        run: dotnet test Quark.slnx --no-restore --verbosity minimal
+        run: dotnet test Quark.slnx --no-restore --verbosity minimal ${{ runner.os == 'Windows' && '--filter "category!=fault-integration"' || '' }}
 
       - name: Native AOT smoke publish
         run: dotnet publish src/Quark.Runtime/Quark.Runtime.csproj -f net10.0 -c Release -r ${{ matrix.rid }} /p:PublishAot=true --verbosity minimal
