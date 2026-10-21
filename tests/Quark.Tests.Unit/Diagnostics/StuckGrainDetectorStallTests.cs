@@ -5,6 +5,7 @@ using Quark.Core.Abstractions.Identity;
 using Quark.Diagnostics;
 using Quark.Diagnostics.Abstractions;
 using Quark.Runtime;
+using Quark.Tests.Unit.Runtime;
 using Xunit;
 
 namespace Quark.Tests.Unit.Diagnostics;
@@ -30,7 +31,7 @@ public sealed class StuckGrainDetectorStallTests
             grainId, Type, isReentrant: false,
             new ServiceCollection().BuildServiceProvider(),
             NullLogger<GrainActivation>.Instance,
-            SimpleActivationScheduler.Instance);
+            new GatedActivationScheduler());
         activation.MarkActive();
         await table.GetOrCreateAsync(grainId, () => ValueTask.FromResult(activation));
 
