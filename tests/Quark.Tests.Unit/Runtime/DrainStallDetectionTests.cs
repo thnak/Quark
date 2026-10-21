@@ -14,22 +14,32 @@ namespace Quark.Tests.Unit.Runtime;
 ///     forever without ever making progress. <see cref="GrainActivation.ConsecutiveEmptyDrains"/>
 ///     is the counter <see cref="Quark.Diagnostics.StuckGrainDetector"/> watches for this.
 /// </summary>
-public sealed class DrainStallDetectionTests
+public sealed class DrainStallDetectionTests : IAsyncDisposable
 {
     private static readonly GrainType Type = new("StallProbe");
 
-    private static GrainActivation Create() =>
-        new(new GrainId(Type, "g"), Type, isReentrant: false,
+    private readonly GatedActivationScheduler _scheduler = new();
+    private GrainActivation? _activation;
+
+    private GrainActivation Create() =>
+        _activation = new(new GrainId(Type, "g"), Type, isReentrant: false,
             new ServiceCollection().BuildServiceProvider(),
-            NullLogger<GrainActivation>.Instance, SimpleActivationScheduler.Instance);
+            NullLogger<GrainActivation>.Instance, _scheduler);
+
+    public async ValueTask DisposeAsync()
+    {
+        // DisposeAsync posts deactivation through the scheduler, so the gate must be open first.
+        _scheduler.Open();
+        if (_activation is not null) await _activation.DisposeAsync();
+    }
 
     [Fact]
     public async Task DrainAsync_IncrementsConsecutiveEmptyDrains_WhileCancelledWithWorkQueued()
     {
-        await using GrainActivation activation = Create();
+        GrainActivation activation = Create();
 
-        // Claim the drain lock before posting so the fallback SimpleActivationScheduler never
-        // gets a chance to race this test's manual drain calls.
+        // The gated scheduler drops every drain request, so only the manual drain calls below
+        // touch the mailbox.
         Assert.True(activation.TryBeginDrain());
         _ = activation.PostAsync(() => ValueTask.CompletedTask);
 
@@ -56,7 +66,7 @@ public sealed class DrainStallDetectionTests
     [Fact]
     public async Task DrainAsync_ResetsConsecutiveEmptyDrains_OnceWorkActuallyDrains()
     {
-        await using GrainActivation activation = Create();
+        GrainActivation activation = Create();
 
         Assert.True(activation.TryBeginDrain());
         _ = activation.PostAsync(() => ValueTask.CompletedTask);
